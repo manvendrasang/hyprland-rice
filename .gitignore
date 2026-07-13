@@ -39,3 +39,29 @@ luac.out
 *.x86_64
 *.hex
 
+# Build
+build/
+
+# Python
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+
+# Generated
+generated/
+
+# Temp
+tmp/
+
+# Cache
+.cache/
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
