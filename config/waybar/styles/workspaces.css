@@ -1,0 +1,48 @@
+#workspaces {
+
+    background: @bg;
+
+    border-radius: 14px;
+
+    border: 1px solid @border;
+
+    margin: 3px 4px;
+
+    padding: 2px;
+}
+
+#workspaces button {
+
+    color: transparent;
+
+    min-width: 12px;
+
+    min-height: 12px;
+
+    margin: 3px;
+
+    border-radius: 999px;
+
+    background: rgba(255,255,255,0.10);
+
+    transition: 180ms;
+}
+
+#workspaces button.active {
+
+    color: @bg;
+
+    min-width: 42px;
+
+    background: @blue;
+}
+
+#workspaces button:hover {
+
+    background: @purple;
+}
+
+#workspaces button.urgent {
+
+    background: @red;
+}

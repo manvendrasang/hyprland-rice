@@ -1,0 +1,37 @@
+#clock,
+#cpu,
+#memory,
+#temperature,
+#network,
+#pulseaudio,
+#battery,
+#tray,
+#custom-notifications {
+
+    background: @bg;
+
+    color: @fg;
+
+    border: 1px solid @border;
+
+    border-radius: 14px;
+
+    margin: 3px 4px;
+
+    padding: 2px 10px;
+
+    transition: 180ms;
+}
+
+#clock:hover,
+#cpu:hover,
+#memory:hover,
+#temperature:hover,
+#network:hover,
+#pulseaudio:hover,
+#battery:hover {
+
+    border-color: @blue;
+
+    background: @bg-alt;
+}
