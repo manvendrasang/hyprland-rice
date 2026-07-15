@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+
+COMMAND_DIR="$ROOT_DIR/commands"
+
+case "$1" in
+clean) exec "$COMMAND_DIR/clean.sh" ;;
+doctor) exec "$COMMAND_DIR/doctor.sh" ;;
+update) exec "$COMMAND_DIR/update.sh" ;;
+backup) exec "$COMMAND_DIR/backup.sh" ;;
+restore) exec "$COMMAND_DIR/restore.sh" ;;
+benchmark) exec "$COMMAND_DIR/benchmark.sh" ;;
+*)
+  cat <<EOF
+
+HyprX
+
+Usage:
+  hyprx clean
+  hyprx doctor
+  hyprx update
+  hyprx backup
+  hyprx restore
+  hyprx benchmark
+
+EOF
+  ;;
+esac

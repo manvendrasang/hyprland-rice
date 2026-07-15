@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+free |
+awk '/Mem:/{
+printf "%.0f\n",$3/$2*100
+}'

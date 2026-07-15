@@ -1,37 +1,342 @@
+/*
+ * MODULES
+ */
+
+/*
+ * Base Module Style
+ */
+
+#custom-logo,
 #clock,
+#custom-music,
+#custom-gpu,
 #cpu,
 #memory,
 #temperature,
 #network,
+#custom-bluetooth,
+#custom-updates,
 #pulseaudio,
 #battery,
-#tray,
+#custom-clipboard,
 #custom-notifications {
-
-    background: @bg;
-
-    color: @fg;
-
-    border: 1px solid @border;
-
-    border-radius: 14px;
-
-    margin: 3px 4px;
-
-    padding: 2px 10px;
-
-    transition: 180ms;
+    background: alpha(@bg0, 0.92);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 10px;
+    min-height: 26px;
+    padding: 0 10px;
+    margin: 2px;
 }
 
+/*
+ * Hover
+ * */
+
+#custom-logo:hover,
 #clock:hover,
+#custom-music:hover,
+#custom-gpu:hover,
 #cpu:hover,
 #memory:hover,
 #temperature:hover,
 #network:hover,
 #pulseaudio:hover,
-#battery:hover {
+#battery:hover,
+#custom-notifications:hover {
 
-    border-color: @blue;
+    background: alpha(@bg2, 0.95);
 
-    background: @bg-alt;
+    border-color: rgba(255,255,255,0.10);
+}
+
+
+/* 
+ * ARCH LOGO
+ */
+
+#custom-logo {
+    background: alpha(@bg0, 0.92);
+    color: @blue;
+
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 10px;
+
+    min-width: 34px;
+    min-height: 26px;
+
+    padding: 0;
+    margin: 2px;
+
+    font-size: 16px;
+    font-weight: 900;
+}
+
+#custom-logo label {
+    padding-left: 0px;
+    padding-right: 2px;
+}
+
+/* 
+ * WORKSPACES
+ */
+
+#workspaces {
+
+    padding: 3px;
+
+    min-width: 0;
+}
+
+#workspaces button {
+
+    color: @fg;
+
+    background: transparent;
+
+    border-radius: 999px;
+
+    min-width: 18px;
+
+    min-height: 18px;
+
+    padding: 0 8px;
+
+    margin: 0 2px;
+
+    transition:
+        background-color 180ms ease,
+        min-width 180ms ease,
+        color 180ms ease;
+}
+
+#workspaces button:hover {
+
+    background: alpha(@bg3,0.85);
+}
+
+#workspaces button.active {
+
+    background: @blue;
+
+    color: @bg0;
+
+    min-width: 38px;
+}
+
+#workspaces button.urgent {
+
+    background: @red;
+
+    color: @bg0;
+}
+
+
+/* 
+ * CLOCK
+ */
+
+#clock {
+
+    color: @fg;
+}
+
+
+/* 
+ * MUSIC
+ */
+
+#custom-music {
+    color: #1db954;
+}
+
+#custom-music.playing {
+    color: #1db954;
+}
+
+#custom-music.paused {
+    color: @yellow;
+}
+
+/* 
+ * GPU
+ */
+
+#custom-gpu {
+
+    color: @blue;
+}
+
+
+/* 
+ * CPU
+ */
+
+#cpu {
+
+    color: @fg;
+}
+
+
+/* 
+ * MEMORY
+ */
+
+#memory {
+
+    color: @fg;
+}
+
+
+/* 
+ * TEMPERATURE
+ */
+
+#temperature {
+
+    color: @purple;
+}
+
+
+/* 
+ * NETWORK
+ */
+
+#network {
+
+    color: @blue;
+}
+
+#network.disconnected {
+
+    color: @red;
+}
+
+
+/* 
+ * AUDIO
+ */
+
+#pulseaudio {
+
+    color: @green;
+}
+
+#pulseaudio.muted {
+
+    color: @grey1;
+}
+
+
+/* 
+ * BATTERY
+ */
+
+#battery {
+
+    color: @yellow;
+}
+
+#battery.charging {
+
+    color: @aqua;
+}
+
+#battery.warning {
+
+    color: @yellow;
+}
+
+#battery.critical {
+
+    color: @red;
+}
+
+
+/* 
+ * NOTIFICATIONS
+ */
+
+#custom-notifications {
+
+    color: @fg;
+}
+
+
+/* 
+ * TOOLTIP
+ */
+
+tooltip {
+
+    background: alpha(@bg0,0.97);
+
+    border: 1px solid rgba(255,255,255,0.05);
+
+    border-radius: 10px;
+}
+
+tooltip label {
+
+    color: @fg;
+
+    padding: 6px;
+}
+
+/*
+ * BLUETOOTH
+ */
+
+#custom-bluetooth {
+    color: @blue;
+}
+
+#custom-bluetooth.off {
+    color: @grey1;
+}
+
+#custom-updates {
+    color: @fg;
+}
+
+#custom-updates.ok {
+    color: @green;
+}
+
+#custom-updates.warn {
+    color: @yellow;
+}
+
+#custom-updates.critical {
+    color: @red;
+}
+
+#custom-bluetooth {
+    color: @blue;
+}
+
+/*
+ * UPDATES
+ */
+
+#custom-updates {
+    color: @fg;
+}
+
+#custom-updates.ok {
+    color: @green;
+}
+
+#custom-updates.warn {
+    color: @yellow;
+}
+
+#custom-updates.critical {
+    color: @red;
+}
+
+/*
+ * CLIPBOARD
+ */
+#custom-clipboard {
+    color: @purple;
 }

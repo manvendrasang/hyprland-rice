@@ -3,32 +3,146 @@
     "layer": "top",
     "position": "top",
 
-    "spacing": 6,
+    "height": 34,
+    "spacing": 4,
 
-    "margin-top": 4,
+    "margin-top": 2,
     "margin-left": 10,
     "margin-right": 10,
 
-    "height": 34,
-
     "modules-left": [
-      "hyprland/workspaces",
-      "hyprland/window"
+      "custom/logo",
+      "hyprland/workspaces"
     ],
 
     "modules-center": [
+      "custom/music",
       "clock"
     ],
 
     "modules-right": [
+      "custom/gpu",
       "cpu",
       "memory",
       "temperature",
       "network",
+      "custom/bluetooth",
+      "custom/updates",
+      "custom/clipboard",
       "pulseaudio",
       "battery",
-      "custom/notifications",
-      "tray"
-    ]
+      "custom/notifications"
+    ],
+ 
+    "custom/logo": {
+      "format": "",
+      "tooltip": false,
+      "on-click": "rofi -show drun -show-icons",
+      "on-click-right": "rofi -show run",
+      "on-click-middle": "kitty"
+    },
+
+    "custom/gpu": {
+      "exec": "$HOME/.config/waybar/scripts/gpu.sh",
+      "return-type": "json",
+      "interval": 2
+    },
+
+    "clock": {
+      "format": "{:%a %d %b   %H:%M}",
+      "tooltip-format": "{:%A, %d %B %Y}",
+      "interval": 60
+    },
+
+    "cpu": {
+      "exec": "$HOME/.config/waybar/scripts/cpu.sh",
+      "format": "󰍛 {}%",
+      "interval": 2
+    },
+
+    "custom/clipboard": {
+      "exec": "$HOME/.config/waybar/scripts/clipboard.sh",
+      "return-type": "json",
+      "interval": 5,
+      "on-click": "$HOME/.config/waybar/scripts/clipboard-menu.sh",
+      "on-click-right": "cliphist wipe"
+    },
+
+    "memory": {
+      "exec": "$HOME/.config/waybar/scripts/memory.sh",
+      "format": "󰘚 {}%",
+      "interval": 2
+    },
+
+    "temperature": {
+      "critical-threshold": 80,
+      "format": "󰔄 {temperatureC}°"
+    },
+
+    "network": {
+      "format-wifi": "󰖩 {signalStrength}%",
+      "format-ethernet": "󰈀",
+      "format-disconnected": "󰖪"
+    },
+
+    "pulseaudio": {
+      "format": "{icon} {volume}%",
+      "format-muted": "󰝟",
+      "format-icons": [
+        "",
+        "",
+        ""
+      ]
+    },
+
+    "custom/updates": {
+      "exec": "$HOME/.config/waybar/scripts/updates.sh",
+      "return-type": "json",
+      "interval": 1800,
+      "on-click": "kitty --hold -e yay",
+      "on-click-right": "kitty --hold -e yay -Syu"
+    },
+
+    "custom/music": {
+    "exec": "$HOME/.config/waybar/scripts/music.sh",
+    "return-type": "json",
+    "interval": 1,
+      "on-click": "playerctl play-pause",
+      "on-click-middle": "playerctl stop",
+      "on-click-right": "spotify",
+      "on-scroll-up": "playerctl next",
+      "on-scroll-down": "playerctl previous",
+      "escape": true
+    },
+
+    "battery": {
+      "format": "{icon} {capacity}%",
+      "format-icons": [
+        "󰂎",
+        "󰁺",
+        "󰁼",
+        "󰁾",
+        "󰂀"
+      ]
+    },
+
+    "custom/bluetooth": {
+      "exec": "$HOME/.config/waybar/scripts/bluetooth.sh",
+      "return-type": "json",
+      "interval": 3,
+      "on-click": "blueman-manager",
+      "on-click-right": "kitty -e bluetoothctl"
+    },
+
+    "custom/notifications": {
+      "exec": "$HOME/.config/waybar/scripts/notifications.sh",
+      "return-type": "json",
+      "interval": 2,
+      "on-click": "swaync-client -t"
+    },
+
+    "tray": {
+      "spacing": 8
+    }
   }
 ]
