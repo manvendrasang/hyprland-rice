@@ -4,12 +4,13 @@ SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 COMMAND_DIR="$(dirname "$SCRIPT_PATH")"
 ROOT_DIR="$(dirname "$COMMAND_DIR")"
 
-source "$ROOT_DIR/core/ui.sh"
-source "$ROOT_DIR/core/utils.sh"
-source "$ROOT_DIR/core/logger.sh"
-source "$ROOT_DIR/core/detect.sh"
-source "$ROOT_DIR/core/config.sh"
-source "$ROOT_DIR/core/table.sh"
+source "$ROOT_DIR/lib/ui.sh"
+source "$ROOT_DIR/lib/utils.sh"
+source "$ROOT_DIR/lib/logger.sh"
+source "$ROOT_DIR/lib/detect.sh"
+source "$ROOT_DIR/lib/config.sh"
+source "$ROOT_DIR/lib/modules.sh"
+source "$ROOT_DIR/lib/table.sh"
 
 header
 info_log "Running doctor"
@@ -127,3 +128,41 @@ fi
 echo
 
 success "Doctor completed."
+
+
+echo
+
+echo "Modules"
+echo "────────────────────────────────────────"
+
+discover_modules
+
+table_header
+
+for module in "${AVAILABLE_MODULES[@]}"; do
+
+    module_validate "$module"
+
+    case $? in
+
+        0)
+            status="OK"
+            ;;
+
+        1)
+            status="Missing module.conf"
+            ;;
+
+        2)
+            status="Missing packages.list"
+            ;;
+
+        3)
+            status="Missing services.list"
+            ;;
+
+    esac
+
+    table_row "$module" "$status"
+
+done

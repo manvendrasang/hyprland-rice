@@ -1,31 +1,27 @@
 #!/usr/bin/env bash
 
+set -euo pipefail
+
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
-COMMAND_DIR="$ROOT_DIR/commands"
+export ROOT_DIR
 
-case "$1" in
-clean) exec "$COMMAND_DIR/clean.sh" ;;
-doctor) exec "$COMMAND_DIR/doctor.sh" ;;
-update) exec "$COMMAND_DIR/update.sh" ;;
-backup) exec "$COMMAND_DIR/backup.sh" ;;
-restore) exec "$COMMAND_DIR/restore.sh" ;;
-benchmark) exec "$COMMAND_DIR/benchmark.sh" ;;
-*)
-  cat <<EOF
+source "$ROOT_DIR/lib/bootstrap.sh"
 
-HyprX
+COMMAND="${1:-help}"
 
-Usage:
-  hyprx clean
-  hyprx doctor
-  hyprx update
-  hyprx backup
-  hyprx restore
-  hyprx benchmark
+shift || true
 
-EOF
-  ;;
-esac
+COMMAND_FILE="$ROOT_DIR/commands/$COMMAND.sh"
+
+if [[ ! -f "$COMMAND_FILE" ]]; then
+    echo "Unknown command: $COMMAND"
+    echo
+    echo "Available commands:"
+    ls "$ROOT_DIR/commands" | sed 's/\.sh$//'
+    exit 1
+fi
+
+source "$COMMAND_FILE"

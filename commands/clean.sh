@@ -4,10 +4,10 @@ SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 COMMAND_DIR="$(dirname "$SCRIPT_PATH")"
 ROOT_DIR="$(dirname "$COMMAND_DIR")"
 
-source "$ROOT_DIR/core/ui.sh"
-source "$ROOT_DIR/core/utils.sh"
-source "$ROOT_DIR/core/detect.sh"
-source "$ROOT_DIR/core/logger.sh"
+source "$ROOT_DIR/lib/ui.sh"
+source "$ROOT_DIR/lib/utils.sh"
+source "$ROOT_DIR/lib/detect.sh"
+source "$ROOT_DIR/lib/logger.sh"
 
 header
 info_log "Started cleanup"
