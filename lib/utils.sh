@@ -104,12 +104,3 @@ directory_size() {
 
   du -sb "$1" 2>/dev/null | awk '{print $1}'
 }
-
-# ----------------------------------
-# Divider
-# ----------------------------------
-
-divider() {
-
-  printf '%*s\n' "${COLUMNS:-60}" '' | tr ' ' '─'
-}
