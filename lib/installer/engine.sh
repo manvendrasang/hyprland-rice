@@ -2,100 +2,63 @@
 
 run_install_engine() {
 
-    INSTALL_START_TIME=$(date +%s)
+    divider
+    header "HyprX Installer"
+    divider
 
-    ####################################
+    #
+    # Load profile
+    #
+
+    info "Loading profile: $PROFILE"
+
+    load_profile "$PROFILE" || return 1
+
+    #
     # Preflight
-    ####################################
+    #
 
-    preflight || {
+    preflight || return 1
 
-        error "Preflight failed."
-
-        return 1
-
-    }
-
-    success "Preflight passed."
-
-    ####################################
+    #
     # Compatibility
-    ####################################
+    #
 
-    check_compatibility || {
+    check_compatibility || return 1
 
-        error "Compatibility check failed."
-
-        return 1
-
-    }
-
-    success "Compatibility passed."
-
-    ####################################
-    # Temporary profile
-    ####################################
-
-    SELECTED_MODULES=(
-
-        desktop
-        development
-        networking
-
-    )
-
-    ####################################
-    # Resume
-    ####################################
+    #
+    # Resume installation if available
+    #
 
     if has_install_state; then
+        info "Previous installation detected."
 
-        warn "Found interrupted installation."
-
-        if resume_install; then
-
-            success "Resume successful."
-
-        else
-
-            warn "Unable to resume."
-
-            resolve_packages
-
-        fi
-
+        resume_install || return 1
     else
-
-        resolve_packages
-
+        resolve_packages || return 1
     fi
 
-    ####################################
-    # Validation
-    ####################################
+    #
+    # Validate packages
+    #
 
-    validate_packages
+    validate_packages || return 1
 
-    ####################################
-    # Install
-    ####################################
+    #
+    # Install packages
+    #
 
-    install_packages
+    install_packages || return 1
 
-    ####################################
-    # Report
-    ####################################
+    #
+    # Generate report
+    #
 
-    INSTALL_END_TIME=$(date +%s)
+    generate_report || return 1
 
-    INSTALL_DURATION=$((INSTALL_END_TIME-INSTALL_START_TIME))
+    divider
+    success "Installation completed successfully."
+    divider
 
-    generate_report
-
-    ####################################
-    # Finished
-    ####################################
-
-    success "Ready."
-
+    return 0
 }

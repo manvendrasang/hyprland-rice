@@ -39,30 +39,46 @@ divider() {
 }
 
 ########################################
+# Banner
+########################################
+
+banner() {
+
+    divider
+    echo "$1"
+    divider
+
+}
+
+########################################
 # Logging helpers
 ########################################
 
 success() {
 
     echo -e "${GREEN}✓${RESET} $1"
+    success_log "$1"
 
 }
 
 error() {
 
     echo -e "${RED}✗${RESET} $1"
+    error_log "$1"
 
 }
 
 warn() {
 
     echo -e "${YELLOW}!${RESET} $1"
+    warn_log "$1"
 
 }
 
 info() {
 
     echo -e "${CYAN}>${RESET} $1"
+    info_log "$1"
 
 }
 
@@ -86,19 +102,5 @@ progress_message() {
     local total="$2"
 
     printf "[%d/%d]\n" "$current" "$total"
-
-}
-
-########################################
-# Banner
-########################################
-
-banner() {
-
-    divider
-
-    echo "$1"
-
-    divider
 
 }

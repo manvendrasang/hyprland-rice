@@ -1,49 +1,47 @@
 #!/usr/bin/env bash
 
-SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
-COMMAND_DIR="$(dirname "$SCRIPT_PATH")"
-ROOT_DIR="$(dirname "$COMMAND_DIR")"
-
-source "$ROOT_DIR/lib/ui.sh"
-source "$ROOT_DIR/lib/utils.sh"
-source "$ROOT_DIR/lib/logger.sh"
-source "$ROOT_DIR/lib/detect.sh"
-source "$ROOT_DIR/lib/config.sh"
-source "$ROOT_DIR/lib/modules.sh"
-source "$ROOT_DIR/lib/table.sh"
-
 header
 info_log "Running doctor"
 
-success_log "Doctor finished"
-
-check() {
-  if [[ "$2" == true ]]; then
-    success "$1"
-  else
-    error "$1"
-  fi
-}
-
 echo
 
-echo "Configuration"
-echo "────────────────────────────────────────"
+########################################
+# Configuration
+########################################
+
+section "Configuration"
 
 table_header
+table_row "Profile"        "${PROFILE:-Unknown}"
+table_row "Theme"          "${THEME:-Default}"
+table_row "Terminal"       "${TERMINAL:-Unknown}"
+table_row "Browser"        "${BROWSER:-Unknown}"
+table_row "Editor"         "${EDITOR:-Unknown}"
+table_row "File Manager"   "${FILE_MANAGER:-Unknown}"
+table_row "Launcher"       "${LAUNCHER:-Unknown}"
 
-table_row "Profile"        "$PROFILE"
-table_row "Theme"          "$THEME"
-table_row "Terminal"       "$TERMINAL"
-table_row "Browser"        "$BROWSER"
-table_row "Editor"         "$EDITOR"
-table_row "File Manager"   "$FILE_MANAGER"
-table_row "Launcher"       "$LAUNCHER"
 echo
 
-echo "Applications"
-echo "────────────────────────────────────────"
+########################################
+# Applications
+########################################
 
+section "Applications"
+
+check() {
+
+    local name="$1"
+    local status="$2"
+
+    if [[ "$status" == true ]]; then
+        success "$name"
+    else
+        error "$name"
+    fi
+
+}
+
+check "Hyprland Installed" "$HAS_HYPRLAND"
 check "Waybar Installed" "$HAS_WAYBAR"
 check "Rofi Installed" "$HAS_ROFI"
 check "Kitty Installed" "$HAS_KITTY"
@@ -51,89 +49,97 @@ check "VS Code Installed" "$HAS_CODE"
 check "Neovim Installed" "$HAS_NVIM"
 check "Git Installed" "$HAS_GIT"
 check "SwayNC Installed" "$HAS_SWAYNC"
+check "PipeWire Installed" "$HAS_PIPEWIRE"
+check "Bluetooth Installed" "$HAS_BLUETOOTH"
 
 echo
 
-echo
+########################################
+# System Information
+########################################
 
-echo "System Information"
-echo "────────────────────────────────────────"
+section "System Information"
 
 table_header
-
-table_row "Distribution"        "$DISTRO_NAME"
-table_row "Package Manager"     "$PACKAGE_MANAGER"
-table_row "CPU Vendor"          "$CPU_VENDOR"
-table_row "GPU Vendor"          "$GPU_VENDOR"
-table_row "Battery"             "${BATTERY_NAME:-None}"
-table_row "Network Interface"   "${NETWORK_INTERFACE:-Unknown}"
-table_row "Hyprland"            "$HAS_HYPRLAND"
-table_row "PipeWire"            "$HAS_PIPEWIRE"
-table_row "Bluetooth"           "$HAS_BLUETOOTH"
-table_row "Waybar"              "$HAS_WAYBAR"
-table_row "Rofi"                "$HAS_ROFI"
-table_row "Kitty"               "$HAS_KITTY"
-table_row "VS Code"             "$HAS_CODE"
-table_row "Neovim"              "$HAS_NVIM"
-table_row "Git"                 "$HAS_GIT"
-table_row "SwayNC"              "$HAS_SWAYNC"
-table_row "ZRAM"                "$HAS_ZRAM"
-table_row "Power Profiles"      "$HAS_POWER_PROFILE"
-echo
-
-echo "Storage"
-echo "────────────────────────────────────────"
-
-root_usage=$(df / | awk 'NR==2 {print $5}')
-info "Root Usage         : $root_usage"
+table_row "Distribution"       "$DISTRO_NAME"
+table_row "Package Manager"    "$PACKAGE_MANAGER"
+table_row "CPU Vendor"         "$CPU_VENDOR"
+table_row "GPU Vendor"         "$GPU_VENDOR"
+table_row "Battery"            "${BATTERY_NAME:-None}"
+table_row "Network Interface"  "${NETWORK_INTERFACE:-Unknown}"
+table_row "ZRAM"               "$HAS_ZRAM"
+table_row "Power Profiles"     "$HAS_POWER_PROFILE"
 
 echo
 
-echo "Memory"
-echo "────────────────────────────────────────"
+########################################
+# Storage
+########################################
+
+section "Storage"
+
+root_usage="$(df -h / | awk 'NR==2 {print $5}')"
+
+table_header
+table_row "Root Usage" "$root_usage"
+
+echo
+
+########################################
+# Memory
+########################################
+
+section "Memory"
 
 free -h
 
 echo
 
-echo "Swap"
-echo "────────────────────────────────────────"
+########################################
+# Swap
+########################################
 
-swapon --show
+section "Swap"
+
+swapon --show || true
 
 echo
 
-echo "Systemd"
-echo "────────────────────────────────────────"
+########################################
+# Systemd
+########################################
+
+section "Systemd"
 
 if systemctl --failed --no-legend | grep -q .; then
-  warn "Failed services detected"
-  echo
-  systemctl --failed --no-pager
+    warn "Failed services detected"
+    echo
+    systemctl --failed --no-pager
 else
-  success "No failed services"
+    success "No failed services"
 fi
 
 echo
 
-echo "Pacman"
-echo "────────────────────────────────────────"
+########################################
+# Pacman
+########################################
+
+section "Pacman"
 
 if [[ -f /var/lib/pacman/db.lck ]]; then
-  warn "Pacman database is locked"
+    warn "Pacman database is locked"
 else
-  success "Pacman database unlocked"
+    success "Pacman database unlocked"
 fi
 
 echo
 
-success "Doctor completed."
+########################################
+# Modules
+########################################
 
-
-echo
-
-echo "Modules"
-echo "────────────────────────────────────────"
+section "Modules"
 
 discover_modules
 
@@ -141,28 +147,28 @@ table_header
 
 for module in "${AVAILABLE_MODULES[@]}"; do
 
-    module_validate "$module"
+    if load_module "$module"; then
 
-    case $? in
+        status="OK"
 
-        0)
-            status="OK"
-            ;;
+        [[ ! -f "$HYPRX_MODULES/$module/module.conf" ]] && status="Missing module.conf"
+        [[ ! -f "$HYPRX_MODULES/$module/$PACKAGE_FILE" ]] && status="Missing $PACKAGE_FILE"
 
-        1)
-            status="Missing module.conf"
-            ;;
+        if [[ -n "${SERVICE_FILE:-}" ]]; then
+            [[ ! -f "$HYPRX_MODULES/$module/$SERVICE_FILE" ]] && status="Missing $SERVICE_FILE"
+        fi
 
-        2)
-            status="Missing packages.list"
-            ;;
+    else
 
-        3)
-            status="Missing services.list"
-            ;;
+        status="Invalid"
 
-    esac
+    fi
 
     table_row "$module" "$status"
 
 done
+
+echo
+
+success "Doctor completed."
+success_log "Doctor finished"

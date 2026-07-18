@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
 GREEN="\e[32m"
 YELLOW="\e[33m"
 BLUE="\e[34m"
-RED="\e[31m"
 RESET="\e[0m"
 
 echo -e "${BLUE}"
@@ -24,18 +23,20 @@ sudo paccache -r
 echo
 echo -e "${GREEN}Cleaning user cache...${RESET}"
 
-rm -rf ~/.cache/thumbnails
-rm -rf ~/.cache/fontconfig
-rm -rf ~/.cache/mesa_shader_cache
-rm -rf ~/.cache/cliphist
+rm -rf \
+    "$HOME/.cache/thumbnails" \
+    "$HOME/.cache/fontconfig" \
+    "$HOME/.cache/mesa_shader_cache" \
+    "$HOME/.cache/cliphist"
 
 echo
 echo -e "${GREEN}Cleaning temporary files...${RESET}"
 
 find /tmp -mindepth 1 -user "$USER" -delete 2>/dev/null || true
 
-rm -rf ~/.local/share/Trash/files/*
-rm -rf ~/.local/share/Trash/info/*
+rm -rf \
+    "$HOME/.local/share/Trash/files/"* \
+    "$HOME/.local/share/Trash/info/"*
 
 echo
 echo -e "${GREEN}Vacuuming system logs...${RESET}"
@@ -48,15 +49,21 @@ echo -e "${GREEN}Removing orphan packages...${RESET}"
 orphans=$(pacman -Qdtq || true)
 
 if [[ -n "$orphans" ]]; then
-  sudo pacman -Rns $orphans
+    sudo pacman -Rns --noconfirm $orphans
 else
-  echo "No orphan packages."
+    echo "No orphan packages."
 fi
 
 echo
 echo -e "${GREEN}Refreshing package databases...${RESET}"
 
-yay -Syy >/dev/null
+if command -v yay >/dev/null 2>&1; then
+    yay -Syy >/dev/null
+elif command -v paru >/dev/null 2>&1; then
+    paru -Syy >/dev/null
+else
+    sudo pacman -Syy >/dev/null
+fi
 
 echo
 echo -e "${GREEN}Checking failed services...${RESET}"

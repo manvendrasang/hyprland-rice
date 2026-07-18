@@ -11,16 +11,16 @@ export ROOT_DIR
 source "$ROOT_DIR/lib/bootstrap.sh"
 
 COMMAND="${1:-help}"
-
 shift || true
 
-COMMAND_FILE="$ROOT_DIR/commands/$COMMAND.sh"
+COMMAND_FILE="$HYPRX_COMMANDS/$COMMAND.sh"
 
 if [[ ! -f "$COMMAND_FILE" ]]; then
-    echo "Unknown command: $COMMAND"
+    error "Unknown command: $COMMAND"
     echo
-    echo "Available commands:"
-    ls "$ROOT_DIR/commands" | sed 's/\.sh$//'
+    info "Available commands:"
+    find "$HYPRX_COMMANDS" -maxdepth 1 -type f -name "*.sh" \
+        -printf "%f\n" | sed 's/\.sh$//' | sort
     exit 1
 fi
 

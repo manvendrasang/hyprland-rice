@@ -2,8 +2,7 @@
 
 generate_report() {
 
-    REPORT="$HOME/Desktop/HyprX-Install-Report.txt"
-
+    local report="$HOME/Desktop/HyprX-Install-Report.txt"
     local now
     local duration_minutes
     local duration_seconds
@@ -14,7 +13,6 @@ generate_report() {
     duration_seconds=$((INSTALL_DURATION % 60))
 
     {
-
         echo "=========================================================="
         echo "                 HyprX Installation Report"
         echo "=========================================================="
@@ -25,7 +23,8 @@ generate_report() {
         echo "$now"
         echo
 
-        echo "Host:"
+        echo "Host"
+        echo "----"
         uname -n
         echo
 
@@ -46,7 +45,7 @@ generate_report() {
 
         echo "Package Manager"
         echo "---------------"
-        echo "$PACKAGE_MANAGER"
+        echo "${PACKAGE_MANAGER:-Unknown}"
         echo
 
         echo "Installation Time"
@@ -60,15 +59,11 @@ generate_report() {
         echo "----------------"
 
         if (( ${#SELECTED_MODULES[@]} > 0 )); then
-
             for module in "${SELECTED_MODULES[@]}"; do
                 echo "• $module"
             done
-
         else
-
             echo "None"
-
         fi
 
         echo
@@ -84,96 +79,42 @@ generate_report() {
 
         echo
 
-        echo "Installed Packages"
-        echo "------------------"
+        for section in \
+            "Installed Packages:✓:${INSTALLED_PACKAGES[*]}" \
+            "Skipped Packages:•:${SKIPPED_PACKAGES[*]}" \
+            "Failed Packages:✗:${FAILED_PACKAGES[*]}" \
+            "Replaced Packages:→:${REPLACED_PACKAGES[*]}" \
+            "Invalid Packages:✗:${INVALID_PACKAGES[*]}"; do
 
-        if (( ${#INSTALLED_PACKAGES[@]} > 0 )); then
+            IFS=: read -r title symbol _ <<<"$section"
 
-            for pkg in "${INSTALLED_PACKAGES[@]}"; do
-                echo "✓ $pkg"
-            done
+            echo "$title"
+            printf '%*s\n' "${#title}" '' | tr ' ' '-'
 
-        else
+            case "$title" in
+                "Installed Packages") arr=("${INSTALLED_PACKAGES[@]}") ;;
+                "Skipped Packages") arr=("${SKIPPED_PACKAGES[@]}") ;;
+                "Failed Packages") arr=("${FAILED_PACKAGES[@]}") ;;
+                "Replaced Packages") arr=("${REPLACED_PACKAGES[@]}") ;;
+                "Invalid Packages") arr=("${INVALID_PACKAGES[@]}") ;;
+            esac
 
-            echo "None"
+            if (( ${#arr[@]} > 0 )); then
+                for item in "${arr[@]}"; do
+                    echo "$symbol $item"
+                done
+            else
+                echo "None"
+            fi
 
-        fi
-
-        echo
-
-        echo "Skipped Packages"
-        echo "----------------"
-
-        if (( ${#SKIPPED_PACKAGES[@]} > 0 )); then
-
-            for pkg in "${SKIPPED_PACKAGES[@]}"; do
-                echo "• $pkg"
-            done
-
-        else
-
-            echo "None"
-
-        fi
-
-        echo
-
-        echo "Failed Packages"
-        echo "---------------"
-
-        if (( ${#FAILED_PACKAGES[@]} > 0 )); then
-
-            for pkg in "${FAILED_PACKAGES[@]}"; do
-                echo "✗ $pkg"
-            done
-
-        else
-
-            echo "None"
-
-        fi
-
-        echo
-
-        echo "Replaced Packages"
-        echo "-----------------"
-
-        if (( ${#REPLACED_PACKAGES[@]} > 0 )); then
-
-            for pkg in "${REPLACED_PACKAGES[@]}"; do
-                echo "→ $pkg"
-            done
-
-        else
-
-            echo "None"
-
-        fi
-
-        echo
-
-        echo "Invalid Packages"
-        echo "----------------"
-
-        if (( ${#INVALID_PACKAGES[@]} > 0 )); then
-
-            for pkg in "${INVALID_PACKAGES[@]}"; do
-                echo "✗ $pkg"
-            done
-
-        else
-
-            echo "None"
-
-        fi
-
-        echo
+            echo
+        done
 
         echo "=========================================================="
 
-    } > "$REPORT"
+    } >"$report"
 
     success "Report written:"
-    echo "  $REPORT"
+    echo "  $report"
 
 }

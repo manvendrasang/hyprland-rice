@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
-ROOT="$HOME/Projects/hyprland-rice"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "Syncing..."
 
-mkdir -p ~/.config
+mkdir -p "$HOME/.config"
 
-rsync -av --delete \
-"$ROOT/config/hypr/" \
-~/.config/hypr/
+rsync -a --delete \
+    "$ROOT_DIR/config/hypr/" \
+    "$HOME/.config/hypr/"
 
-rsync -av --delete \
-"$ROOT/config/waybar/" \
-~/.config/waybar/
+rsync -a --delete \
+    "$ROOT_DIR/config/waybar/" \
+    "$HOME/.config/waybar/"
 
 hyprctl reload
 
-pkill waybar || true
+pkill -x waybar 2>/dev/null || true
 
-waybar >/dev/null 2>&1 &
+nohup waybar >/dev/null 2>&1 &

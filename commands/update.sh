@@ -1,123 +1,89 @@
 #!/usr/bin/env bash
 
-SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
-COMMAND_DIR="$(dirname "$SCRIPT_PATH")"
-ROOT_DIR="$(dirname "$COMMAND_DIR")"
-
-source "$ROOT_DIR/lib/ui.sh"
-source "$ROOT_DIR/lib/utils.sh"
-source "$ROOT_DIR/lib/logger.sh"
-source "$ROOT_DIR/lib/detect.sh"
-
 header
+info_log "Starting system update"
 
-info_log "Update started"
+start_time=$(date +%s)
 
-MODE="normal"
-
-[[ "$1" == "--yes" ]] && MODE="yes"
-[[ "$1" == "--check" ]] && MODE="check"
-
-echo
-
-info "Checking updates..."
+info "Synchronizing package databases..."
 
 case "$PACKAGE_MANAGER" in
-
     yay)
-
-        UPDATES=$(yay -Qu 2>/dev/null)
-
-        ;;
-
-    paru)
-
-        UPDATES=$(paru -Qu 2>/dev/null)
-
-        ;;
-
-    pacman)
-
-        UPDATES=$(checkupdates 2>/dev/null)
-
-        ;;
-
-    *)
-
-        error "No supported package manager."
-
-        exit 1
-
-        ;;
-
-esac
-
-COUNT=$(echo "$UPDATES" | grep -c .)
-
-success "$COUNT package(s) available."
-
-echo
-
-if [[ "$COUNT" -gt 0 ]]; then
-
-    echo "$UPDATES"
-
-fi
-
-echo
-
-if [[ "$MODE" == "check" ]]; then
-
-    exit 0
-
-fi
-
-if [[ "$MODE" != "yes" ]]; then
-
-    confirm "Install updates?"
-
-    [[ $? -ne 0 ]] && exit 0
-
-fi
-
-START=$(date +%s)
-
-case "$PACKAGE_MANAGER" in
-
-    yay)
-
         yay -Syu
-
         ;;
-
     paru)
-
         paru -Syu
-
         ;;
-
     pacman)
-
         sudo pacman -Syu
-
         ;;
-
+    *)
+        error "Unsupported package manager: $PACKAGE_MANAGER"
+        exit 1
+        ;;
 esac
 
 echo
 
-info "Cleaning package cache..."
+info "Refreshing package database..."
 
-sudo paccache -r
+case "$PACKAGE_MANAGER" in
+    yay)
+        yay -Sy >/dev/null
+        ;;
+    paru)
+        paru -Sy >/dev/null
+        ;;
+    pacman)
+        sudo pacman -Sy >/dev/null
+        ;;
+esac
 
-END=$(date +%s)
+echo
+
+info "Checking for orphan packages..."
+
+orphans="$(pacman -Qdtq 2>/dev/null || true)"
+
+if [[ -n "$orphans" ]]; then
+
+    printf "%s\n\n" "$orphans"
+
+    if confirm "Remove orphan packages?"; then
+        sudo pacman -Rns --noconfirm $orphans
+    fi
+
+else
+
+    success "No orphan packages found."
+
+fi
+
+echo
+
+info "Updating package cache..."
+
+case "$PACKAGE_MANAGER" in
+    yay)
+        yay -Sc --noconfirm >/dev/null
+        ;;
+    paru)
+        paru -Sc --noconfirm >/dev/null
+        ;;
+    pacman)
+        sudo pacman -Sc --noconfirm >/dev/null
+        ;;
+esac
 
 echo
 
 divider
 
-success "Update completed."
+end_time=$(date +%s)
+elapsed=$((end_time - start_time))
 
-printf "%-20s %ss\n" "Elapsed" "$((END-START))"
+success "System update completed."
+success_log "System update completed successfully."
 
-success_log "Update completed"
+echo
+printf "%-20s %ss\n" "Elapsed" "$elapsed"

@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 
-BACKUP="$HOME/.config-backup-$(date +%Y%m%d-%H%M%S)"
+set -euo pipefail
 
-mkdir -p "$BACKUP"
+BACKUP_DIR="$HOME/.config-backup-$(date +%Y%m%d-%H%M%S)"
 
-cp -r ~/.config/hypr "$BACKUP"
-cp -r ~/.config/waybar "$BACKUP" 2>/dev/null || true
-cp -r ~/.config/rofi "$BACKUP" 2>/dev/null || true
+mkdir -p "$BACKUP_DIR"
+
+cp -r "$HOME/.config/hypr" "$BACKUP_DIR"
+
+[[ -d "$HOME/.config/waybar" ]] && cp -r "$HOME/.config/waybar" "$BACKUP_DIR"
+[[ -d "$HOME/.config/rofi" ]] && cp -r "$HOME/.config/rofi" "$BACKUP_DIR"
 
 echo "Backup created at"
-
-echo "$BACKUP"
+echo "$BACKUP_DIR"

@@ -11,6 +11,9 @@ export HYPRX_COMMANDS="$ROOT_DIR/commands"
 export HYPRX_MODULES="$ROOT_DIR/modules"
 export HYPRX_DATABASE="$ROOT_DIR/database"
 export HYPRX_CONFIG="$ROOT_DIR/config"
+export HYPRX_PROFILES="$ROOT_DIR/profiles"
+export HYPRX_THEMES="$ROOT_DIR/themes"
+export HYPRX_ASSETS="$ROOT_DIR/assets"
 
 #
 # Core libraries
@@ -29,6 +32,23 @@ for file in \
     table.sh
 do
     source "$HYPRX_LIB/$file"
+done
+
+#
+# Module libraries
+#
+
+source "$HYPRX_LIB/module/module.sh"
+
+#
+# Profile libraries
+#
+
+for file in \
+    profile.sh \
+    validator.sh
+do
+    source "$HYPRX_LIB/profile/$file"
 done
 
 #

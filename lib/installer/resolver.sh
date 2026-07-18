@@ -4,6 +4,10 @@ resolve_packages() {
 
     PACKAGE_QUEUE=()
 
+    local module
+    local file
+    local pkg
+
     for module in "${SELECTED_MODULES[@]}"; do
 
         file="$ROOT_DIR/modules/$module/packages.list"
@@ -11,13 +15,9 @@ resolve_packages() {
         [[ -f "$file" ]] || continue
 
         while IFS= read -r pkg; do
-
-            [[ -z "$pkg" ]] && continue
-            [[ "$pkg" =~ ^# ]] && continue
-
+            [[ -z "$pkg" || "$pkg" =~ ^# ]] && continue
             PACKAGE_QUEUE+=("$pkg")
-
-        done < "$file"
+        done <"$file"
 
     done
 

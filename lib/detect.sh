@@ -5,26 +5,26 @@
 # -----------------------------
 
 if [[ -f /etc/os-release ]]; then
-  source /etc/os-release
-  DISTRO="$ID"
-  DISTRO_NAME="$PRETTY_NAME"
+    source /etc/os-release
+    DISTRO="$ID"
+    DISTRO_NAME="$PRETTY_NAME"
 else
-  DISTRO="unknown"
-  DISTRO_NAME="Unknown"
+    DISTRO="unknown"
+    DISTRO_NAME="Unknown"
 fi
 
 # -----------------------------
 # Package Manager
 # -----------------------------
 
-PACKAGE_MANAGER=""
+PACKAGE_MANAGER="unknown"
 
 if command -v yay >/dev/null 2>&1; then
-  PACKAGE_MANAGER="yay"
+    PACKAGE_MANAGER="yay"
 elif command -v paru >/dev/null 2>&1; then
-  PACKAGE_MANAGER="paru"
+    PACKAGE_MANAGER="paru"
 elif command -v pacman >/dev/null 2>&1; then
-  PACKAGE_MANAGER="pacman"
+    PACKAGE_MANAGER="pacman"
 fi
 
 # -----------------------------
@@ -40,11 +40,11 @@ CPU_VENDOR=$(lscpu | awk -F: '/Vendor ID/ {gsub(/^[ \t]+/, "", $2); print $2}')
 GPU_VENDOR="unknown"
 
 if lspci | grep -qi nvidia; then
-  GPU_VENDOR="nvidia"
+    GPU_VENDOR="nvidia"
 elif lspci | grep -Eqi "amd|advanced micro devices"; then
-  GPU_VENDOR="amd"
+    GPU_VENDOR="amd"
 elif lspci | grep -qi intel; then
-  GPU_VENDOR="intel"
+    GPU_VENDOR="intel"
 fi
 
 # -----------------------------
@@ -53,11 +53,8 @@ fi
 
 BATTERY_NAME=$(ls /sys/class/power_supply 2>/dev/null | grep '^BAT' | head -n1)
 
-if [[ -n "$BATTERY_NAME" ]]; then
-  HAS_BATTERY=true
-else
-  HAS_BATTERY=false
-fi
+HAS_BATTERY=false
+[[ -n "$BATTERY_NAME" ]] && HAS_BATTERY=true
 
 # -----------------------------
 # Network
@@ -69,102 +66,82 @@ NETWORK_INTERFACE=$(ip route | awk '/default/ {print $5; exit}')
 # Bluetooth
 # -----------------------------
 
-if command -v bluetoothctl >/dev/null 2>&1; then
-  HAS_BLUETOOTH=true
-else
-  HAS_BLUETOOTH=false
-fi
+HAS_BLUETOOTH=false
+command -v bluetoothctl >/dev/null 2>&1 && HAS_BLUETOOTH=true
 
 # -----------------------------
 # PipeWire
 # -----------------------------
 
-if pgrep pipewire >/dev/null 2>&1; then
-  HAS_PIPEWIRE=true
-else
-  HAS_PIPEWIRE=false
-fi
+HAS_PIPEWIRE=false
+pgrep pipewire >/dev/null 2>&1 && HAS_PIPEWIRE=true
 
 # -----------------------------
 # Waybar
 # -----------------------------
 
-command -v waybar >/dev/null 2>&1 &&
-  HAS_WAYBAR=true ||
-  HAS_WAYBAR=false
+HAS_WAYBAR=false
+command -v waybar >/dev/null 2>&1 && HAS_WAYBAR=true
 
 # -----------------------------
 # Rofi
 # -----------------------------
 
-command -v rofi >/dev/null 2>&1 &&
-  HAS_ROFI=true ||
-  HAS_ROFI=false
+HAS_ROFI=false
+command -v rofi >/dev/null 2>&1 && HAS_ROFI=true
 
 # -----------------------------
 # Kitty
 # -----------------------------
 
-command -v kitty >/dev/null 2>&1 &&
-  HAS_KITTY=true ||
-  HAS_KITTY=false
+HAS_KITTY=false
+command -v kitty >/dev/null 2>&1 && HAS_KITTY=true
 
 # -----------------------------
 # VS Code
 # -----------------------------
 
-command -v code >/dev/null 2>&1 &&
-  HAS_CODE=true ||
-  HAS_CODE=false
+HAS_CODE=false
+command -v code >/dev/null 2>&1 && HAS_CODE=true
 
 # -----------------------------
 # Neovim
 # -----------------------------
 
-command -v nvim >/dev/null 2>&1 &&
-  HAS_NVIM=true ||
-  HAS_NVIM=false
+HAS_NVIM=false
+command -v nvim >/dev/null 2>&1 && HAS_NVIM=true
 
 # -----------------------------
 # Git
 # -----------------------------
 
-command -v git >/dev/null 2>&1 &&
-  HAS_GIT=true ||
-  HAS_GIT=false
+HAS_GIT=false
+command -v git >/dev/null 2>&1 && HAS_GIT=true
 
 # -----------------------------
 # SwayNC
 # -----------------------------
 
-command -v swaync >/dev/null 2>&1 &&
-  HAS_SWAYNC=true ||
-  HAS_SWAYNC=false
+HAS_SWAYNC=false
+command -v swaync >/dev/null 2>&1 && HAS_SWAYNC=true
 
 # -----------------------------
 # Hyprland
 # -----------------------------
 
-if [[ "$XDG_CURRENT_DESKTOP" == "Hyprland" ]]; then
-  HAS_HYPRLAND=true
-else
-  HAS_HYPRLAND=false
-fi
+HAS_HYPRLAND=false
+[[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] && HAS_HYPRLAND=true
 
 # -----------------------------
 # Power Profiles
 # -----------------------------
 
-command -v powerprofilesctl >/dev/null 2>&1 &&
-  HAS_POWER_PROFILE=true ||
-  HAS_POWER_PROFILE=false
+HAS_POWER_PROFILE=false
+command -v powerprofilesctl >/dev/null 2>&1 && HAS_POWER_PROFILE=true
 
 # -----------------------------
 # ZRAM
 # -----------------------------
 
-if grep -q zram /proc/swaps 2>/dev/null; then
-  HAS_ZRAM=true
-else
-  HAS_ZRAM=false
-fi
+HAS_ZRAM=false
+grep -q zram /proc/swaps 2>/dev/null && HAS_ZRAM=true

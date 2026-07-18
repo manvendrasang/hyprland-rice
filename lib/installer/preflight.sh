@@ -8,48 +8,50 @@ preflight() {
 
     divider
 
-    FAIL=0
+    local fail=0
+    local free
+    local ram
 
     ####################################
     # Internet
     ####################################
 
-    if ping -c1 archlinux.org >/dev/null 2>&1; then
+    if ping -c1 -W2 archlinux.org >/dev/null 2>&1; then
         success "Internet"
     else
         error "Internet"
-        FAIL=1
+        fail=1
     fi
 
     ####################################
     # Disk
     ####################################
 
-    FREE=$(df --output=avail / | tail -1)
+    free=$(df --output=avail / | tail -1)
 
-    if (( FREE > 5242880 )); then
+    if (( free > 5242880 )); then
         success "Disk Space"
     else
         error "Disk Space (<5GB)"
-        FAIL=1
+        fail=1
     fi
 
     ####################################
     # Package Manager
     ####################################
 
-    [[ -n "$PACKAGE_MANAGER" ]] \
-        && success "$PACKAGE_MANAGER detected" \
-        || {
-            error "No package manager"
-            FAIL=1
-        }
+    if [[ "$PACKAGE_MANAGER" != "unknown" ]]; then
+        success "$PACKAGE_MANAGER detected"
+    else
+        error "No package manager"
+        fail=1
+    fi
 
     ####################################
     # Hyprland
     ####################################
 
-    [[ "$HAS_HYPRLAND" == true ]] \
+    [[ "${HAS_HYPRLAND:-false}" == true ]] \
         && success "Hyprland" \
         || warn "Hyprland not running"
 
@@ -57,7 +59,7 @@ preflight() {
     # Wayland
     ####################################
 
-    [[ "$XDG_SESSION_TYPE" == wayland ]] \
+    [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]] \
         && success "Wayland" \
         || warn "Not Wayland"
 
@@ -65,12 +67,12 @@ preflight() {
     # RAM
     ####################################
 
-    RAM=$(awk '/MemTotal/{print int($2/1024/1024)}' /proc/meminfo)
+    ram=$(awk '/MemTotal/{print int($2/1024/1024)}' /proc/meminfo)
 
-    if (( RAM >= 8 )); then
-        success "${RAM}GB RAM"
+    if (( ram >= 8 )); then
+        success "${ram}GB RAM"
     else
-        warn "${RAM}GB RAM"
+        warn "${ram}GB RAM"
     fi
 
     ####################################
@@ -81,11 +83,11 @@ preflight() {
         success "sudo"
     else
         error "sudo"
-        FAIL=1
+        fail=1
     fi
 
     divider
 
-    return "$FAIL"
+    return "$fail"
 
 }

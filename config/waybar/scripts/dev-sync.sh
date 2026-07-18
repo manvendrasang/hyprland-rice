@@ -1,15 +1,15 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-set -e
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "Syncing Waybar..."
 
-rm -rf ~/.config/waybar
+rm -rf "$HOME/.config/waybar"
 
-cp -r ~/Projects/hyprland-rice/config/waybar ~/.config/
+cp -r "$ROOT_DIR/config/waybar" "$HOME/.config/"
 
-pkill waybar
+pkill -x waybar 2>/dev/null || true
 
-waybar &
-
-# ./scripts/dev-sync.sh
+nohup waybar >/dev/null 2>&1 &

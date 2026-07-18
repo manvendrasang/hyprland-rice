@@ -1,4 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-rm -rf ~/.config/hypr
+set -euo pipefail
+
+rm -rf "$HOME/.config/hypr"
+
 echo "Removed Hypr configuration."

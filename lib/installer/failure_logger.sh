@@ -2,7 +2,7 @@
 
 FAILURE_LOG="$HOME/Desktop/hyprx-install.log"
 
-: > "$FAILURE_LOG"
+touch "$FAILURE_LOG"
 
 log_failed_package() {
 
@@ -14,12 +14,12 @@ log_failed_package() {
         echo "Timestamp : $(date)"
         echo "Package   : $pkg"
         echo "Reason    : $reason"
-        echo "Manager   : $PACKAGE_MANAGER"
+        echo "Manager   : ${PACKAGE_MANAGER:-Unknown}"
         echo "Session   : ${XDG_SESSION_TYPE:-Unknown}"
         echo "Host      : $(hostname)"
         echo "Kernel    : $(uname -r)"
         echo
-    } >> "$FAILURE_LOG"
+    } >>"$FAILURE_LOG"
 
 }
 
@@ -39,22 +39,18 @@ log_failure_summary() {
         echo
 
         if (( ${#FAILED_PACKAGES[@]} > 0 )); then
-
             echo "Packages"
 
             for pkg in "${FAILED_PACKAGES[@]}"; do
                 echo "  • $pkg"
             done
-
         else
-
             echo "No remaining failures."
-
         fi
 
         echo
         echo "=========================================================="
 
-    } >> "$FAILURE_LOG"
+    } >>"$FAILURE_LOG"
 
 }
