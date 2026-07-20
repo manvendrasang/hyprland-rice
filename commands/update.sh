@@ -50,7 +50,7 @@ if [[ -n "$orphans" ]]; then
     printf "%s\n\n" "$orphans"
 
     if confirm "Remove orphan packages?"; then
-        sudo pacman -Rns --noconfirm $orphans
+        sudo pacman -Rns --noconfirm "$orphans"
     fi
 
 else
