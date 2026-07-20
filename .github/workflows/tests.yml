@@ -3,10 +3,12 @@ name: HyprX CI
 on:
   push:
     branches:
-      - main
+      - master
       - dev
 
   pull_request:
+
+  workflow_dispatch:
 
 jobs:
 
