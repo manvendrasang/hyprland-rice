@@ -1,0 +1,34 @@
+name: HyprX Test Suite
+
+on:
+  push:
+
+  pull_request:
+
+jobs:
+
+  test:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+
+        run: |
+          sudo apt update
+          sudo apt install -y shellcheck
+
+      - name: Syntax Check
+
+        run: bash tests/test_syntax.sh
+
+      - name: ShellCheck
+
+        run: bash tests/test_shellcheck.sh
+
+      - name: Run Tests
+
+        run: bash tests/run.sh
