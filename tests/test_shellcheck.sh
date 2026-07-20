@@ -2,11 +2,21 @@
 
 set -euo pipefail
 
-echo "Running ShellCheck..."
+FAILED=0
 
-find . -name "*.sh" -print0 |
 while IFS= read -r -d '' file; do
-    shellcheck "$file"
-done
+    echo "Checking $file"
 
-echo "ShellCheck OK."
+    if ! shellcheck "$file"; then
+        FAILED=1
+    fi
+
+done < <(
+    find . \
+        -path "./.git" -prune -o \
+        -path "./build" -prune -o \
+        -path "./.cache" -prune -o \
+        -name "*.sh" -print0
+)
+
+exit "$FAILED"

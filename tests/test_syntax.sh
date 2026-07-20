@@ -2,11 +2,22 @@
 
 set -euo pipefail
 
-echo "Checking shell syntax..."
+FAILED=0
 
-find . -name "*.sh" -print0 |
 while IFS= read -r -d '' file; do
-    bash -n "$file"
-done
 
-echo "Syntax OK."
+    echo "Checking syntax: $file"
+
+    if ! bash -n "$file"; then
+        FAILED=1
+    fi
+
+done < <(
+    find . \
+        -path "./.git" -prune -o \
+        -path "./build" -prune -o \
+        -path "./.cache" -prune -o \
+        -name "*.sh" -print0
+)
+
+exit "$FAILED"

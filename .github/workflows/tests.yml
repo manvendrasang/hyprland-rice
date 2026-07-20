@@ -1,13 +1,18 @@
-name: HyprX Test Suite
+name: HyprX CI
 
 on:
   push:
+    branches:
+      - main
+      - dev
 
   pull_request:
 
 jobs:
 
-  test:
+  lint:
+
+    name: Lint
 
     runs-on: ubuntu-latest
 
@@ -21,13 +26,25 @@ jobs:
           sudo apt update
           sudo apt install -y shellcheck
 
-      - name: Syntax Check
+      - name: Bash Syntax
 
         run: bash tests/test_syntax.sh
 
       - name: ShellCheck
 
         run: bash tests/test_shellcheck.sh
+
+  tests:
+
+    name: Unit Tests
+
+    runs-on: ubuntu-latest
+
+    needs: lint
+
+    steps:
+
+      - uses: actions/checkout@v4
 
       - name: Run Tests
 

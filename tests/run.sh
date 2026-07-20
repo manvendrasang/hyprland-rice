@@ -7,23 +7,17 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PASSED=0
 FAILED=0
 
-echo
-echo "==========================================="
-echo "        HyprX Test Suite"
-echo "==========================================="
-echo
-
 run_suite() {
 
     local directory="$1"
 
-    for test in "$directory"/*.sh; do
+    [[ -d "$directory" ]] || return
 
-        [[ -f "$test" ]] || continue
+    while IFS= read -r -d '' test; do
 
         printf "%-45s" "$(basename "$test")"
 
-        if bash "$test" >/dev/null; then
+        if bash "$test"; then
             echo "[PASS]"
             ((PASSED++))
         else
@@ -31,17 +25,24 @@ run_suite() {
             ((FAILED++))
         fi
 
-    done
+    done < <(find "$directory" -maxdepth 1 -name "*.sh" -print0 | sort -z)
 
 }
 
+echo
+echo "========================================="
+echo "        HyprX Test Suite"
+echo "========================================="
+echo
+
 run_suite "$ROOT_DIR/tests"
+
 run_suite "$ROOT_DIR/tests/integration"
 
 echo
-echo "==========================================="
+echo "========================================="
 echo "Passed : $PASSED"
 echo "Failed : $FAILED"
-echo "==========================================="
+echo "========================================="
 
 ((FAILED == 0))
