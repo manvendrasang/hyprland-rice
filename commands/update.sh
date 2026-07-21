@@ -42,15 +42,15 @@ esac
 echo
 
 info "Checking for orphan packages..."
-#######################################################################################################
+
 mapfile -t orphans < <(pacman -Qtdq)
 
-if [[ -n "$orphans" ]]; then
+if ((${#orphans[@]})); then
 
-    printf "%s\n\n" "$orphans"
+    printf "%s\n\n" "${orphans[@]}"
 
     if confirm "Remove orphan packages?"; then
-        sudo pacman -Rns --noconfirm "$orphans"
+        sudo pacman -Rns --noconfirm "${orphans[@]}"
     fi
 
 else

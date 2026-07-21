@@ -1,6 +1,1 @@
-exclude=SC1090
-exclude=SC1091
-exclude=SC2010
-exclude=SC2015
-exclude=SC2034
-exclude=SC2086
+disable=SC1090,SC1091,SC2010,SC2015,SC2034,SC2086

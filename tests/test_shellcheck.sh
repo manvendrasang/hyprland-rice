@@ -7,7 +7,10 @@ FAILED=0
 while IFS= read -r -d '' file; do
     echo "Checking $file"
 
-    if ! shellcheck -x "$file"; then
+    if ! shellcheck \
+    --rcfile=.shellcheckrc \
+    -x \
+    "$file"; then
         FAILED=1
     fi
 
