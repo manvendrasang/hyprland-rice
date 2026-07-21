@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# shellcheck disable=SC1090
+
 CONFIG_FILE="$HYPRX_CONFIG/hyprx.conf"
 
 ########################################

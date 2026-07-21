@@ -51,17 +51,21 @@ preflight() {
     # Hyprland
     ####################################
 
-    [[ "${HAS_HYPRLAND:-false}" == true ]] \
-        && success "Hyprland" \
-        || warn "Hyprland not running"
+    if [[ "${HAS_HYPRLAND:-false}" == true ]]; then
+        success "Hyprland"
+    else
+        warn "Hyprland not running"
+    fi
 
     ####################################
     # Wayland
     ####################################
 
-    [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]] \
-        && success "Wayland" \
-        || warn "Not Wayland"
+    if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
+        success "Wayland"
+    else
+        warn "Not Wayland"
+    fi
 
     ####################################
     # RAM

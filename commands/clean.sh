@@ -8,6 +8,7 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
 export ROOT_DIR
 
+# shellcheck disable=SC1090
 source "$ROOT_DIR/lib/bootstrap.sh"
 
 COMMAND="${1:-help}"

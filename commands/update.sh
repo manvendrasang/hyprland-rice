@@ -42,8 +42,8 @@ esac
 echo
 
 info "Checking for orphan packages..."
-
-orphans="$(pacman -Qdtq 2>/dev/null || true)"
+#######################################################################################################
+mapfile -t orphans < <(pacman -Qtdq)
 
 if [[ -n "$orphans" ]]; then
 

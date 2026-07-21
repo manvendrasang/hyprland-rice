@@ -17,9 +17,11 @@ fail() {
 
 assert_true() {
 
-    "$@" >/dev/null 2>&1 \
-        && pass "$*" \
-        || fail "$*"
+    if "$@" >/dev/null 2>&1; then
+        pass "$*"
+    else
+        fail "$*"
+    fi
 
 }
 
@@ -38,41 +40,51 @@ assert_equals() {
     local expected="$1"
     local actual="$2"
 
-    [[ "$expected" == "$actual" ]] \
-        && pass "$expected" \
-        || fail "Expected '$expected' got '$actual'"
+    if [[ "$expected" == "$actual" ]]; then
+        pass "$expected"
+    else
+        fail "Expected '$expected' got '$actual'"
+    fi
 
 }
 
 assert_file_exists() {
 
-    [[ -f "$1" ]] \
-        && pass "$1 exists" \
-        || fail "$1 missing"
+    if [[ -f "$1" ]]; then
+        pass "$1 exists"
+    else
+        fail "$1 missing"
+    fi
 
 }
 
 assert_directory_exists() {
 
-    [[ -d "$1" ]] \
-        && pass "$1 exists" \
-        || fail "$1 missing"
+    if [[ -d "$1" ]]; then
+        pass "$1 exists"
+    else
+        fail "$1 missing"
+    fi
 
 }
 
 assert_not_empty() {
 
-    [[ -n "$1" ]] \
-        && pass "value exists" \
-        || fail "value empty"
+    if [[ -n "$1" ]]; then
+        pass "value exists"
+    else
+        fail "value empty"
+    fi
 
 }
 
 assert_command_success() {
 
-    "$@" >/dev/null 2>&1 \
-        && pass "$*" \
-        || fail "$*"
+    if "$@" >/dev/null 2>&1; then
+        pass "$*"
+    else
+        fail "$*"
+    fi
 
 }
 

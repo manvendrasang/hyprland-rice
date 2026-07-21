@@ -45,7 +45,7 @@ sudo journalctl --vacuum-time=7d
 
 echo
 echo -e "${GREEN}Removing orphan packages...${RESET}"
-
+#######################################################################################################
 orphans=$(pacman -Qdtq || true)
 
 if [[ -n "$orphans" ]]; then
