@@ -8,8 +8,8 @@ while IFS= read -r -d '' file; do
     echo "Checking $file"
 
     if ! shellcheck \
-    --rcfile=.shellcheckrc \
     -x \
+    -e SC1090,SC1091,SC2010,SC2015,SC2034,SC2086 \
     "$file"; then
         FAILED=1
     fi
