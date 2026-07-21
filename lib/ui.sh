@@ -88,7 +88,7 @@ info() {
 
 question() {
 
-    read -rp "$(echo -e "${MAGENTA}?${RESET} $1 ")" reply
+    read -rp "$(echo -e "${MAGENTA}?${RESET} $1 ")"
 
 }
 
