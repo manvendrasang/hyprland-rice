@@ -21,7 +21,7 @@ header() {
   if [[ -n "${TERM:-}" ]] && [[ -t 1 ]]; then
         clear
   fi
-  
+
   echo -e "${BLUE}"
   echo "╔════════════════════════════════════════════╗"
   echo "║                  HyprX                     ║"
@@ -44,8 +44,8 @@ divider() {
 # Section header
 ########################################
 
+# shellcheck disable=SC2317,SC2329  # called indirectly via commands/*.sh, dynamically sourced by bin/hyprx
 section() {
-
   echo
   echo -e "${CYAN}== $1 ==${RESET}"
 
