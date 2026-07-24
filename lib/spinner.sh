@@ -6,7 +6,7 @@ spinner() {
   local delay=0.08
   local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 
-  ([[ -n "${TERM:-}" ]] && [[ -t 1 ]] && ([[ -n "${TERM:-}" ]] && [[ -t 1 ]] && tput civis) || true) || true
+  ( [[ -n "${TERM:-}" ]] && [[ -t 1 ]] && tput civis ) || true
 
   while kill -0 "$pid" 2>/dev/null; do
 
@@ -21,5 +21,5 @@ spinner() {
 
   printf "\r"
 
-  ([[ -n "${TERM:-}" ]] && [[ -t 1 ]] && ([[ -n "${TERM:-}" ]] && [[ -t 1 ]] && tput cnorm) || true) || true
+  ( [[ -n "${TERM:-}" ]] && [[ -t 1 ]] && tput cnorm ) || true
 }
