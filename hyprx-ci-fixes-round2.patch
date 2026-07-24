@@ -1,0 +1,75 @@
+diff --git a/.github/workflows/tests.yml b/.github/workflows/tests.yml
+index 66b684b..80ececf 100644
+--- a/.github/workflows/tests.yml
++++ b/.github/workflows/tests.yml
+@@ -44,8 +44,16 @@ jobs:
+ 
+     needs: lint
+ 
++    container:
++      image: archlinux:base
++
+     steps:
+ 
++      - name: Install prerequisites
++
++        run: |
++          pacman -Sy --noconfirm git bash sudo
++
+       - uses: actions/checkout@v4
+ 
+       - name: Run Tests
+diff --git a/lib/spinner.sh b/lib/spinner.sh
+index 9e8a2af..c6b6d76 100755
+--- a/lib/spinner.sh
++++ b/lib/spinner.sh
+@@ -6,7 +6,7 @@ spinner() {
+     local delay=0.08
+     local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+ 
+-    tput civis
++    ( [[ -n "${TERM:-}" ]] && [[ -t 1 ]] && tput civis ) || true
+ 
+     while kill -0 "$pid" 2>/dev/null; do
+ 
+@@ -21,5 +21,5 @@ spinner() {
+ 
+     printf "\r"
+ 
+-    tput cnorm
++    ( [[ -n "${TERM:-}" ]] && [[ -t 1 ]] && tput cnorm ) || true
+ }
+\ No newline at end of file
+diff --git a/lib/ui.sh b/lib/ui.sh
+index 843ca7e..eaec14e 100755
+--- a/lib/ui.sh
++++ b/lib/ui.sh
+@@ -18,7 +18,9 @@ RESET="\033[0m"
+ 
+ header() {
+ 
+-    clear
++    if [[ -n "${TERM:-}" ]] && [[ -t 1 ]]; then
++        clear
++    fi
+ 
+     echo -e "${BLUE}"
+     echo "╔════════════════════════════════════════════╗"
+@@ -38,6 +40,17 @@ divider() {
+ 
+ }
+ 
++########################################
++# Section header
++########################################
++
++section() {
++
++    echo
++    echo -e "${CYAN}== $1 ==${RESET}"
++
++}
++
+ ########################################
+ # Banner
+ ########################################

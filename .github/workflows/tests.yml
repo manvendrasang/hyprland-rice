@@ -11,15 +11,12 @@ on:
   workflow_dispatch:
 
 jobs:
-
   lint:
-
     name: Lint
 
     runs-on: ubuntu-latest
 
     steps:
-
       - uses: actions/checkout@v4
 
       - name: Install ShellCheck
@@ -37,14 +34,20 @@ jobs:
         run: bash tests/test_shellcheck.sh
 
   tests:
-
     name: Unit Tests
 
     runs-on: ubuntu-latest
 
     needs: lint
 
+    container:
+      image: archlinux:base
+
     steps:
+      - name: Install prerequisites
+
+        run: |
+          pacman -Sy --noconfirm git bash sudo
 
       - uses: actions/checkout@v4
 
