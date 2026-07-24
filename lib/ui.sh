@@ -19,11 +19,9 @@ RESET="\033[0m"
 header() {
 
   if [[ -n "${TERM:-}" ]] && [[ -t 1 ]]; then
-    if [[ -n "${TERM:-}" ]] && [[ -t 1 ]]; then
         clear
-    fi
   fi
-
+  
   echo -e "${BLUE}"
   echo "╔════════════════════════════════════════════╗"
   echo "║                  HyprX                     ║"
