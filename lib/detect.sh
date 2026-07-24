@@ -51,97 +51,97 @@ fi
 # Battery
 # -----------------------------
 
-BATTERY_NAME=$(ls /sys/class/power_supply 2>/dev/null | grep '^BAT' | head -n1)
+BATTERY_NAME=$(ls /sys/class/power_supply 2>/dev/null | grep '^BAT' | head -n1 || true)
 
 HAS_BATTERY=false
-[[ -n "$BATTERY_NAME" ]] && HAS_BATTERY=true
+[[ -n "$BATTERY_NAME" ]] && HAS_BATTERY=true || true
 
 # -----------------------------
 # Network
 # -----------------------------
 
-NETWORK_INTERFACE=$(ip route | awk '/default/ {print $5; exit}')
+NETWORK_INTERFACE=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}' || true)
 
 # -----------------------------
 # Bluetooth
 # -----------------------------
 
 HAS_BLUETOOTH=false
-command -v bluetoothctl >/dev/null 2>&1 && HAS_BLUETOOTH=true
+command -v bluetoothctl >/dev/null 2>&1 && HAS_BLUETOOTH=true || true
 
 # -----------------------------
 # PipeWire
 # -----------------------------
 
 HAS_PIPEWIRE=false
-pgrep pipewire >/dev/null 2>&1 && HAS_PIPEWIRE=true
+pgrep pipewire >/dev/null 2>&1 && HAS_PIPEWIRE=true || true
 
 # -----------------------------
 # Waybar
 # -----------------------------
 
 HAS_WAYBAR=false
-command -v waybar >/dev/null 2>&1 && HAS_WAYBAR=true
+command -v waybar >/dev/null 2>&1 && HAS_WAYBAR=true || true
 
 # -----------------------------
 # Rofi
 # -----------------------------
 
 HAS_ROFI=false
-command -v rofi >/dev/null 2>&1 && HAS_ROFI=true
+command -v rofi >/dev/null 2>&1 && HAS_ROFI=true || true
 
 # -----------------------------
 # Kitty
 # -----------------------------
 
 HAS_KITTY=false
-command -v kitty >/dev/null 2>&1 && HAS_KITTY=true
+command -v kitty >/dev/null 2>&1 && HAS_KITTY=true || true
 
 # -----------------------------
 # VS Code
 # -----------------------------
 
 HAS_CODE=false
-command -v code >/dev/null 2>&1 && HAS_CODE=true
+command -v code >/dev/null 2>&1 && HAS_CODE=true || true
 
 # -----------------------------
 # Neovim
 # -----------------------------
 
 HAS_NVIM=false
-command -v nvim >/dev/null 2>&1 && HAS_NVIM=true
+command -v nvim >/dev/null 2>&1 && HAS_NVIM=true || true
 
 # -----------------------------
 # Git
 # -----------------------------
 
 HAS_GIT=false
-command -v git >/dev/null 2>&1 && HAS_GIT=true
+command -v git >/dev/null 2>&1 && HAS_GIT=true || true
 
 # -----------------------------
 # SwayNC
 # -----------------------------
 
 HAS_SWAYNC=false
-command -v swaync >/dev/null 2>&1 && HAS_SWAYNC=true
+command -v swaync >/dev/null 2>&1 && HAS_SWAYNC=true || true
 
 # -----------------------------
 # Hyprland
 # -----------------------------
 
 HAS_HYPRLAND=false
-[[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] && HAS_HYPRLAND=true
+[[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] && HAS_HYPRLAND=true || true
 
 # -----------------------------
 # Power Profiles
 # -----------------------------
 
 HAS_POWER_PROFILE=false
-command -v powerprofilesctl >/dev/null 2>&1 && HAS_POWER_PROFILE=true
+command -v powerprofilesctl >/dev/null 2>&1 && HAS_POWER_PROFILE=true || true
 
 # -----------------------------
 # ZRAM
 # -----------------------------
 
 HAS_ZRAM=false
-grep -q zram /proc/swaps 2>/dev/null && HAS_ZRAM=true
+(grep -q zram /proc/swaps 2>/dev/null && HAS_ZRAM=true) || true

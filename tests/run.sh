@@ -4,12 +4,18 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Isolate tests from the real repo state (config/hyprx.conf, modules/, profiles/)
+# so running the suite never mutates tracked files on disk.
+source "$ROOT_DIR/tests/setup.sh" >/dev/null
+trap 'source "$ROOT_DIR/tests/teardown.sh"' EXIT
+
 PASSED=0
 FAILED=0
 
 run_suite() {
 
     local directory="$1"
+    local pattern="$2"
 
     [[ -d "$directory" ]] || return
 
@@ -19,13 +25,13 @@ run_suite() {
 
         if bash "$test"; then
             echo "[PASS]"
-            ((PASSED++))
+            PASSED=$((PASSED + 1))
         else
             echo "[FAIL]"
-            ((FAILED++))
+            FAILED=$((FAILED + 1))
         fi
 
-    done < <(find "$directory" -maxdepth 1 -name "*.sh" -print0 | sort -z)
+    done < <(find "$directory" -maxdepth 1 -name "$pattern" -print0 | sort -z)
 
 }
 
@@ -35,9 +41,9 @@ echo "        HyprX Test Suite"
 echo "========================================="
 echo
 
-run_suite "$ROOT_DIR/tests"
+run_suite "$ROOT_DIR/tests" "test_*.sh"
 
-run_suite "$ROOT_DIR/tests/integration"
+run_suite "$ROOT_DIR/tests/integration" "install_*.sh"
 
 echo
 echo "========================================="

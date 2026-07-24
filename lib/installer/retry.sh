@@ -3,6 +3,33 @@
 MAX_RETRIES=3
 RETRY_BASE_DELAY=2
 
+########################################
+# Generic retry wrapper
+# Usage: retry <max_attempts> <command> [args...]
+########################################
+
+retry() {
+
+    local max_attempts="$1"
+    shift
+
+    local attempt=1
+
+    until "$@"; do
+
+        if (( attempt >= max_attempts )); then
+            return 1
+        fi
+
+        attempt=$((attempt + 1))
+        sleep "$((RETRY_BASE_DELAY))"
+
+    done
+
+    return 0
+
+}
+
 retry_failed_packages() {
 
     [[ ${#FAILED_PACKAGES[@]} -eq 0 ]] && return 0

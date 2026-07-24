@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
-FAILURE_LOG="$HOME/Desktop/hyprx-install.log"
+FAILURE_LOG="${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/hyprx-install.log"
 
+mkdir -p "$(dirname "$FAILURE_LOG")"
 touch "$FAILURE_LOG"
 
 log_failed_package() {
