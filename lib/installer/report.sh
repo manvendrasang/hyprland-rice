@@ -2,7 +2,7 @@
 
 generate_report() {
 
-    local report="${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/HyprX-Install-Report.txt"
+    local report="${HYPRX_REPORT_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/HyprX-Install-Report.txt}"
     local now
     local duration_minutes
     local duration_seconds
