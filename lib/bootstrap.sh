@@ -66,6 +66,7 @@ for file in \
     compatibility.sh \
     preflight.sh \
     install_packages.sh \
+    snapshot.sh \
     report.sh \
     engine.sh
 do

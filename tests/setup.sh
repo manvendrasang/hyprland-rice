@@ -13,5 +13,8 @@ cp -r "$ROOT_DIR/config" "$TEST_ROOT/"
 export HYPRX_MODULES="$TEST_ROOT/modules"
 export HYPRX_PROFILES="$TEST_ROOT/profiles"
 export HYPRX_CONFIG="$TEST_ROOT/config"
+export HYPRX_SNAPSHOT_DIR="$TEST_ROOT/state/snapshots"
+export HYPRX_FAILURE_LOG="$TEST_ROOT/state/hyprx-install.log"
+export HYPRX_REPORT_FILE="$TEST_ROOT/state/HyprX-Install-Report.txt"
 
 echo "$TEST_ROOT"
