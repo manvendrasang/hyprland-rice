@@ -10,10 +10,10 @@ export HYPRX_ROOT="$ROOT_DIR"
 
 export HYPRX_LIB="$ROOT_DIR/lib"
 export HYPRX_COMMANDS="$ROOT_DIR/commands"
-export HYPRX_MODULES="$ROOT_DIR/modules"
+export HYPRX_MODULES="${HYPRX_MODULES:-$ROOT_DIR/modules}"
 export HYPRX_DATABASE="$ROOT_DIR/database"
-export HYPRX_CONFIG="$ROOT_DIR/config"
-export HYPRX_PROFILES="$ROOT_DIR/profiles"
+export HYPRX_CONFIG="${HYPRX_CONFIG:-$ROOT_DIR/config}"
+export HYPRX_PROFILES="${HYPRX_PROFILES:-$ROOT_DIR/profiles}"
 export HYPRX_THEMES="$ROOT_DIR/themes"
 export HYPRX_ASSETS="$ROOT_DIR/assets"
 
@@ -28,7 +28,6 @@ for file in \
     config.sh \
     detect.sh \
     packages.sh \
-    modules.sh \
     spinner.sh \
     progress.sh \
     table.sh

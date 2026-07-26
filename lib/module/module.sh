@@ -3,6 +3,27 @@
 # shellcheck disable=SC1090
 
 ########################################
+# Discover modules
+########################################
+
+discover_modules() {
+
+    AVAILABLE_MODULES=()
+
+    [[ -d "$HYPRX_MODULES" ]] || return 1
+
+    local dir
+
+    for dir in "$HYPRX_MODULES"/*; do
+        [[ -d "$dir" ]] || continue
+        AVAILABLE_MODULES+=("$(basename "$dir")")
+    done
+
+    return 0
+
+}
+
+########################################
 # Module exists
 ########################################
 
@@ -40,6 +61,18 @@ load_module() {
     unset SERVICE_FILE
 
     source "$conf"
+
+    NAME="${NAME:-}"
+    DESCRIPTION="${DESCRIPTION:-}"
+    OPTIONAL="${OPTIONAL:-true}"
+    DEPENDENCIES="${DEPENDENCIES:-}"
+    PACKAGE_FILE="${PACKAGE_FILE:-}"
+    SERVICE_FILE="${SERVICE_FILE:-}"
+
+    [[ -n "$NAME" && -n "$PACKAGE_FILE" ]] || {
+        warn "Incomplete module.conf: $module (missing NAME or PACKAGE_FILE)"
+        return 1
+    }
 
     return 0
 

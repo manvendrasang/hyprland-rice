@@ -2,15 +2,21 @@
 
 generate_report() {
 
-    local report="$HOME/Desktop/HyprX-Install-Report.txt"
+    local report="${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/HyprX-Install-Report.txt"
     local now
     local duration_minutes
     local duration_seconds
 
+    mkdir -p "$(dirname "$report")"
+
+    for _arr in SELECTED_MODULES INSTALLED_PACKAGES SKIPPED_PACKAGES FAILED_PACKAGES INVALID_PACKAGES REPLACED_PACKAGES; do
+        declare -p "$_arr" &>/dev/null || eval "$_arr=()"
+    done
+
     now="$(date)"
 
-    duration_minutes=$((INSTALL_DURATION / 60))
-    duration_seconds=$((INSTALL_DURATION % 60))
+    duration_minutes=$(( ${INSTALL_DURATION:-0} / 60 ))
+    duration_seconds=$(( ${INSTALL_DURATION:-0} % 60 ))
 
     {
         echo "=========================================================="

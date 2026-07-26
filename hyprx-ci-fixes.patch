@@ -1,0 +1,351 @@
+diff --git a/lib/bootstrap.sh b/lib/bootstrap.sh
+index e58f409..935d512 100755
+--- a/lib/bootstrap.sh
++++ b/lib/bootstrap.sh
+@@ -10,10 +10,10 @@ export HYPRX_ROOT="$ROOT_DIR"
+ 
+ export HYPRX_LIB="$ROOT_DIR/lib"
+ export HYPRX_COMMANDS="$ROOT_DIR/commands"
+-export HYPRX_MODULES="$ROOT_DIR/modules"
++export HYPRX_MODULES="${HYPRX_MODULES:-$ROOT_DIR/modules}"
+ export HYPRX_DATABASE="$ROOT_DIR/database"
+-export HYPRX_CONFIG="$ROOT_DIR/config"
+-export HYPRX_PROFILES="$ROOT_DIR/profiles"
++export HYPRX_CONFIG="${HYPRX_CONFIG:-$ROOT_DIR/config}"
++export HYPRX_PROFILES="${HYPRX_PROFILES:-$ROOT_DIR/profiles}"
+ export HYPRX_THEMES="$ROOT_DIR/themes"
+ export HYPRX_ASSETS="$ROOT_DIR/assets"
+ 
+@@ -28,7 +28,6 @@ for file in \
+     config.sh \
+     detect.sh \
+     packages.sh \
+-    modules.sh \
+     spinner.sh \
+     progress.sh \
+     table.sh
+diff --git a/lib/detect.sh b/lib/detect.sh
+index c311de9..8c556b5 100755
+--- a/lib/detect.sh
++++ b/lib/detect.sh
+@@ -51,97 +51,97 @@ fi
+ # Battery
+ # -----------------------------
+ 
+-BATTERY_NAME=$(ls /sys/class/power_supply 2>/dev/null | grep '^BAT' | head -n1)
++BATTERY_NAME=$(ls /sys/class/power_supply 2>/dev/null | grep '^BAT' | head -n1 || true)
+ 
+ HAS_BATTERY=false
+-[[ -n "$BATTERY_NAME" ]] && HAS_BATTERY=true
++[[ -n "$BATTERY_NAME" ]] && HAS_BATTERY=true || true
+ 
+ # -----------------------------
+ # Network
+ # -----------------------------
+ 
+-NETWORK_INTERFACE=$(ip route | awk '/default/ {print $5; exit}')
++NETWORK_INTERFACE=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}' || true)
+ 
+ # -----------------------------
+ # Bluetooth
+ # -----------------------------
+ 
+ HAS_BLUETOOTH=false
+-command -v bluetoothctl >/dev/null 2>&1 && HAS_BLUETOOTH=true
++command -v bluetoothctl >/dev/null 2>&1 && HAS_BLUETOOTH=true || true
+ 
+ # -----------------------------
+ # PipeWire
+ # -----------------------------
+ 
+ HAS_PIPEWIRE=false
+-pgrep pipewire >/dev/null 2>&1 && HAS_PIPEWIRE=true
++pgrep pipewire >/dev/null 2>&1 && HAS_PIPEWIRE=true || true
+ 
+ # -----------------------------
+ # Waybar
+ # -----------------------------
+ 
+ HAS_WAYBAR=false
+-command -v waybar >/dev/null 2>&1 && HAS_WAYBAR=true
++command -v waybar >/dev/null 2>&1 && HAS_WAYBAR=true || true
+ 
+ # -----------------------------
+ # Rofi
+ # -----------------------------
+ 
+ HAS_ROFI=false
+-command -v rofi >/dev/null 2>&1 && HAS_ROFI=true
++command -v rofi >/dev/null 2>&1 && HAS_ROFI=true || true
+ 
+ # -----------------------------
+ # Kitty
+ # -----------------------------
+ 
+ HAS_KITTY=false
+-command -v kitty >/dev/null 2>&1 && HAS_KITTY=true
++command -v kitty >/dev/null 2>&1 && HAS_KITTY=true || true
+ 
+ # -----------------------------
+ # VS Code
+ # -----------------------------
+ 
+ HAS_CODE=false
+-command -v code >/dev/null 2>&1 && HAS_CODE=true
++command -v code >/dev/null 2>&1 && HAS_CODE=true || true
+ 
+ # -----------------------------
+ # Neovim
+ # -----------------------------
+ 
+ HAS_NVIM=false
+-command -v nvim >/dev/null 2>&1 && HAS_NVIM=true
++command -v nvim >/dev/null 2>&1 && HAS_NVIM=true || true
+ 
+ # -----------------------------
+ # Git
+ # -----------------------------
+ 
+ HAS_GIT=false
+-command -v git >/dev/null 2>&1 && HAS_GIT=true
++command -v git >/dev/null 2>&1 && HAS_GIT=true || true
+ 
+ # -----------------------------
+ # SwayNC
+ # -----------------------------
+ 
+ HAS_SWAYNC=false
+-command -v swaync >/dev/null 2>&1 && HAS_SWAYNC=true
++command -v swaync >/dev/null 2>&1 && HAS_SWAYNC=true || true
+ 
+ # -----------------------------
+ # Hyprland
+ # -----------------------------
+ 
+ HAS_HYPRLAND=false
+-[[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] && HAS_HYPRLAND=true
++[[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] && HAS_HYPRLAND=true || true
+ 
+ # -----------------------------
+ # Power Profiles
+ # -----------------------------
+ 
+ HAS_POWER_PROFILE=false
+-command -v powerprofilesctl >/dev/null 2>&1 && HAS_POWER_PROFILE=true
++command -v powerprofilesctl >/dev/null 2>&1 && HAS_POWER_PROFILE=true || true
+ 
+ # -----------------------------
+ # ZRAM
+ # -----------------------------
+ 
+ HAS_ZRAM=false
+-grep -q zram /proc/swaps 2>/dev/null && HAS_ZRAM=true
+\ No newline at end of file
++(grep -q zram /proc/swaps 2>/dev/null && HAS_ZRAM=true) || true
+\ No newline at end of file
+diff --git a/lib/installer/failure_logger.sh b/lib/installer/failure_logger.sh
+index 0ead52f..1c307bc 100755
+--- a/lib/installer/failure_logger.sh
++++ b/lib/installer/failure_logger.sh
+@@ -1,7 +1,8 @@
+ #!/usr/bin/env bash
+ 
+-FAILURE_LOG="$HOME/Desktop/hyprx-install.log"
++FAILURE_LOG="${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/hyprx-install.log"
+ 
++mkdir -p "$(dirname "$FAILURE_LOG")"
+ touch "$FAILURE_LOG"
+ 
+ log_failed_package() {
+diff --git a/lib/installer/report.sh b/lib/installer/report.sh
+index 7acae06..e09ea51 100755
+--- a/lib/installer/report.sh
++++ b/lib/installer/report.sh
+@@ -2,15 +2,21 @@
+ 
+ generate_report() {
+ 
+-    local report="$HOME/Desktop/HyprX-Install-Report.txt"
++    local report="${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/HyprX-Install-Report.txt"
+     local now
+     local duration_minutes
+     local duration_seconds
+ 
++    mkdir -p "$(dirname "$report")"
++
++    for _arr in SELECTED_MODULES INSTALLED_PACKAGES SKIPPED_PACKAGES FAILED_PACKAGES INVALID_PACKAGES REPLACED_PACKAGES; do
++        declare -p "$_arr" &>/dev/null || eval "$_arr=()"
++    done
++
+     now="$(date)"
+ 
+-    duration_minutes=$((INSTALL_DURATION / 60))
+-    duration_seconds=$((INSTALL_DURATION % 60))
++    duration_minutes=$(( ${INSTALL_DURATION:-0} / 60 ))
++    duration_seconds=$(( ${INSTALL_DURATION:-0} % 60 ))
+ 
+     {
+         echo "=========================================================="
+diff --git a/lib/installer/retry.sh b/lib/installer/retry.sh
+index 2540046..52e0733 100755
+--- a/lib/installer/retry.sh
++++ b/lib/installer/retry.sh
+@@ -3,6 +3,33 @@
+ MAX_RETRIES=3
+ RETRY_BASE_DELAY=2
+ 
++########################################
++# Generic retry wrapper
++# Usage: retry <max_attempts> <command> [args...]
++########################################
++
++retry() {
++
++    local max_attempts="$1"
++    shift
++
++    local attempt=1
++
++    until "$@"; do
++
++        if (( attempt >= max_attempts )); then
++            return 1
++        fi
++
++        attempt=$((attempt + 1))
++        sleep "$((RETRY_BASE_DELAY))"
++
++    done
++
++    return 0
++
++}
++
+ retry_failed_packages() {
+ 
+     [[ ${#FAILED_PACKAGES[@]} -eq 0 ]] && return 0
+diff --git a/lib/module/module.sh b/lib/module/module.sh
+index c039d35..e1100cc 100755
+--- a/lib/module/module.sh
++++ b/lib/module/module.sh
+@@ -2,6 +2,27 @@
+ 
+ # shellcheck disable=SC1090
+ 
++########################################
++# Discover modules
++########################################
++
++discover_modules() {
++
++    AVAILABLE_MODULES=()
++
++    [[ -d "$HYPRX_MODULES" ]] || return 1
++
++    local dir
++
++    for dir in "$HYPRX_MODULES"/*; do
++        [[ -d "$dir" ]] || continue
++        AVAILABLE_MODULES+=("$(basename "$dir")")
++    done
++
++    return 0
++
++}
++
+ ########################################
+ # Module exists
+ ########################################
+@@ -41,6 +62,18 @@ load_module() {
+ 
+     source "$conf"
+ 
++    NAME="${NAME:-}"
++    DESCRIPTION="${DESCRIPTION:-}"
++    OPTIONAL="${OPTIONAL:-true}"
++    DEPENDENCIES="${DEPENDENCIES:-}"
++    PACKAGE_FILE="${PACKAGE_FILE:-}"
++    SERVICE_FILE="${SERVICE_FILE:-}"
++
++    [[ -n "$NAME" && -n "$PACKAGE_FILE" ]] || {
++        warn "Incomplete module.conf: $module (missing NAME or PACKAGE_FILE)"
++        return 1
++    }
++
+     return 0
+ 
+ }
+diff --git a/lib/ui.sh b/lib/ui.sh
+index 843ca7e..e9b4a82 100755
+--- a/lib/ui.sh
++++ b/lib/ui.sh
+@@ -38,6 +38,17 @@ divider() {
+ 
+ }
+ 
++########################################
++# Section header
++########################################
++
++section() {
++
++    echo
++    echo -e "${CYAN}== $1 ==${RESET}"
++
++}
++
+ ########################################
+ # Banner
+ ########################################
+diff --git a/tests/run.sh b/tests/run.sh
+index d98fb2e..80ca3ad 100644
+--- a/tests/run.sh
++++ b/tests/run.sh
+@@ -4,12 +4,18 @@ set -euo pipefail
+ 
+ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ 
++# Isolate tests from the real repo state (config/hyprx.conf, modules/, profiles/)
++# so running the suite never mutates tracked files on disk.
++source "$ROOT_DIR/tests/setup.sh" >/dev/null
++trap 'source "$ROOT_DIR/tests/teardown.sh"' EXIT
++
+ PASSED=0
+ FAILED=0
+ 
+ run_suite() {
+ 
+     local directory="$1"
++    local pattern="$2"
+ 
+     [[ -d "$directory" ]] || return
+ 
+@@ -19,13 +25,13 @@ run_suite() {
+ 
+         if bash "$test"; then
+             echo "[PASS]"
+-            ((PASSED++))
++            PASSED=$((PASSED + 1))
+         else
+             echo "[FAIL]"
+-            ((FAILED++))
++            FAILED=$((FAILED + 1))
+         fi
+ 
+-    done < <(find "$directory" -maxdepth 1 -name "*.sh" -print0 | sort -z)
++    done < <(find "$directory" -maxdepth 1 -name "$pattern" -print0 | sort -z)
+ 
+ }
+ 
+@@ -35,9 +41,9 @@ echo "        HyprX Test Suite"
+ echo "========================================="
+ echo
+ 
+-run_suite "$ROOT_DIR/tests"
++run_suite "$ROOT_DIR/tests" "test_*.sh"
+ 
+-run_suite "$ROOT_DIR/tests/integration"
++run_suite "$ROOT_DIR/tests/integration" "install_*.sh"
+ 
+ echo
+ echo "========================================="

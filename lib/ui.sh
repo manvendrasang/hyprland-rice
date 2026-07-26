@@ -18,13 +18,15 @@ RESET="\033[0m"
 
 header() {
 
-    clear
+  if [[ -n "${TERM:-}" ]] && [[ -t 1 ]]; then
+        clear
+  fi
 
-    echo -e "${BLUE}"
-    echo "╔════════════════════════════════════════════╗"
-    echo "║                  HyprX                     ║"
-    echo "╚════════════════════════════════════════════╝"
-    echo -e "${RESET}"
+  echo -e "${BLUE}"
+  echo "╔════════════════════════════════════════════╗"
+  echo "║                  HyprX                     ║"
+  echo "╚════════════════════════════════════════════╝"
+  echo -e "${RESET}"
 
 }
 
@@ -34,7 +36,29 @@ header() {
 
 divider() {
 
-    printf '%*s\n' 80 '' | tr ' ' '='
+  printf '%*s\n' 80 '' | tr ' ' '='
+
+}
+
+########################################
+# Section header
+########################################
+
+# shellcheck disable=SC2317,SC2329  # called indirectly via commands/*.sh, dynamically sourced by bin/hyprx
+section() {
+  echo
+  echo -e "${CYAN}== $1 ==${RESET}"
+
+}
+
+########################################
+# Section header
+########################################
+
+section() {
+
+  echo
+  echo -e "${CYAN}== $1 ==${RESET}"
 
 }
 
@@ -44,9 +68,9 @@ divider() {
 
 banner() {
 
-    divider
-    echo "$1"
-    divider
+  divider
+  echo "$1"
+  divider
 
 }
 
@@ -56,29 +80,29 @@ banner() {
 
 success() {
 
-    echo -e "${GREEN}✓${RESET} $1"
-    success_log "$1"
+  echo -e "${GREEN}✓${RESET} $1"
+  success_log "$1"
 
 }
 
 error() {
 
-    echo -e "${RED}✗${RESET} $1"
-    error_log "$1"
+  echo -e "${RED}✗${RESET} $1"
+  error_log "$1"
 
 }
 
 warn() {
 
-    echo -e "${YELLOW}!${RESET} $1"
-    warn_log "$1"
+  echo -e "${YELLOW}!${RESET} $1"
+  warn_log "$1"
 
 }
 
 info() {
 
-    echo -e "${CYAN}>${RESET} $1"
-    info_log "$1"
+  echo -e "${CYAN}>${RESET} $1"
+  info_log "$1"
 
 }
 
@@ -88,7 +112,7 @@ info() {
 
 question() {
 
-    read -rp "$(echo -e "${MAGENTA}?${RESET} $1 ")"
+  read -rp "$(echo -e "${MAGENTA}?${RESET} $1 ")"
 
 }
 
@@ -98,9 +122,9 @@ question() {
 
 progress_message() {
 
-    local current="$1"
-    local total="$2"
+  local current="$1"
+  local total="$2"
 
-    printf "[%d/%d]\n" "$current" "$total"
+  printf "[%d/%d]\n" "$current" "$total"
 
 }

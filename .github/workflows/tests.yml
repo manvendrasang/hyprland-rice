@@ -44,7 +44,15 @@ jobs:
 
     needs: lint
 
+    container:
+      image: archlinux:base
+
     steps:
+
+      - name: Install prerequisites
+
+        run: |
+          pacman -Sy --noconfirm git bash sudo shellcheck
 
       - uses: actions/checkout@v4
 
