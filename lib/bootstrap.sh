@@ -67,6 +67,7 @@ for file in \
     preflight.sh \
     install_packages.sh \
     snapshot.sh \
+    deploy.sh \
     report.sh \
     engine.sh
 do

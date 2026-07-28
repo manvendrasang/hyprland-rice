@@ -59,6 +59,7 @@ load_module() {
     unset DEPENDENCIES
     unset PACKAGE_FILE
     unset SERVICE_FILE
+    unset CONFIG_DIRS
 
     source "$conf"
 
@@ -68,6 +69,7 @@ load_module() {
     DEPENDENCIES="${DEPENDENCIES:-}"
     PACKAGE_FILE="${PACKAGE_FILE:-}"
     SERVICE_FILE="${SERVICE_FILE:-}"
+    CONFIG_DIRS="${CONFIG_DIRS:-}"
 
     [[ -n "$NAME" && -n "$PACKAGE_FILE" ]] || {
         warn "Incomplete module.conf: $module (missing NAME or PACKAGE_FILE)"
@@ -94,5 +96,6 @@ print_module() {
     echo "Dependencies : ${DEPENDENCIES:-None}"
     echo "Packages     : $PACKAGE_FILE"
     echo "Services     : ${SERVICE_FILE:-None}"
+    echo "Configs      : ${CONFIG_DIRS:-None}"
 
 }

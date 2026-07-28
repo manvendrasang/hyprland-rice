@@ -38,4 +38,34 @@ rollback_snapshot "$SNAPSHOT_ID" >/dev/null
 
 assert_false snapshot_exists "$SNAPSHOT_ID"
 
+########################################
+# Combined package + config snapshot
+########################################
+
+CURRENT_SNAPSHOT_ID=""
+CONFIG_BACKUPS=()
+INSTALLED_PACKAGES=(fake-pkg-three)
+
+TARGET="${HYPRX_TARGET_HOME:-$HOME}/.config/hypr"
+rm -rf "$TARGET"
+
+# Deploy once (nothing existed before -> "false" entry)
+deploy_config_dir hypr
+
+save_snapshot
+
+SNAPSHOT_ID="$LAST_SNAPSHOT_ID"
+
+# Config entry should be recorded correctly
+CONFIGS_OUT="$(snapshot_configs "$SNAPSHOT_ID")"
+assert_equals "hypr:false" "$CONFIGS_OUT"
+
+assert_true test -d "$TARGET"
+
+# Rolling back should remove the newly-deployed dir entirely (it didn't exist before)
+rollback_snapshot "$SNAPSHOT_ID" >/dev/null
+
+assert_false test -d "$TARGET"
+assert_false snapshot_exists "$SNAPSHOT_ID"
+
 echo "Snapshot/rollback OK."

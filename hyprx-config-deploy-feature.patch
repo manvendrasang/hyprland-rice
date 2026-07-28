@@ -1,0 +1,1286 @@
+diff --git a/.gitignore b/.gitignore
+index bb8bae1..e322757 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -64,4 +64,4 @@ tmp/
+ 
+ # OS
+ .DS_Store
+-Thumbs.db
+\ No newline at end of file
++Thumbs.db*.patch
+diff --git a/hyprx-ci-fixes.patch b/hyprx-ci-fixes.patch
+deleted file mode 100644
+index bb1d431..0000000
+--- a/hyprx-ci-fixes.patch
++++ /dev/null
+@@ -1,351 +0,0 @@
+-diff --git a/lib/bootstrap.sh b/lib/bootstrap.sh
+-index e58f409..935d512 100755
+---- a/lib/bootstrap.sh
+-+++ b/lib/bootstrap.sh
+-@@ -10,10 +10,10 @@ export HYPRX_ROOT="$ROOT_DIR"
+- 
+- export HYPRX_LIB="$ROOT_DIR/lib"
+- export HYPRX_COMMANDS="$ROOT_DIR/commands"
+--export HYPRX_MODULES="$ROOT_DIR/modules"
+-+export HYPRX_MODULES="${HYPRX_MODULES:-$ROOT_DIR/modules}"
+- export HYPRX_DATABASE="$ROOT_DIR/database"
+--export HYPRX_CONFIG="$ROOT_DIR/config"
+--export HYPRX_PROFILES="$ROOT_DIR/profiles"
+-+export HYPRX_CONFIG="${HYPRX_CONFIG:-$ROOT_DIR/config}"
+-+export HYPRX_PROFILES="${HYPRX_PROFILES:-$ROOT_DIR/profiles}"
+- export HYPRX_THEMES="$ROOT_DIR/themes"
+- export HYPRX_ASSETS="$ROOT_DIR/assets"
+- 
+-@@ -28,7 +28,6 @@ for file in \
+-     config.sh \
+-     detect.sh \
+-     packages.sh \
+--    modules.sh \
+-     spinner.sh \
+-     progress.sh \
+-     table.sh
+-diff --git a/lib/detect.sh b/lib/detect.sh
+-index c311de9..8c556b5 100755
+---- a/lib/detect.sh
+-+++ b/lib/detect.sh
+-@@ -51,97 +51,97 @@ fi
+- # Battery
+- # -----------------------------
+- 
+--BATTERY_NAME=$(ls /sys/class/power_supply 2>/dev/null | grep '^BAT' | head -n1)
+-+BATTERY_NAME=$(ls /sys/class/power_supply 2>/dev/null | grep '^BAT' | head -n1 || true)
+- 
+- HAS_BATTERY=false
+--[[ -n "$BATTERY_NAME" ]] && HAS_BATTERY=true
+-+[[ -n "$BATTERY_NAME" ]] && HAS_BATTERY=true || true
+- 
+- # -----------------------------
+- # Network
+- # -----------------------------
+- 
+--NETWORK_INTERFACE=$(ip route | awk '/default/ {print $5; exit}')
+-+NETWORK_INTERFACE=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}' || true)
+- 
+- # -----------------------------
+- # Bluetooth
+- # -----------------------------
+- 
+- HAS_BLUETOOTH=false
+--command -v bluetoothctl >/dev/null 2>&1 && HAS_BLUETOOTH=true
+-+command -v bluetoothctl >/dev/null 2>&1 && HAS_BLUETOOTH=true || true
+- 
+- # -----------------------------
+- # PipeWire
+- # -----------------------------
+- 
+- HAS_PIPEWIRE=false
+--pgrep pipewire >/dev/null 2>&1 && HAS_PIPEWIRE=true
+-+pgrep pipewire >/dev/null 2>&1 && HAS_PIPEWIRE=true || true
+- 
+- # -----------------------------
+- # Waybar
+- # -----------------------------
+- 
+- HAS_WAYBAR=false
+--command -v waybar >/dev/null 2>&1 && HAS_WAYBAR=true
+-+command -v waybar >/dev/null 2>&1 && HAS_WAYBAR=true || true
+- 
+- # -----------------------------
+- # Rofi
+- # -----------------------------
+- 
+- HAS_ROFI=false
+--command -v rofi >/dev/null 2>&1 && HAS_ROFI=true
+-+command -v rofi >/dev/null 2>&1 && HAS_ROFI=true || true
+- 
+- # -----------------------------
+- # Kitty
+- # -----------------------------
+- 
+- HAS_KITTY=false
+--command -v kitty >/dev/null 2>&1 && HAS_KITTY=true
+-+command -v kitty >/dev/null 2>&1 && HAS_KITTY=true || true
+- 
+- # -----------------------------
+- # VS Code
+- # -----------------------------
+- 
+- HAS_CODE=false
+--command -v code >/dev/null 2>&1 && HAS_CODE=true
+-+command -v code >/dev/null 2>&1 && HAS_CODE=true || true
+- 
+- # -----------------------------
+- # Neovim
+- # -----------------------------
+- 
+- HAS_NVIM=false
+--command -v nvim >/dev/null 2>&1 && HAS_NVIM=true
+-+command -v nvim >/dev/null 2>&1 && HAS_NVIM=true || true
+- 
+- # -----------------------------
+- # Git
+- # -----------------------------
+- 
+- HAS_GIT=false
+--command -v git >/dev/null 2>&1 && HAS_GIT=true
+-+command -v git >/dev/null 2>&1 && HAS_GIT=true || true
+- 
+- # -----------------------------
+- # SwayNC
+- # -----------------------------
+- 
+- HAS_SWAYNC=false
+--command -v swaync >/dev/null 2>&1 && HAS_SWAYNC=true
+-+command -v swaync >/dev/null 2>&1 && HAS_SWAYNC=true || true
+- 
+- # -----------------------------
+- # Hyprland
+- # -----------------------------
+- 
+- HAS_HYPRLAND=false
+--[[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] && HAS_HYPRLAND=true
+-+[[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] && HAS_HYPRLAND=true || true
+- 
+- # -----------------------------
+- # Power Profiles
+- # -----------------------------
+- 
+- HAS_POWER_PROFILE=false
+--command -v powerprofilesctl >/dev/null 2>&1 && HAS_POWER_PROFILE=true
+-+command -v powerprofilesctl >/dev/null 2>&1 && HAS_POWER_PROFILE=true || true
+- 
+- # -----------------------------
+- # ZRAM
+- # -----------------------------
+- 
+- HAS_ZRAM=false
+--grep -q zram /proc/swaps 2>/dev/null && HAS_ZRAM=true
+-\ No newline at end of file
+-+(grep -q zram /proc/swaps 2>/dev/null && HAS_ZRAM=true) || true
+-\ No newline at end of file
+-diff --git a/lib/installer/failure_logger.sh b/lib/installer/failure_logger.sh
+-index 0ead52f..1c307bc 100755
+---- a/lib/installer/failure_logger.sh
+-+++ b/lib/installer/failure_logger.sh
+-@@ -1,7 +1,8 @@
+- #!/usr/bin/env bash
+- 
+--FAILURE_LOG="$HOME/Desktop/hyprx-install.log"
+-+FAILURE_LOG="${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/hyprx-install.log"
+- 
+-+mkdir -p "$(dirname "$FAILURE_LOG")"
+- touch "$FAILURE_LOG"
+- 
+- log_failed_package() {
+-diff --git a/lib/installer/report.sh b/lib/installer/report.sh
+-index 7acae06..e09ea51 100755
+---- a/lib/installer/report.sh
+-+++ b/lib/installer/report.sh
+-@@ -2,15 +2,21 @@
+- 
+- generate_report() {
+- 
+--    local report="$HOME/Desktop/HyprX-Install-Report.txt"
+-+    local report="${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/HyprX-Install-Report.txt"
+-     local now
+-     local duration_minutes
+-     local duration_seconds
+- 
+-+    mkdir -p "$(dirname "$report")"
+-+
+-+    for _arr in SELECTED_MODULES INSTALLED_PACKAGES SKIPPED_PACKAGES FAILED_PACKAGES INVALID_PACKAGES REPLACED_PACKAGES; do
+-+        declare -p "$_arr" &>/dev/null || eval "$_arr=()"
+-+    done
+-+
+-     now="$(date)"
+- 
+--    duration_minutes=$((INSTALL_DURATION / 60))
+--    duration_seconds=$((INSTALL_DURATION % 60))
+-+    duration_minutes=$(( ${INSTALL_DURATION:-0} / 60 ))
+-+    duration_seconds=$(( ${INSTALL_DURATION:-0} % 60 ))
+- 
+-     {
+-         echo "=========================================================="
+-diff --git a/lib/installer/retry.sh b/lib/installer/retry.sh
+-index 2540046..52e0733 100755
+---- a/lib/installer/retry.sh
+-+++ b/lib/installer/retry.sh
+-@@ -3,6 +3,33 @@
+- MAX_RETRIES=3
+- RETRY_BASE_DELAY=2
+- 
+-+########################################
+-+# Generic retry wrapper
+-+# Usage: retry <max_attempts> <command> [args...]
+-+########################################
+-+
+-+retry() {
+-+
+-+    local max_attempts="$1"
+-+    shift
+-+
+-+    local attempt=1
+-+
+-+    until "$@"; do
+-+
+-+        if (( attempt >= max_attempts )); then
+-+            return 1
+-+        fi
+-+
+-+        attempt=$((attempt + 1))
+-+        sleep "$((RETRY_BASE_DELAY))"
+-+
+-+    done
+-+
+-+    return 0
+-+
+-+}
+-+
+- retry_failed_packages() {
+- 
+-     [[ ${#FAILED_PACKAGES[@]} -eq 0 ]] && return 0
+-diff --git a/lib/module/module.sh b/lib/module/module.sh
+-index c039d35..e1100cc 100755
+---- a/lib/module/module.sh
+-+++ b/lib/module/module.sh
+-@@ -2,6 +2,27 @@
+- 
+- # shellcheck disable=SC1090
+- 
+-+########################################
+-+# Discover modules
+-+########################################
+-+
+-+discover_modules() {
+-+
+-+    AVAILABLE_MODULES=()
+-+
+-+    [[ -d "$HYPRX_MODULES" ]] || return 1
+-+
+-+    local dir
+-+
+-+    for dir in "$HYPRX_MODULES"/*; do
+-+        [[ -d "$dir" ]] || continue
+-+        AVAILABLE_MODULES+=("$(basename "$dir")")
+-+    done
+-+
+-+    return 0
+-+
+-+}
+-+
+- ########################################
+- # Module exists
+- ########################################
+-@@ -41,6 +62,18 @@ load_module() {
+- 
+-     source "$conf"
+- 
+-+    NAME="${NAME:-}"
+-+    DESCRIPTION="${DESCRIPTION:-}"
+-+    OPTIONAL="${OPTIONAL:-true}"
+-+    DEPENDENCIES="${DEPENDENCIES:-}"
+-+    PACKAGE_FILE="${PACKAGE_FILE:-}"
+-+    SERVICE_FILE="${SERVICE_FILE:-}"
+-+
+-+    [[ -n "$NAME" && -n "$PACKAGE_FILE" ]] || {
+-+        warn "Incomplete module.conf: $module (missing NAME or PACKAGE_FILE)"
+-+        return 1
+-+    }
+-+
+-     return 0
+- 
+- }
+-diff --git a/lib/ui.sh b/lib/ui.sh
+-index 843ca7e..e9b4a82 100755
+---- a/lib/ui.sh
+-+++ b/lib/ui.sh
+-@@ -38,6 +38,17 @@ divider() {
+- 
+- }
+- 
+-+########################################
+-+# Section header
+-+########################################
+-+
+-+section() {
+-+
+-+    echo
+-+    echo -e "${CYAN}== $1 ==${RESET}"
+-+
+-+}
+-+
+- ########################################
+- # Banner
+- ########################################
+-diff --git a/tests/run.sh b/tests/run.sh
+-index d98fb2e..80ca3ad 100644
+---- a/tests/run.sh
+-+++ b/tests/run.sh
+-@@ -4,12 +4,18 @@ set -euo pipefail
+- 
+- ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+- 
+-+# Isolate tests from the real repo state (config/hyprx.conf, modules/, profiles/)
+-+# so running the suite never mutates tracked files on disk.
+-+source "$ROOT_DIR/tests/setup.sh" >/dev/null
+-+trap 'source "$ROOT_DIR/tests/teardown.sh"' EXIT
+-+
+- PASSED=0
+- FAILED=0
+- 
+- run_suite() {
+- 
+-     local directory="$1"
+-+    local pattern="$2"
+- 
+-     [[ -d "$directory" ]] || return
+- 
+-@@ -19,13 +25,13 @@ run_suite() {
+- 
+-         if bash "$test"; then
+-             echo "[PASS]"
+--            ((PASSED++))
+-+            PASSED=$((PASSED + 1))
+-         else
+-             echo "[FAIL]"
+--            ((FAILED++))
+-+            FAILED=$((FAILED + 1))
+-         fi
+- 
+--    done < <(find "$directory" -maxdepth 1 -name "*.sh" -print0 | sort -z)
+-+    done < <(find "$directory" -maxdepth 1 -name "$pattern" -print0 | sort -z)
+- 
+- }
+- 
+-@@ -35,9 +41,9 @@ echo "        HyprX Test Suite"
+- echo "========================================="
+- echo
+- 
+--run_suite "$ROOT_DIR/tests"
+-+run_suite "$ROOT_DIR/tests" "test_*.sh"
+- 
+--run_suite "$ROOT_DIR/tests/integration"
+-+run_suite "$ROOT_DIR/tests/integration" "install_*.sh"
+- 
+- echo
+- echo "========================================="
+diff --git a/hyprx-rollback-feature.patch b/hyprx-rollback-feature.patch
+deleted file mode 100644
+index ecaeac2..0000000
+--- a/hyprx-rollback-feature.patch
++++ /dev/null
+@@ -1,379 +0,0 @@
+-diff --git a/commands/help.sh b/commands/help.sh
+-index f6f3f0b..843608c 100644
+---- a/commands/help.sh
+-+++ b/commands/help.sh
+-@@ -9,6 +9,7 @@ Usage:
+- Commands:
+-     install     Install modules for a profile
+-     update      Update installed modules
+-+    rollback    Undo a previous install
+-     clean       Clean up temporary/cache files
+-     doctor      Diagnose system and module health
+-     profile     Manage installation profiles
+-diff --git a/commands/rollback.sh b/commands/rollback.sh
+-new file mode 100755
+-index 0000000..9cd9756
+---- /dev/null
+-+++ b/commands/rollback.sh
+-@@ -0,0 +1,76 @@
+-+#!/usr/bin/env bash
+-+
+-+ACTION="${1:-help}"
+-+
+-+case "$ACTION" in
+-+
+-+    list)
+-+
+-+        section "Available Snapshots"
+-+
+-+        if [[ -z "$(list_snapshots)" ]]; then
+-+            info "No snapshots found."
+-+        else
+-+            list_snapshots
+-+        fi
+-+
+-+        ;;
+-+
+-+    latest)
+-+
+-+        SNAPSHOT_ID="$(latest_snapshot)"
+-+
+-+        [[ -z "$SNAPSHOT_ID" ]] && {
+-+            info "No snapshots found."
+-+            exit 0
+-+        }
+-+
+-+        section "Rolling back: $SNAPSHOT_ID"
+-+
+-+        rollback_snapshot "$SNAPSHOT_ID"
+-+
+-+        ;;
+-+
+-+    "")
+-+
+-+        section "Rollback"
+-+
+-+        info "No snapshot specified. Use 'hyprx rollback list' to see options."
+-+
+-+        ;;
+-+
+-+    help)
+-+
+-+        section "Rollback"
+-+
+-+        cat <<EOF
+-+Usage:
+-+    hyprx rollback list           Show available snapshots
+-+    hyprx rollback latest         Roll back the most recent install
+-+    hyprx rollback <snapshot-id>  Roll back a specific snapshot
+-+
+-+Notes:
+-+    Only packages newly installed by HyprX in that run are removed.
+-+    Packages that were already on your system before that install
+-+    are never touched.
+-+EOF
+-+        ;;
+-+
+-+    *)
+-+
+-+        SNAPSHOT_ID="$ACTION"
+-+
+-+        if ! snapshot_exists "$SNAPSHOT_ID"; then
+-+            error "Unknown snapshot: $SNAPSHOT_ID"
+-+            echo
+-+            info "Use 'hyprx rollback list' to see available snapshots."
+-+            exit 1
+-+        fi
+-+
+-+        section "Rolling back: $SNAPSHOT_ID"
+-+
+-+        rollback_snapshot "$SNAPSHOT_ID"
+-+
+-+        ;;
+-+
+-+esac
+-diff --git a/lib/bootstrap.sh b/lib/bootstrap.sh
+-index 935d512..1456428 100755
+---- a/lib/bootstrap.sh
+-+++ b/lib/bootstrap.sh
+-@@ -66,6 +66,7 @@ for file in \
+-     compatibility.sh \
+-     preflight.sh \
+-     install_packages.sh \
+-+    snapshot.sh \
+-     report.sh \
+-     engine.sh
+- do
+-diff --git a/lib/installer/failure_logger.sh b/lib/installer/failure_logger.sh
+-index 1c307bc..6fa741f 100755
+---- a/lib/installer/failure_logger.sh
+-+++ b/lib/installer/failure_logger.sh
+-@@ -1,6 +1,6 @@
+- #!/usr/bin/env bash
+- 
+--FAILURE_LOG="${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/hyprx-install.log"
+-+FAILURE_LOG="${HYPRX_FAILURE_LOG:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/hyprx-install.log}"
+- 
+- mkdir -p "$(dirname "$FAILURE_LOG")"
+- touch "$FAILURE_LOG"
+-diff --git a/lib/installer/install_packages.sh b/lib/installer/install_packages.sh
+-index 12ee8e1..4527c0e 100755
+---- a/lib/installer/install_packages.sh
+-+++ b/lib/installer/install_packages.sh
+-@@ -109,6 +109,12 @@ esac
+- 
+-     fi
+- 
+-+    ####################################################
+-+    # Snapshot
+-+    ####################################################
+-+
+-+    save_snapshot
+-+
+-     ####################################################
+-     # Cleanup
+-     ####################################################
+-diff --git a/lib/installer/report.sh b/lib/installer/report.sh
+-index e09ea51..a85b6ef 100755
+---- a/lib/installer/report.sh
+-+++ b/lib/installer/report.sh
+-@@ -2,7 +2,7 @@
+- 
+- generate_report() {
+- 
+--    local report="${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/HyprX-Install-Report.txt"
+-+    local report="${HYPRX_REPORT_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/HyprX-Install-Report.txt}"
+-     local now
+-     local duration_minutes
+-     local duration_seconds
+-diff --git a/lib/installer/snapshot.sh b/lib/installer/snapshot.sh
+-new file mode 100644
+-index 0000000..6bb33fd
+---- /dev/null
+-+++ b/lib/installer/snapshot.sh
+-@@ -0,0 +1,164 @@
+-+#!/usr/bin/env bash
+-+
+-+########################################
+-+# Snapshot storage location
+-+########################################
+-+
+-+SNAPSHOT_DIR="${HYPRX_SNAPSHOT_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/snapshots}"
+-+
+-+########################################
+-+# Save a snapshot of this install run
+-+########################################
+-+#
+-+# Records only packages that were newly
+-+# installed this run (INSTALLED_PACKAGES).
+-+# Already-present packages are never
+-+# touched by rollback.
+-+#
+-+
+-+save_snapshot() {
+-+
+-+    mkdir -p "$SNAPSHOT_DIR"
+-+
+-+    if (( ${#INSTALLED_PACKAGES[@]} == 0 )); then
+-+        return 0
+-+    fi
+-+
+-+    local id
+-+    id="$(date +%Y%m%d-%H%M%S)"
+-+
+-+    local file="$SNAPSHOT_DIR/$id.snapshot"
+-+
+-+    {
+-+        echo "PROFILE=${PROFILE:-unknown}"
+-+        echo "DATE=$(date)"
+-+        echo "PACKAGES=${#INSTALLED_PACKAGES[@]}"
+-+        echo "---"
+-+        printf "%s\n" "${INSTALLED_PACKAGES[@]}"
+-+    } > "$file"
+-+
+-+    info "Snapshot saved: $id"
+-+
+-+    LAST_SNAPSHOT_ID="$id"
+-+
+-+}
+-+
+-+########################################
+-+# List available snapshots
+-+########################################
+-+
+-+list_snapshots() {
+-+
+-+    [[ -d "$SNAPSHOT_DIR" ]] || return 0
+-+
+-+    local file id profile date count
+-+
+-+    for file in "$SNAPSHOT_DIR"/*.snapshot; do
+-+
+-+        [[ -f "$file" ]] || continue
+-+
+-+        id="$(basename "$file" .snapshot)"
+-+        profile="$(grep '^PROFILE=' "$file" | cut -d= -f2-)"
+-+        date="$(grep '^DATE=' "$file" | cut -d= -f2-)"
+-+        count="$(grep '^PACKAGES=' "$file" | cut -d= -f2-)"
+-+
+-+        printf "%-16s  %-12s  %-4s pkgs  %s\n" "$id" "$profile" "$count" "$date"
+-+
+-+    done
+-+
+-+}
+-+
+-+########################################
+-+# Snapshot exists?
+-+########################################
+-+
+-+snapshot_exists() {
+-+
+-+    [[ -f "$SNAPSHOT_DIR/$1.snapshot" ]]
+-+
+-+}
+-+
+-+########################################
+-+# Get package list from a snapshot
+-+########################################
+-+
+-+snapshot_packages() {
+-+
+-+    local id="$1"
+-+    local file="$SNAPSHOT_DIR/$id.snapshot"
+-+
+-+    [[ -f "$file" ]] || return 1
+-+
+-+    sed '1,/^---$/d' "$file"
+-+
+-+}
+-+
+-+########################################
+-+# Most recent snapshot id
+-+########################################
+-+
+-+latest_snapshot() {
+-+
+-+    [[ -d "$SNAPSHOT_DIR" ]] || return 1
+-+
+-+    find "$SNAPSHOT_DIR" -maxdepth 1 -name "*.snapshot" -printf '%f\n' 2>/dev/null \
+-+        | sed 's/\.snapshot$//' \
+-+        | sort \
+-+        | tail -n1
+-+
+-+}
+-+
+-+########################################
+-+# Delete a snapshot (after successful rollback)
+-+########################################
+-+
+-+remove_snapshot() {
+-+
+-+    local id="$1"
+-+    local file="$SNAPSHOT_DIR/$id.snapshot"
+-+
+-+    [[ -f "$file" ]] && rm -f "$file"
+-+
+-+}
+-+
+-+########################################
+-+# Roll back a snapshot
+-+########################################
+-+
+-+rollback_snapshot() {
+-+
+-+    local id="$1"
+-+
+-+    if ! snapshot_exists "$id"; then
+-+        error "No such snapshot: $id"
+-+        return 1
+-+    fi
+-+
+-+    local pkg
+-+    local failed=0
+-+
+-+    while IFS= read -r pkg; do
+-+
+-+        [[ -z "$pkg" ]] && continue
+-+
+-+        info "Removing $pkg"
+-+
+-+        if remove_package "$pkg"; then
+-+            success "$pkg"
+-+        else
+-+            error "$pkg"
+-+            failed=1
+-+        fi
+-+
+-+    done < <(snapshot_packages "$id")
+-+
+-+    if (( failed == 0 )); then
+-+        remove_snapshot "$id"
+-+        success "Rollback complete. Snapshot $id removed."
+-+    else
+-+        warn "Rollback finished with errors. Snapshot $id retained."
+-+    fi
+-+
+-+    return "$failed"
+-+
+-+}
+-diff --git a/tests/setup.sh b/tests/setup.sh
+-index 6f31c44..69895e6 100644
+---- a/tests/setup.sh
+-+++ b/tests/setup.sh
+-@@ -13,5 +13,8 @@ cp -r "$ROOT_DIR/config" "$TEST_ROOT/"
+- export HYPRX_MODULES="$TEST_ROOT/modules"
+- export HYPRX_PROFILES="$TEST_ROOT/profiles"
+- export HYPRX_CONFIG="$TEST_ROOT/config"
+-+export HYPRX_SNAPSHOT_DIR="$TEST_ROOT/state/snapshots"
+-+export HYPRX_FAILURE_LOG="$TEST_ROOT/state/hyprx-install.log"
+-+export HYPRX_REPORT_FILE="$TEST_ROOT/state/HyprX-Install-Report.txt"
+- 
+- echo "$TEST_ROOT"
+-\ No newline at end of file
+-diff --git a/tests/test_snapshot.sh b/tests/test_snapshot.sh
+-new file mode 100644
+-index 0000000..8b0827f
+---- /dev/null
+-+++ b/tests/test_snapshot.sh
+-@@ -0,0 +1,41 @@
+-+#!/usr/bin/env bash
+-+
+-+set -euo pipefail
+-+
+-+source "$(dirname "$0")/common.sh"
+-+
+-+echo "Testing snapshot/rollback..."
+-+
+-+# Stub remove_package so this test never touches real packages
+-+remove_package() {
+-+    echo "stub-removed: $1"
+-+    return 0
+-+}
+-+
+-+INSTALLED_PACKAGES=(fake-pkg-one fake-pkg-two)
+-+PROFILE="testprofile"
+-+
+-+save_snapshot
+-+
+-+assert_not_empty "$LAST_SNAPSHOT_ID"
+-+
+-+SNAPSHOT_ID="$LAST_SNAPSHOT_ID"
+-+
+-+assert_true snapshot_exists "$SNAPSHOT_ID"
+-+
+-+# list_snapshots should mention our snapshot id
+-+assert_true grep -q "$SNAPSHOT_ID" <(list_snapshots)
+-+
+-+# snapshot_packages should return exactly what we saved
+-+PACKAGES_OUT="$(snapshot_packages "$SNAPSHOT_ID")"
+-+assert_equals "$(printf 'fake-pkg-one\nfake-pkg-two')" "$PACKAGES_OUT"
+-+
+-+# latest_snapshot should find it
+-+assert_equals "$SNAPSHOT_ID" "$(latest_snapshot)"
+-+
+-+# rollback should succeed and remove the snapshot file afterward
+-+rollback_snapshot "$SNAPSHOT_ID" >/dev/null
+-+
+-+assert_false snapshot_exists "$SNAPSHOT_ID"
+-+
+-+echo "Snapshot/rollback OK."
+diff --git a/lib/bootstrap.sh b/lib/bootstrap.sh
+index 1456428..2f5f593 100755
+--- a/lib/bootstrap.sh
++++ b/lib/bootstrap.sh
+@@ -67,6 +67,7 @@ for file in \
+     preflight.sh \
+     install_packages.sh \
+     snapshot.sh \
++    deploy.sh \
+     report.sh \
+     engine.sh
+ do
+diff --git a/lib/installer/deploy.sh b/lib/installer/deploy.sh
+new file mode 100644
+index 0000000..2df4b71
+--- /dev/null
++++ b/lib/installer/deploy.sh
+@@ -0,0 +1,86 @@
++#!/usr/bin/env bash
++
++########################################
++# Deploy a single config directory
++########################################
++#
++# Backs up whatever already exists at the
++# target before overwriting it, and records
++# the outcome so rollback can undo it later.
++#
++
++deploy_config_dir() {
++
++    local dir="$1"
++
++    local source="$HYPRX_CONFIG/$dir"
++    local target="${HYPRX_TARGET_HOME:-$HOME}/.config/$dir"
++
++    if [[ ! -d "$source" ]]; then
++        warn "Missing config source: $dir"
++        return 1
++    fi
++
++    mkdir -p "$(dirname "$target")"
++
++    if [[ -e "$target" ]]; then
++
++        local backup
++        backup="$(config_backup_dir_for "$(current_snapshot_id)")/$dir"
++
++        mkdir -p "$(dirname "$backup")"
++        rm -rf "$backup"
++        cp -r "$target" "$backup"
++
++        record_config_backup "$dir" "true"
++
++        info "Backed up existing $dir"
++
++    else
++
++        record_config_backup "$dir" "false"
++
++    fi
++
++    rm -rf "$target"
++    cp -r "$source" "$target"
++
++    success "Deployed $dir"
++
++}
++
++########################################
++# Deploy configs for a single module
++########################################
++
++deploy_module_config() {
++
++    local module="$1"
++
++    load_module "$module" || return 1
++
++    [[ -n "${CONFIG_DIRS:-}" ]] || return 0
++
++    local dir
++
++    for dir in $CONFIG_DIRS; do
++        deploy_config_dir "$dir"
++    done
++
++}
++
++########################################
++# Deploy configs for every selected module
++########################################
++
++deploy_configs() {
++
++    section "Deploying configuration"
++
++    local module
++
++    for module in "${SELECTED_MODULES[@]}"; do
++        deploy_module_config "$module"
++    done
++
++}
+diff --git a/lib/installer/engine.sh b/lib/installer/engine.sh
+index 5981601..bb11e34 100755
+--- a/lib/installer/engine.sh
++++ b/lib/installer/engine.sh
+@@ -50,6 +50,18 @@ run_install_engine() {
+ 
+     install_packages || return 1
+ 
++    #
++    # Deploy configs
++    #
++
++    deploy_configs || return 1
++
++    #
++    # Snapshot
++    #
++
++    save_snapshot
++
+     #
+     # Generate report
+     #
+diff --git a/lib/installer/install_packages.sh b/lib/installer/install_packages.sh
+index 4527c0e..12ee8e1 100755
+--- a/lib/installer/install_packages.sh
++++ b/lib/installer/install_packages.sh
+@@ -109,12 +109,6 @@ esac
+ 
+     fi
+ 
+-    ####################################################
+-    # Snapshot
+-    ####################################################
+-
+-    save_snapshot
+-
+     ####################################################
+     # Cleanup
+     ####################################################
+diff --git a/lib/installer/snapshot.sh b/lib/installer/snapshot.sh
+index 6bb33fd..f635e18 100644
+--- a/lib/installer/snapshot.sh
++++ b/lib/installer/snapshot.sh
+@@ -1,31 +1,87 @@
+ #!/usr/bin/env bash
+ 
+ ########################################
+-# Snapshot storage location
++# Snapshot storage locations
+ ########################################
+ 
+ SNAPSHOT_DIR="${HYPRX_SNAPSHOT_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/snapshots}"
+ 
++CONFIG_BACKUPS=()
++
++########################################
++# Shared snapshot id for this install run
++########################################
++#
++# Packages and config backups from the
++# same install run share one id, so a
++# single rollback undoes both together.
++#
++
++CURRENT_SNAPSHOT_ID=""
++
++current_snapshot_id() {
++
++    if [[ -z "$CURRENT_SNAPSHOT_ID" ]]; then
++        CURRENT_SNAPSHOT_ID="$(date +%Y%m%d-%H%M%S)"
++    fi
++
++    echo "$CURRENT_SNAPSHOT_ID"
++
++}
++
++########################################
++# Config backup root
++########################################
++
++config_backup_root() {
++
++    echo "${HYPRX_CONFIG_BACKUP_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/config-backups}"
++
++}
++
++config_backup_dir_for() {
++
++    echo "$(config_backup_root)/$1"
++
++}
++
++########################################
++# Record that a config dir was touched
++########################################
++#
++# existed = true  -> a backup was made, restore it on rollback
++# existed = false -> nothing existed before, remove it on rollback
++#
++
++record_config_backup() {
++
++    CONFIG_BACKUPS+=("$1:$2")
++
++}
++
+ ########################################
+ # Save a snapshot of this install run
+ ########################################
+ #
+-# Records only packages that were newly
+-# installed this run (INSTALLED_PACKAGES).
+-# Already-present packages are never
+-# touched by rollback.
++# Records packages newly installed this
++# run (INSTALLED_PACKAGES) and any config
++# directories touched by deploy_configs
++# (CONFIG_BACKUPS). Already-present
++# packages and untouched configs are
++# never recorded, so rollback can never
++# affect anything HyprX didn't change.
+ #
+ 
+ save_snapshot() {
+ 
+     mkdir -p "$SNAPSHOT_DIR"
+ 
+-    if (( ${#INSTALLED_PACKAGES[@]} == 0 )); then
++    if (( ${#INSTALLED_PACKAGES[@]} == 0 )) && (( ${#CONFIG_BACKUPS[@]} == 0 )); then
+         return 0
+     fi
+ 
+     local id
+-    id="$(date +%Y%m%d-%H%M%S)"
++    id="$(current_snapshot_id)"
+ 
+     local file="$SNAPSHOT_DIR/$id.snapshot"
+ 
+@@ -33,8 +89,11 @@ save_snapshot() {
+         echo "PROFILE=${PROFILE:-unknown}"
+         echo "DATE=$(date)"
+         echo "PACKAGES=${#INSTALLED_PACKAGES[@]}"
+-        echo "---"
++        echo "CONFIGS=${#CONFIG_BACKUPS[@]}"
++        echo "---PACKAGES---"
+         printf "%s\n" "${INSTALLED_PACKAGES[@]}"
++        echo "---CONFIGS---"
++        printf "%s\n" "${CONFIG_BACKUPS[@]}"
+     } > "$file"
+ 
+     info "Snapshot saved: $id"
+@@ -51,7 +110,7 @@ list_snapshots() {
+ 
+     [[ -d "$SNAPSHOT_DIR" ]] || return 0
+ 
+-    local file id profile date count
++    local file id profile date pkg_count cfg_count
+ 
+     for file in "$SNAPSHOT_DIR"/*.snapshot; do
+ 
+@@ -60,9 +119,11 @@ list_snapshots() {
+         id="$(basename "$file" .snapshot)"
+         profile="$(grep '^PROFILE=' "$file" | cut -d= -f2-)"
+         date="$(grep '^DATE=' "$file" | cut -d= -f2-)"
+-        count="$(grep '^PACKAGES=' "$file" | cut -d= -f2-)"
++        pkg_count="$(grep '^PACKAGES=' "$file" | cut -d= -f2-)"
++        cfg_count="$(grep '^CONFIGS=' "$file" | cut -d= -f2-)"
+ 
+-        printf "%-16s  %-12s  %-4s pkgs  %s\n" "$id" "$profile" "$count" "$date"
++        printf "%-16s  %-12s  %-4s pkgs  %-4s configs  %s\n" \
++            "$id" "$profile" "$pkg_count" "$cfg_count" "$date"
+ 
+     done
+ 
+@@ -89,7 +150,22 @@ snapshot_packages() {
+ 
+     [[ -f "$file" ]] || return 1
+ 
+-    sed '1,/^---$/d' "$file"
++    sed -n '/^---PACKAGES---$/,/^---CONFIGS---$/p' "$file" | sed '1d;$d'
++
++}
++
++########################################
++# Get config backup entries from a snapshot
++########################################
++
++snapshot_configs() {
++
++    local id="$1"
++    local file="$SNAPSHOT_DIR/$id.snapshot"
++
++    [[ -f "$file" ]] || return 1
++
++    sed -n '/^---CONFIGS---$/,$p' "$file" | sed '1d'
+ 
+ }
+ 
+@@ -119,6 +195,42 @@ remove_snapshot() {
+ 
+     [[ -f "$file" ]] && rm -f "$file"
+ 
++    rm -rf "$(config_backup_dir_for "$id")"
++
++}
++
++########################################
++# Restore (or remove) a single config dir
++########################################
++
++restore_config_dir() {
++
++    local id="$1"
++    local dir="$2"
++    local existed="$3"
++
++    local target="${HYPRX_TARGET_HOME:-$HOME}/.config/$dir"
++    local backup
++    backup="$(config_backup_dir_for "$id")/$dir"
++
++    if [[ "$existed" == "true" ]]; then
++
++        if [[ ! -d "$backup" ]]; then
++            error "Missing backup for $dir, cannot restore"
++            return 1
++        fi
++
++        rm -rf "$target"
++        cp -r "$backup" "$target"
++        success "Restored $dir"
++
++    else
++
++        rm -rf "$target"
++        success "Removed $dir (was newly deployed)"
++
++    fi
++
+ }
+ 
+ ########################################
+@@ -134,9 +246,14 @@ rollback_snapshot() {
+         return 1
+     fi
+ 
+-    local pkg
+     local failed=0
+ 
++    ####################################
++    # Packages
++    ####################################
++
++    local pkg
++
+     while IFS= read -r pkg; do
+ 
+         [[ -z "$pkg" ]] && continue
+@@ -152,6 +269,27 @@ rollback_snapshot() {
+ 
+     done < <(snapshot_packages "$id")
+ 
++    ####################################
++    # Configs
++    ####################################
++
++    local entry dir existed
++
++    while IFS= read -r entry; do
++
++        [[ -z "$entry" ]] && continue
++
++        dir="${entry%%:*}"
++        existed="${entry##*:}"
++
++        restore_config_dir "$id" "$dir" "$existed" || failed=1
++
++    done < <(snapshot_configs "$id")
++
++    ####################################
++    # Result
++    ####################################
++
+     if (( failed == 0 )); then
+         remove_snapshot "$id"
+         success "Rollback complete. Snapshot $id removed."
+diff --git a/lib/module/module.sh b/lib/module/module.sh
+index e1100cc..7348df3 100755
+--- a/lib/module/module.sh
++++ b/lib/module/module.sh
+@@ -59,6 +59,7 @@ load_module() {
+     unset DEPENDENCIES
+     unset PACKAGE_FILE
+     unset SERVICE_FILE
++    unset CONFIG_DIRS
+ 
+     source "$conf"
+ 
+@@ -68,6 +69,7 @@ load_module() {
+     DEPENDENCIES="${DEPENDENCIES:-}"
+     PACKAGE_FILE="${PACKAGE_FILE:-}"
+     SERVICE_FILE="${SERVICE_FILE:-}"
++    CONFIG_DIRS="${CONFIG_DIRS:-}"
+ 
+     [[ -n "$NAME" && -n "$PACKAGE_FILE" ]] || {
+         warn "Incomplete module.conf: $module (missing NAME or PACKAGE_FILE)"
+@@ -94,5 +96,6 @@ print_module() {
+     echo "Dependencies : ${DEPENDENCIES:-None}"
+     echo "Packages     : $PACKAGE_FILE"
+     echo "Services     : ${SERVICE_FILE:-None}"
++    echo "Configs      : ${CONFIG_DIRS:-None}"
+ 
+ }
+\ No newline at end of file
+diff --git a/modules/desktop/module.conf b/modules/desktop/module.conf
+index bd6002b..9294cdd 100644
+--- a/modules/desktop/module.conf
++++ b/modules/desktop/module.conf
+@@ -8,4 +8,6 @@ DEPENDENCIES=""
+ 
+ PACKAGE_FILE="packages.list"
+ 
+-SERVICE_FILE="services.list"
+\ No newline at end of file
++SERVICE_FILE="services.list"
++
++CONFIG_DIRS="hypr waybar"
+\ No newline at end of file
+diff --git a/tests/setup.sh b/tests/setup.sh
+index 69895e6..365e907 100644
+--- a/tests/setup.sh
++++ b/tests/setup.sh
+@@ -16,5 +16,9 @@ export HYPRX_CONFIG="$TEST_ROOT/config"
+ export HYPRX_SNAPSHOT_DIR="$TEST_ROOT/state/snapshots"
+ export HYPRX_FAILURE_LOG="$TEST_ROOT/state/hyprx-install.log"
+ export HYPRX_REPORT_FILE="$TEST_ROOT/state/HyprX-Install-Report.txt"
++export HYPRX_TARGET_HOME="$TEST_ROOT/home"
++export HYPRX_CONFIG_BACKUP_ROOT="$TEST_ROOT/state/config-backups"
++
++mkdir -p "$HYPRX_TARGET_HOME/.config"
+ 
+ echo "$TEST_ROOT"
+\ No newline at end of file
+diff --git a/tests/test_deploy.sh b/tests/test_deploy.sh
+new file mode 100644
+index 0000000..4b9a6d6
+--- /dev/null
++++ b/tests/test_deploy.sh
+@@ -0,0 +1,41 @@
++#!/usr/bin/env bash
++
++set -euo pipefail
++
++source "$(dirname "$0")/common.sh"
++
++echo "Testing config deployment..."
++
++TARGET="${HYPRX_TARGET_HOME:-$HOME}/.config/hypr"
++
++# Ensure clean slate: target should not exist yet
++rm -rf "$TARGET"
++
++CONFIG_BACKUPS=()
++
++# First deploy: nothing existed before
++deploy_config_dir hypr
++
++assert_true test -d "$TARGET"
++assert_true test -f "$TARGET/hyprland.lua"
++assert_equals "hypr:false" "${CONFIG_BACKUPS[0]}"
++
++# Simulate a user having customized their deployed config
++echo "# user edit" >> "$TARGET/hyprland.lua"
++
++CONFIG_BACKUPS=()
++
++# Redeploy: this time something existed and should be backed up
++deploy_config_dir hypr
++
++assert_equals "hypr:true" "${CONFIG_BACKUPS[0]}"
++
++BACKUP_DIR="$(config_backup_dir_for "$(current_snapshot_id)")/hypr"
++
++assert_true test -d "$BACKUP_DIR"
++assert_true grep -q "user edit" "$BACKUP_DIR/hyprland.lua"
++
++# The live target should now match the source again, no user edit
++assert_false grep -q "user edit" "$TARGET/hyprland.lua"
++
++echo "Config deployment OK."
+diff --git a/tests/test_snapshot.sh b/tests/test_snapshot.sh
+index 8b0827f..164c7e0 100644
+--- a/tests/test_snapshot.sh
++++ b/tests/test_snapshot.sh
+@@ -38,4 +38,34 @@ rollback_snapshot "$SNAPSHOT_ID" >/dev/null
+ 
+ assert_false snapshot_exists "$SNAPSHOT_ID"
+ 
++########################################
++# Combined package + config snapshot
++########################################
++
++CURRENT_SNAPSHOT_ID=""
++CONFIG_BACKUPS=()
++INSTALLED_PACKAGES=(fake-pkg-three)
++
++TARGET="${HYPRX_TARGET_HOME:-$HOME}/.config/hypr"
++rm -rf "$TARGET"
++
++# Deploy once (nothing existed before -> "false" entry)
++deploy_config_dir hypr
++
++save_snapshot
++
++SNAPSHOT_ID="$LAST_SNAPSHOT_ID"
++
++# Config entry should be recorded correctly
++CONFIGS_OUT="$(snapshot_configs "$SNAPSHOT_ID")"
++assert_equals "hypr:false" "$CONFIGS_OUT"
++
++assert_true test -d "$TARGET"
++
++# Rolling back should remove the newly-deployed dir entirely (it didn't exist before)
++rollback_snapshot "$SNAPSHOT_ID" >/dev/null
++
++assert_false test -d "$TARGET"
++assert_false snapshot_exists "$SNAPSHOT_ID"
++
+ echo "Snapshot/rollback OK."
