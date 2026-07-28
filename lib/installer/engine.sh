@@ -51,6 +51,18 @@ run_install_engine() {
     install_packages || return 1
 
     #
+    # Deploy configs
+    #
+
+    deploy_configs || return 1
+
+    #
+    # Snapshot
+    #
+
+    save_snapshot
+
+    #
     # Generate report
     #
 
