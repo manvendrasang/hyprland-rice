@@ -1,0 +1,188 @@
+diff --git a/database/package-requirements.conf b/database/package-requirements.conf
+new file mode 100644
+index 0000000..3e5e861
+--- /dev/null
++++ b/database/package-requirements.conf
+@@ -0,0 +1,3 @@
++steam=Requires the [multilib] repository. Uncomment it in /etc/pacman.conf, then run: sudo pacman -Sy
++lib32-nvidia-utils=Requires the [multilib] repository. Uncomment it in /etc/pacman.conf, then run: sudo pacman -Sy
++wine=Requires the [multilib] repository for full 32-bit support. Uncomment it in /etc/pacman.conf, then run: sudo pacman -Sy
+diff --git a/lib/bootstrap.sh b/lib/bootstrap.sh
+index 2f5f593..6c0cc50 100755
+--- a/lib/bootstrap.sh
++++ b/lib/bootstrap.sh
+@@ -58,6 +58,7 @@ done
+ 
+ for file in \
+     replacements.sh \
++    requirements.sh \
+     failure_logger.sh \
+     retry.sh \
+     recovery.sh \
+diff --git a/lib/installer/deploy.sh b/lib/installer/deploy.sh
+index 2df4b71..e9dc035 100644
+--- a/lib/installer/deploy.sh
++++ b/lib/installer/deploy.sh
+@@ -15,6 +15,7 @@ deploy_config_dir() {
+ 
+     local source="$HYPRX_CONFIG/$dir"
+     local target="${HYPRX_TARGET_HOME:-$HOME}/.config/$dir"
++    local staging="${target}.hyprx-staging.$$"
+ 
+     if [[ ! -d "$source" ]]; then
+         warn "Missing config source: $dir"
+@@ -23,6 +24,13 @@ deploy_config_dir() {
+ 
+     mkdir -p "$(dirname "$target")"
+ 
++    # Build the full new config in a staging dir first. This can take
++    # real time for large configs, so it must never happen with the
++    # live target already removed - a config watcher (e.g. Hyprland's
++    # live reload) could catch the target mid-copy or briefly missing.
++    rm -rf "$staging"
++    cp -r "$source" "$staging"
++
+     if [[ -e "$target" ]]; then
+ 
+         local backup
+@@ -30,7 +38,11 @@ deploy_config_dir() {
+ 
+         mkdir -p "$(dirname "$backup")"
+         rm -rf "$backup"
+-        cp -r "$target" "$backup"
++
++        # Swap: two fast renames instead of rm-then-copy, so the
++        # target is only ever missing for a moment, not seconds.
++        mv "$target" "$backup"
++        mv "$staging" "$target"
+ 
+         record_config_backup "$dir" "true"
+ 
+@@ -38,13 +50,12 @@ deploy_config_dir() {
+ 
+     else
+ 
++        mv "$staging" "$target"
++
+         record_config_backup "$dir" "false"
+ 
+     fi
+ 
+-    rm -rf "$target"
+-    cp -r "$source" "$target"
+-
+     success "Deployed $dir"
+ 
+ }
+diff --git a/lib/installer/report.sh b/lib/installer/report.sh
+index a85b6ef..211316d 100755
+--- a/lib/installer/report.sh
++++ b/lib/installer/report.sh
+@@ -107,7 +107,17 @@ generate_report() {
+ 
+             if (( ${#arr[@]} > 0 )); then
+                 for item in "${arr[@]}"; do
+-                    echo "$symbol $item"
++                    if [[ "$title" == "Invalid Packages" ]]; then
++                        local hint
++                        hint="$(get_requirement_hint "$item")"
++                        if [[ -n "$hint" ]]; then
++                            echo "$symbol $item — $hint"
++                        else
++                            echo "$symbol $item"
++                        fi
++                    else
++                        echo "$symbol $item"
++                    fi
+                 done
+             else
+                 echo "None"
+diff --git a/lib/installer/requirements.sh b/lib/installer/requirements.sh
+new file mode 100644
+index 0000000..03a0f24
+--- /dev/null
++++ b/lib/installer/requirements.sh
+@@ -0,0 +1,43 @@
++#!/usr/bin/env bash
++
++declare -gA PACKAGE_REQUIREMENTS
++
++load_requirements() {
++
++    PACKAGE_REQUIREMENTS=()
++
++    local db="$ROOT_DIR/database/package-requirements.conf"
++
++    [[ -f "$db" ]] || return 0
++
++    while IFS= read -r line; do
++
++        [[ -z "$line" ]] && continue
++        [[ "$line" =~ ^# ]] && continue
++
++        local pkg
++        local hint
++
++        IFS="=" read -r pkg hint <<< "$line"
++
++        pkg="$(echo "$pkg" | xargs)"
++        hint="$(echo "$hint" | xargs)"
++
++        [[ -z "$pkg" ]] && continue
++        [[ -z "$hint" ]] && continue
++
++        PACKAGE_REQUIREMENTS["$pkg"]="$hint"
++
++    done < "$db"
++
++}
++
++get_requirement_hint() {
++
++    local pkg="$1"
++
++    echo "${PACKAGE_REQUIREMENTS[$pkg]:-}"
++
++}
++
++load_requirements
+diff --git a/lib/installer/validator.sh b/lib/installer/validator.sh
+index b97fb17..a7d4b84 100755
+--- a/lib/installer/validator.sh
++++ b/lib/installer/validator.sh
+@@ -67,6 +67,11 @@ validate_packages() {
+ 
+         error "Package not found: $pkg"
+ 
++        local hint
++        hint="$(get_requirement_hint "$pkg")"
++
++        [[ -n "$hint" ]] && warn "  → $hint"
++
+         INVALID_PACKAGES+=("$pkg")
+ 
+     done
+diff --git a/tests/test_requirements.sh b/tests/test_requirements.sh
+new file mode 100644
+index 0000000..d5f29e1
+--- /dev/null
++++ b/tests/test_requirements.sh
+@@ -0,0 +1,18 @@
++#!/usr/bin/env bash
++
++set -euo pipefail
++
++source "$(dirname "$0")/common.sh"
++
++echo "Testing package requirements..."
++
++# steam is a known entry with a multilib hint
++HINT="$(get_requirement_hint steam)"
++assert_not_empty "$HINT"
++assert_true grep -q "multilib" <<< "$HINT"
++
++# an unknown package should return empty, not error
++UNKNOWN_HINT="$(get_requirement_hint totally-not-a-real-package)"
++assert_equals "" "$UNKNOWN_HINT"
++
++echo "Requirements database OK."

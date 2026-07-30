@@ -107,7 +107,17 @@ generate_report() {
 
             if (( ${#arr[@]} > 0 )); then
                 for item in "${arr[@]}"; do
-                    echo "$symbol $item"
+                    if [[ "$title" == "Invalid Packages" ]]; then
+                        local hint
+                        hint="$(get_requirement_hint "$item")"
+                        if [[ -n "$hint" ]]; then
+                            echo "$symbol $item — $hint"
+                        else
+                            echo "$symbol $item"
+                        fi
+                    else
+                        echo "$symbol $item"
+                    fi
                 done
             else
                 echo "None"

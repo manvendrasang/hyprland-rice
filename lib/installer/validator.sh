@@ -67,6 +67,11 @@ validate_packages() {
 
         error "Package not found: $pkg"
 
+        local hint
+        hint="$(get_requirement_hint "$pkg")"
+
+        [[ -n "$hint" ]] && warn "  → $hint"
+
         INVALID_PACKAGES+=("$pkg")
 
     done

@@ -58,6 +58,7 @@ done
 
 for file in \
     replacements.sh \
+    requirements.sh \
     failure_logger.sh \
     retry.sh \
     recovery.sh \
