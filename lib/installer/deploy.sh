@@ -15,6 +15,7 @@ deploy_config_dir() {
 
     local source="$HYPRX_CONFIG/$dir"
     local target="${HYPRX_TARGET_HOME:-$HOME}/.config/$dir"
+    local staging="${target}.hyprx-staging.$$"
 
     if [[ ! -d "$source" ]]; then
         warn "Missing config source: $dir"
@@ -23,6 +24,13 @@ deploy_config_dir() {
 
     mkdir -p "$(dirname "$target")"
 
+    # Build the full new config in a staging dir first. This can take
+    # real time for large configs, so it must never happen with the
+    # live target already removed - a config watcher (e.g. Hyprland's
+    # live reload) could catch the target mid-copy or briefly missing.
+    rm -rf "$staging"
+    cp -r "$source" "$staging"
+
     if [[ -e "$target" ]]; then
 
         local backup
@@ -30,7 +38,11 @@ deploy_config_dir() {
 
         mkdir -p "$(dirname "$backup")"
         rm -rf "$backup"
-        cp -r "$target" "$backup"
+
+        # Swap: two fast renames instead of rm-then-copy, so the
+        # target is only ever missing for a moment, not seconds.
+        mv "$target" "$backup"
+        mv "$staging" "$target"
 
         record_config_backup "$dir" "true"
 
@@ -38,12 +50,11 @@ deploy_config_dir() {
 
     else
 
+        mv "$staging" "$target"
+
         record_config_backup "$dir" "false"
 
     fi
-
-    rm -rf "$target"
-    cp -r "$source" "$target"
 
     success "Deployed $dir"
 
