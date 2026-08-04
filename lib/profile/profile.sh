@@ -106,8 +106,63 @@ print_profile() {
 }
 
 ########################################
-# Print profile modules
+# Create profile
 ########################################
+
+create_profile() {
+
+    local id="$1"
+    local name="$2"
+    local description="$3"
+    shift 3
+    local modules=("$@")
+
+    if [[ -z "$id" ]]; then
+        error "Profile id is required."
+        return 1
+    fi
+
+    if profile_exists "$id"; then
+        error "Profile already exists: $id"
+        return 1
+    fi
+
+    if (( ${#modules[@]} == 0 )); then
+        error "At least one module is required."
+        return 1
+    fi
+
+    local module
+
+    for module in "${modules[@]}"; do
+        if [[ ! -d "$HYPRX_MODULES/$module" ]]; then
+            error "Module '$module' does not exist."
+            return 1
+        fi
+    done
+
+    local dir="$PROFILE_ROOT/$id"
+
+    mkdir -p "$dir"
+
+    {
+        echo "NAME=${name:-$id}"
+        echo "ID=$id"
+        echo "DESCRIPTION=${description:-}"
+        echo "VERSION=1.0"
+    } > "$dir/profile.conf"
+
+    printf "%s\n" "${modules[@]}" > "$dir/modules.list"
+
+    if ! validate_profile "$id"; then
+        error "Profile failed validation after creation, removing."
+        rm -rf "$dir"
+        return 1
+    fi
+
+    success "Profile created: $id"
+
+}
 
 profile_modules() {
 

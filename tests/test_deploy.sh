@@ -6,6 +6,8 @@ source "$(dirname "$0")/common.sh"
 
 echo "Testing config deployment..."
 
+init_snapshot_id
+
 TARGET="${HYPRX_TARGET_HOME:-$HOME}/.config/hypr"
 
 # Ensure clean slate: target should not exist yet
