@@ -64,4 +64,5 @@ tmp/
 
 # OS
 .DS_Store
-Thumbs.db*.patch
+Thumbs.db
+*.patch
