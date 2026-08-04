@@ -6,6 +6,8 @@ source "$(dirname "$0")/common.sh"
 
 echo "Testing snapshot/rollback..."
 
+init_snapshot_id
+
 # Stub remove_package so this test never touches real packages
 remove_package() {
     echo "stub-removed: $1"
@@ -42,7 +44,7 @@ assert_false snapshot_exists "$SNAPSHOT_ID"
 # Combined package + config snapshot
 ########################################
 
-CURRENT_SNAPSHOT_ID=""
+init_snapshot_id
 CONFIG_BACKUPS=()
 INSTALLED_PACKAGES=(fake-pkg-three)
 

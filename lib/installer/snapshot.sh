@@ -19,10 +19,40 @@ CONFIG_BACKUPS=()
 
 CURRENT_SNAPSHOT_ID=""
 
+########################################
+# Initialize the snapshot id for this run
+########################################
+#
+# MUST be called directly (init_snapshot_id),
+# never via $(...). Command substitution
+# always forks a subshell, so any mutation
+# made only inside a $(...) call is discarded
+# the moment that subshell exits - the id
+# would silently regenerate on every read,
+# letting packages and configs from the same
+# install drift onto different snapshot ids.
+#
+
+init_snapshot_id() {
+
+    CURRENT_SNAPSHOT_ID="$(date +%Y%m%d-%H%M%S)"
+
+}
+
+########################################
+# Read the current snapshot id
+########################################
+#
+# Safe to call via $(...) - this only reads,
+# it never mutates. init_snapshot_id must
+# have already run directly before this.
+#
+
 current_snapshot_id() {
 
     if [[ -z "$CURRENT_SNAPSHOT_ID" ]]; then
-        CURRENT_SNAPSHOT_ID="$(date +%Y%m%d-%H%M%S)"
+        warn "current_snapshot_id read before init_snapshot_id was called"
+        init_snapshot_id
     fi
 
     echo "$CURRENT_SNAPSHOT_ID"

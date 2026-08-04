@@ -7,6 +7,16 @@ run_install_engine() {
     divider
 
     #
+    # Snapshot id for this run
+    #
+    # Must happen via direct call, not $(...),
+    # so the id genuinely persists for every
+    # later read in this same install run.
+    #
+
+    init_snapshot_id
+
+    #
     # Load profile
     #
 
