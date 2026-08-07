@@ -13,21 +13,21 @@ This isn't just a rice — it's an installer framework. Modules declare their ow
 
 ## Getting started
 
-HyprX currently runs directly from a git checkout — there's no packaged release yet.
-
 ```bash
 git clone https://github.com/manvendrasang/hyprland-rice.git
 cd hyprland-rice
-./bin/hyprx help
+./install.sh
 ```
 
-To use the `hyprx` command from anywhere, symlink it onto your `$PATH`:
+This installs HyprX to `~/.local/share/hyprx` and symlinks `hyprx` into `~/.local/bin`. Once installed, `hyprx` is a standalone copy — it no longer depends on which branch you have checked out in your clone, so you can safely switch branches for development without changing what the installed `hyprx` command actually does.
+
+Re-run `./install.sh` any time to update the installed copy to match your current checkout. To remove it:
 
 ```bash
-sudo ln -s "$(pwd)/bin/hyprx" /usr/local/bin/hyprx
+./uninstall.sh
 ```
 
-**Note:** because `hyprx` runs live out of this checkout, whatever branch you have checked out is what actually runs. Switching branches changes behavior immediately. Stay on `master` for day-to-day use; only switch branches when intentionally testing in-progress work.
+This only removes the HyprX tool itself — it does not undo any packages or configs HyprX has installed on your system. Run `hyprx rollback` first if you need that.
 
 ## Commands
 
@@ -111,6 +111,8 @@ Runs the full test suite: unit tests, integration tests against every profile, S
 ### Layout
 
 ```
+install.sh    Installs the hyprx tool itself (not packages)
+uninstall.sh  Removes the installed hyprx tool
 bin/          Entry point (hyprx)
 commands/     One file per CLI command
 lib/          Shared library code
@@ -127,5 +129,5 @@ tests/        Test suite
 ## Known limitations
 
 - Arch Linux only — package management is built around `pacman`/`yay`/`paru`
-- No packaged release yet; runs from a live git checkout (see Getting Started)
+- No distro package yet (AUR, etc.) — `install.sh` gives you a standalone install, but there's no `pacman -S hyprx` style package
 - The `ai` module is an intentional placeholder with no packages defined
