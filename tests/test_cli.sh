@@ -14,10 +14,6 @@ echo "Testing CLI..."
 
 "$CLI" clean >/dev/null
 
-"$CLI" profile list >/dev/null
-
-"$CLI" profile current >/dev/null
-
-"$CLI" profile show developer >/dev/null
+"$CLI" rollback list >/dev/null
 
 echo "CLI OK."

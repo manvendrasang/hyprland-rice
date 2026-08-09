@@ -1,0 +1,35 @@
+# HyprX package list
+# One package per line. Comments start with #.
+
+# Core desktop
+hyprland
+waybar
+rofi
+kitty
+swaync
+thunar
+
+# Development
+git
+neovim
+visual-studio-code-bin
+lazygit
+github-cli
+
+# Gaming
+steam
+mangohud
+gamemode
+
+# Media
+mpv
+vlc
+spotify-launcher
+pavucontrol
+playerctl
+
+# Networking
+networkmanager
+network-manager-applet
+bluez
+bluez-utils

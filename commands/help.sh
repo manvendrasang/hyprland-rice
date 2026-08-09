@@ -7,11 +7,10 @@ Usage:
     hyprx <command> [args]
 
 Commands:
-    install     Install modules for a profile
-    update      Update installed modules
+    install     Install packages and deploy configs
+    update      Update installed packages
     rollback    Undo a previous install
     clean       Clean up temporary/cache files
-    doctor      Diagnose system and module health
-    profile     Manage installation profiles
+    doctor      Diagnose system health
     help        Show this help message
 EOF

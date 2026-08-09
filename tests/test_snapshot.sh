@@ -15,7 +15,6 @@ remove_package() {
 }
 
 INSTALLED_PACKAGES=(fake-pkg-one fake-pkg-two)
-PROFILE="testprofile"
 
 save_snapshot
 

@@ -14,13 +14,12 @@ load_config() {
         source "$CONFIG_FILE"
     fi
 
-    PROFILE="${PROFILE:-developer}"
     THEME="${THEME:-default}"
 
-    export PROFILE
     export THEME
 
     return 0
+
 }
 
 ########################################
@@ -29,12 +28,12 @@ load_config() {
 
 save_config() {
 
-    cat > "$CONFIG_FILE" <<EOF
-PROFILE=$PROFILE
+    cat > "$CONFIG_FILE" <<CONFEOF
 THEME=$THEME
-EOF
+CONFEOF
 
     return 0
+
 }
 
 ########################################
@@ -46,9 +45,6 @@ get_config() {
     local key="$1"
 
     case "$key" in
-        PROFILE)
-            echo "$PROFILE"
-            ;;
         THEME)
             echo "$THEME"
             ;;
@@ -56,6 +52,7 @@ get_config() {
             return 1
             ;;
     esac
+
 }
 
 ########################################
@@ -68,9 +65,6 @@ set_config() {
     local value="$2"
 
     case "$key" in
-        PROFILE)
-            PROFILE="$value"
-            ;;
         THEME)
             THEME="$value"
             ;;
@@ -82,6 +76,7 @@ set_config() {
     save_config
 
     return 0
+
 }
 
 ########################################

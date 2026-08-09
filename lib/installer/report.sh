@@ -9,7 +9,7 @@ generate_report() {
 
     mkdir -p "$(dirname "$report")"
 
-    for _arr in SELECTED_MODULES INSTALLED_PACKAGES SKIPPED_PACKAGES FAILED_PACKAGES INVALID_PACKAGES REPLACED_PACKAGES; do
+    for _arr in INSTALLED_PACKAGES SKIPPED_PACKAGES FAILED_PACKAGES INVALID_PACKAGES REPLACED_PACKAGES; do
         declare -p "$_arr" &>/dev/null || eval "$_arr=()"
     done
 
@@ -59,19 +59,6 @@ generate_report() {
         printf "%02d minutes %02d seconds\n" \
             "$duration_minutes" \
             "$duration_seconds"
-        echo
-
-        echo "Selected Modules"
-        echo "----------------"
-
-        if (( ${#SELECTED_MODULES[@]} > 0 )); then
-            for module in "${SELECTED_MODULES[@]}"; do
-                echo "• $module"
-            done
-        else
-            echo "None"
-        fi
-
         echo
 
         echo "Statistics"

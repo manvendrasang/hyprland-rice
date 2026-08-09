@@ -4,8 +4,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Isolate tests from the real repo state (config/hyprx.conf, modules/, profiles/)
-# so running the suite never mutates tracked files on disk.
+# Isolate tests from the real repo state (config/hyprx.conf) so
+# running the suite never mutates tracked files on disk.
 source "$ROOT_DIR/tests/setup.sh" >/dev/null
 trap 'source "$ROOT_DIR/tests/teardown.sh"' EXIT
 
@@ -42,8 +42,6 @@ echo "========================================="
 echo
 
 run_suite "$ROOT_DIR/tests" "test_*.sh"
-
-run_suite "$ROOT_DIR/tests/integration" "install_*.sh"
 
 echo
 echo "========================================="

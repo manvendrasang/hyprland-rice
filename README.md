@@ -1,8 +1,8 @@
 # HyprX
 
-A modular, profile-driven installer for a Hyprland desktop on Arch Linux — built around dependency-aware modules, automatic package validation, and safe rollback of anything it changes.
+A single, opinionated Hyprland desktop installer for Arch Linux — one flat configuration, automatic package validation, and safe rollback of anything it changes.
 
-This isn't just a rice — it's an installer framework. Modules declare their own packages, services, and config directories; profiles pick which modules to install; the engine handles ordering, validation, and deployment; and every install run leaves behind a snapshot you can undo.
+There's no profile switching or optional modules — HyprX installs one complete, fixed desktop setup: Hyprland, Waybar, development tools, gaming utilities, media tools, and networking, all in one pass. If you want a different set of packages, edit `packages.list` directly.
 
 ## Requirements
 
@@ -32,55 +32,29 @@ This only removes the HyprX tool itself — it does not undo any packages or con
 ## Commands
 
 ```
-hyprx install              Install modules for the current profile
-hyprx update                Update installed modules
+hyprx install     Install packages and deploy configs
+hyprx update       Update installed packages
 hyprx rollback list         Show available snapshots
 hyprx rollback latest       Undo the most recent install
 hyprx rollback <id>         Undo a specific snapshot
-hyprx clean                 Clean up temporary/cache files
-hyprx doctor                Diagnose system and module health
-hyprx profile list          List available profiles
-hyprx profile current       Show the active profile
-hyprx profile show <name>   Show a profile's modules
-hyprx profile use <name>    Switch the active profile
-hyprx profile create <id>   Create a new profile (interactive, or via flags)
-hyprx help                  Show usage
+hyprx clean        Clean up temporary/cache files
+hyprx doctor       Diagnose system health
+hyprx help         Show usage
 ```
 
-## Profiles
+## What gets installed
 
-A profile is just a named set of modules. Built-in profiles:
+Everything in `packages.list` (one package per line, edit directly to customize):
 
-| Profile | Description |
-|---|---|
-| `developer` | Development workstation |
-| `gaming` | Gaming workstation |
-| `laptop` | Laptop-oriented setup |
-| `minimal` | Minimal Hyprland installation |
-| `custom` | User-defined, empty by default |
+- **Desktop**: Hyprland, Waybar, Rofi, Kitty, SwayNC, Thunar
+- **Development**: git, neovim, VS Code, lazygit, GitHub CLI
+- **Gaming**: Steam, GameMode, MangoHud
+- **Media**: mpv, VLC, Spotify (via spotify-launcher), pavucontrol, playerctl
+- **Networking**: NetworkManager, Bluetooth (bluez)
 
-Create your own:
+Services enabled: `bluetooth`, `docker`, `NetworkManager`, `pipewire` (see `services.list`).
 
-```bash
-hyprx profile create work --name "Work Setup" --description "No gaming, no media" --modules "desktop,development"
-```
-
-Or run it with no flags for an interactive prompt that lists available modules to pick from.
-
-## Modules
-
-Each module is a directory under `modules/` with a `module.conf` describing its metadata, plus a `packages.list` (one package per line) and optionally a `services.list` and a set of config directories to deploy.
-
-| Module | Optional | Depends on | What it installs |
-|---|---|---|---|
-| `desktop` | No | — | Hyprland, Waybar, Rofi, Kitty, Dunst — plus deploys `~/.config/hypr` and `~/.config/waybar` |
-| `gaming` | Yes | `desktop` | Steam, GameMode, MangoHud |
-| `development` | Yes | `desktop` | Developer tooling |
-| `media` | Yes | `desktop` | mpv, VLC, Spotify, pavucontrol, playerctl |
-| `networking` | Yes | `desktop` | NetworkManager, Bluetooth |
-| `ai` | Yes | `desktop` | Currently an empty placeholder — no packages defined yet |
-
-`desktop` is the only module that deploys dotfiles right now. A module opts into config deployment by setting `CONFIG_DIRS="dirname1 dirname2"` in its `module.conf` — no code changes needed to add more later.
+Dotfiles deployed to `~/.config/`: `hypr` and `waybar` (see `config/`).
 
 Some packages need extra system setup before they'll install — for example `steam` requires the `multilib` repository enabled in `/etc/pacman.conf`. When a package fails validation for a known reason like this, HyprX tells you exactly what to do about it instead of just saying "not found."
 
@@ -106,28 +80,26 @@ Config deployment is atomic — new content is fully staged before anything live
 bash tests/run.sh
 ```
 
-Runs the full test suite: unit tests, integration tests against every profile, ShellCheck, and syntax checks. CI runs the same suite on every push and pull request, split into a `Lint` job and a `Unit Tests` job (the latter runs inside an Arch Linux container, since `pacman`-dependent tests need a real Arch environment).
+Runs the full test suite: unit tests, ShellCheck, and syntax checks. CI runs the same suite on every push and pull request, split into a `Lint` job and a `Unit Tests` job (the latter runs inside an Arch Linux container, since `pacman`-dependent tests need a real Arch environment).
 
 ### Layout
 
 ```
-install.sh    Installs the hyprx tool itself (not packages)
-uninstall.sh  Removes the installed hyprx tool
-bin/          Entry point (hyprx)
-commands/     One file per CLI command
-lib/          Shared library code
-  installer/  Install engine, validation, snapshots, config deploy
-  profile/    Profile loading and validation
-  module/     Module loading and validation
-modules/      Installable modules (packages, services, configs)
-profiles/     Profile definitions (which modules to install)
-config/       Dotfiles that get deployed by modules
-database/     Small lookup tables (package replacements, requirement hints)
-tests/        Test suite
+packages.list  Flat list of everything HyprX installs
+services.list  Flat list of systemd services HyprX enables
+install.sh     Installs the hyprx tool itself (not packages)
+uninstall.sh   Removes the installed hyprx tool
+bin/           Entry point (hyprx)
+commands/      One file per CLI command
+lib/           Shared library code
+  installer/   Install engine, validation, snapshots, config deploy
+config/        Dotfiles that get deployed (hypr, waybar) plus hyprx.conf
+database/      Small lookup tables (package replacements, requirement hints)
+tests/         Test suite
 ```
 
 ## Known limitations
 
 - Arch Linux only — package management is built around `pacman`/`yay`/`paru`
 - No distro package yet (AUR, etc.) — `install.sh` gives you a standalone install, but there's no `pacman -S hyprx` style package
-- The `ai` module is an intentional placeholder with no packages defined
+- One fixed configuration — no profiles or optional modules; edit `packages.list`/`services.list` directly to customize

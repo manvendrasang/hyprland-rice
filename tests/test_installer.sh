@@ -9,30 +9,14 @@ echo "Testing installer pipeline..."
 # Bootstrap
 [[ "${HYPRX_INITIALIZED:-false}" == "true" ]]
 
-# Profiles
-discover_profiles
-[[ ${#AVAILABLE_PROFILES[@]} -gt 0 ]]
+# The flat package manifest should exist and resolve into a queue
+resolve_packages
 
-# Modules
-discover_modules
-[[ ${#AVAILABLE_MODULES[@]} -gt 0 ]]
+[[ ${#PACKAGE_QUEUE[@]} -gt 0 ]]
 
-# Validate default profile
-validate_profile developer
+# No duplicates after resolution
+UNIQUE_COUNT="$(printf "%s\n" "${PACKAGE_QUEUE[@]}" | sort -u | wc -l)"
 
-# Load profile
-load_profile developer
-
-[[ "${CURRENT_PROFILE}" == "developer" ]]
-[[ ${#SELECTED_MODULES[@]} -gt 0 ]]
-
-# Every module in the profile should exist and load
-for module in "${SELECTED_MODULES[@]}"; do
-
-    module_exists "$module"
-
-    load_module "$module"
-
-done
+[[ "$UNIQUE_COUNT" -eq "${#PACKAGE_QUEUE[@]}" ]]
 
 echo "Installer pipeline OK."
