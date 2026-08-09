@@ -16,14 +16,6 @@ save_install_state() {
 
         echo
 
-        echo "[MODULES]"
-
-        for module in "${SELECTED_MODULES[@]}"; do
-            echo "$module"
-        done
-
-        echo
-
         echo "[PENDING]"
 
         for pkg in "${PACKAGE_QUEUE[@]}"; do
@@ -43,7 +35,6 @@ resume_install() {
     [[ -f "$STATE_FILE" ]] || return 1
 
     PACKAGE_QUEUE=()
-    SELECTED_MODULES=()
 
     local section=""
 
@@ -58,11 +49,6 @@ resume_install() {
                 PACKAGE_MANAGER="${line#*=}"
                 ;;
 
-            "[MODULES]")
-
-                section="modules"
-                ;;
-
             "[PENDING]")
 
                 section="packages"
@@ -71,11 +57,6 @@ resume_install() {
             *)
 
                 case "$section" in
-
-                    modules)
-
-                        SELECTED_MODULES+=("$line")
-                        ;;
 
                     packages)
 

@@ -4,22 +4,17 @@ resolve_packages() {
 
     PACKAGE_QUEUE=()
 
-    local module
-    local file
+    local file="$ROOT_DIR/packages.list"
     local pkg
 
-    for module in "${SELECTED_MODULES[@]}"; do
-
-        file="$ROOT_DIR/modules/$module/packages.list"
-
-        [[ -f "$file" ]] || continue
+    if [[ -f "$file" ]]; then
 
         while IFS= read -r pkg; do
             [[ -z "$pkg" || "$pkg" =~ ^# ]] && continue
             PACKAGE_QUEUE+=("$pkg")
         done <"$file"
 
-    done
+    fi
 
     mapfile -t PACKAGE_QUEUE < <(
         printf "%s\n" "${PACKAGE_QUEUE[@]}" | sort -u

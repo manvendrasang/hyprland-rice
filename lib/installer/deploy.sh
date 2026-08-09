@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 
 ########################################
+# Config directories to deploy
+########################################
+
+HYPRX_CONFIG_TARGETS="hypr waybar"
+
+########################################
 # Deploy a single config directory
 ########################################
 #
@@ -61,37 +67,17 @@ deploy_config_dir() {
 }
 
 ########################################
-# Deploy configs for a single module
-########################################
-
-deploy_module_config() {
-
-    local module="$1"
-
-    load_module "$module" || return 1
-
-    [[ -n "${CONFIG_DIRS:-}" ]] || return 0
-
-    local dir
-
-    for dir in $CONFIG_DIRS; do
-        deploy_config_dir "$dir"
-    done
-
-}
-
-########################################
-# Deploy configs for every selected module
+# Deploy every configured directory
 ########################################
 
 deploy_configs() {
 
     section "Deploying configuration"
 
-    local module
+    local dir
 
-    for module in "${SELECTED_MODULES[@]}"; do
-        deploy_module_config "$module"
+    for dir in $HYPRX_CONFIG_TARGETS; do
+        deploy_config_dir "$dir"
     done
 
 }

@@ -1,0 +1,7 @@
+# HyprX service list
+# One systemd service per line. Comments start with #.
+
+bluetooth
+docker
+NetworkManager
+pipewire

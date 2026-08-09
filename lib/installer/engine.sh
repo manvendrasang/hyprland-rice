@@ -17,14 +17,6 @@ run_install_engine() {
     init_snapshot_id
 
     #
-    # Load profile
-    #
-
-    info "Loading profile: $PROFILE"
-
-    load_profile "$PROFILE" || return 1
-
-    #
     # Preflight
     #
 

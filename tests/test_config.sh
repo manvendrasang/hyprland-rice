@@ -2,12 +2,12 @@
 
 source tests/common.sh
 
-assert_equals developer "$(get_config PROFILE)"
+assert_equals default "$(get_config THEME)"
 
-set_config PROFILE gaming
+set_config THEME dark
 
 load_config
 
-assert_equals gaming "$PROFILE"
+assert_equals dark "$THEME"
 
-set_config PROFILE developer
+set_config THEME default

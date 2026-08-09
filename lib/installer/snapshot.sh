@@ -116,7 +116,6 @@ save_snapshot() {
     local file="$SNAPSHOT_DIR/$id.snapshot"
 
     {
-        echo "PROFILE=${PROFILE:-unknown}"
         echo "DATE=$(date)"
         echo "PACKAGES=${#INSTALLED_PACKAGES[@]}"
         echo "CONFIGS=${#CONFIG_BACKUPS[@]}"
@@ -140,20 +139,19 @@ list_snapshots() {
 
     [[ -d "$SNAPSHOT_DIR" ]] || return 0
 
-    local file id profile date pkg_count cfg_count
+    local file id date pkg_count cfg_count
 
     for file in "$SNAPSHOT_DIR"/*.snapshot; do
 
         [[ -f "$file" ]] || continue
 
         id="$(basename "$file" .snapshot)"
-        profile="$(grep '^PROFILE=' "$file" | cut -d= -f2-)"
         date="$(grep '^DATE=' "$file" | cut -d= -f2-)"
         pkg_count="$(grep '^PACKAGES=' "$file" | cut -d= -f2-)"
         cfg_count="$(grep '^CONFIGS=' "$file" | cut -d= -f2-)"
 
-        printf "%-16s  %-12s  %-4s pkgs  %-4s configs  %s\n" \
-            "$id" "$profile" "$pkg_count" "$cfg_count" "$date"
+        printf "%-16s  %-4s pkgs  %-4s configs  %s\n" \
+            "$id" "$pkg_count" "$cfg_count" "$date"
 
     done
 

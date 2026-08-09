@@ -6,13 +6,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 source "$ROOT_DIR/lib/bootstrap.sh"
 
-discover_modules
-discover_profiles
+resolve_packages
 
-validate_profile developer
+[[ ${#PACKAGE_QUEUE[@]} -gt 0 ]]
 
-load_profile developer
-
-print_module desktop >/dev/null
+[[ -f "$ROOT_DIR/services.list" ]]
 
 echo "Smoke test passed."

@@ -12,7 +12,6 @@ echo
 section "Configuration"
 
 table_header
-table_row "Profile"        "${PROFILE:-Unknown}"
 table_row "Theme"          "${THEME:-Default}"
 table_row "Terminal"       "${TERMINAL:-Unknown}"
 table_row "Browser"        "${BROWSER:-Unknown}"
@@ -132,41 +131,6 @@ if [[ -f /var/lib/pacman/db.lck ]]; then
 else
     success "Pacman database unlocked"
 fi
-
-echo
-
-########################################
-# Modules
-########################################
-
-section "Modules"
-
-discover_modules
-
-table_header
-
-for module in "${AVAILABLE_MODULES[@]}"; do
-
-    if load_module "$module"; then
-
-        status="OK"
-
-        [[ ! -f "$HYPRX_MODULES/$module/module.conf" ]] && status="Missing module.conf"
-        [[ ! -f "$HYPRX_MODULES/$module/$PACKAGE_FILE" ]] && status="Missing $PACKAGE_FILE"
-
-        if [[ -n "${SERVICE_FILE:-}" ]]; then
-            [[ ! -f "$HYPRX_MODULES/$module/$SERVICE_FILE" ]] && status="Missing $SERVICE_FILE"
-        fi
-
-    else
-
-        status="Invalid"
-
-    fi
-
-    table_row "$module" "$status"
-
-done
 
 echo
 
