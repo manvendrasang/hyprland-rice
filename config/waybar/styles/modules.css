@@ -15,7 +15,6 @@
 #temperature,
 #network,
 #custom-bluetooth,
-#custom-updates,
 #pulseaudio,
 #battery,
 #custom-clipboard,
@@ -292,46 +291,6 @@ tooltip label {
 
 #custom-bluetooth.off {
     color: @grey1;
-}
-
-#custom-updates {
-    color: @fg;
-}
-
-#custom-updates.ok {
-    color: @green;
-}
-
-#custom-updates.warn {
-    color: @yellow;
-}
-
-#custom-updates.critical {
-    color: @red;
-}
-
-#custom-bluetooth {
-    color: @blue;
-}
-
-/*
- * UPDATES
- */
-
-#custom-updates {
-    color: @fg;
-}
-
-#custom-updates.ok {
-    color: @green;
-}
-
-#custom-updates.warn {
-    color: @yellow;
-}
-
-#custom-updates.critical {
-    color: @red;
 }
 
 /*

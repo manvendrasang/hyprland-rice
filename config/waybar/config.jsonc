@@ -27,7 +27,6 @@
       "temperature",
       "network",
       "custom/bluetooth",
-      "custom/updates",
       "custom/clipboard",
       "pulseaudio",
       "battery",
@@ -45,19 +44,22 @@
     "custom/gpu": {
       "exec": "$HOME/.config/waybar/scripts/gpu.sh",
       "return-type": "json",
-      "interval": 2
+      "interval": 2,
+      "on-click": "mission-center"
     },
 
     "clock": {
       "format": "{:%a %d %b   %H:%M}",
       "tooltip-format": "{:%A, %d %B %Y}",
-      "interval": 60
+      "interval": 60,
+      "on-click": "rofi -show calendar"
     },
 
     "cpu": {
       "exec": "$HOME/.config/waybar/scripts/cpu.sh",
       "format": "󰍛 {}%",
-      "interval": 2
+      "interval": 2,
+      "on-click": "mission-center"
     },
 
     "custom/clipboard": {
@@ -71,18 +73,21 @@
     "memory": {
       "exec": "$HOME/.config/waybar/scripts/memory.sh",
       "format": "󰘚 {}%",
-      "interval": 2
+      "interval": 2,
+      "on-click": "mission-center"
     },
 
     "temperature": {
       "critical-threshold": 80,
-      "format": "󰔄 {temperatureC}°"
+      "format": "󰔄 {temperatureC}°",
+      "on-click": "mission-center"
     },
 
     "network": {
       "format-wifi": "󰖩 {signalStrength}%",
       "format-ethernet": "󰈀",
-      "format-disconnected": "󰖪"
+      "format-disconnected": "󰖪",
+      "on-click": "nm-connection-editor"
     },
 
     "pulseaudio": {
@@ -92,15 +97,8 @@
         "",
         "",
         ""
-      ]
-    },
-
-    "custom/updates": {
-      "exec": "$HOME/.config/waybar/scripts/updates.sh",
-      "return-type": "json",
-      "interval": 1800,
-      "on-click": "kitty --hold -e yay",
-      "on-click-right": "kitty --hold -e yay -Syu"
+      ],
+      "on-click": "pavucontrol"
     },
 
     "custom/music": {
@@ -109,7 +107,7 @@
     "interval": 1,
       "on-click": "playerctl play-pause",
       "on-click-middle": "playerctl stop",
-      "on-click-right": "spotify",
+      "on-click-right": "spotify-launcher",
       "on-scroll-up": "playerctl next",
       "on-scroll-down": "playerctl previous",
       "escape": true
