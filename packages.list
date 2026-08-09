@@ -8,6 +8,14 @@ rofi
 kitty
 swaync
 thunar
+mission-center
+
+# Networking
+networkmanager
+network-manager-applet
+nm-connection-editor
+bluez
+bluez-utils
 
 # Development
 git
@@ -27,9 +35,3 @@ vlc
 spotify-launcher
 pavucontrol
 playerctl
-
-# Networking
-networkmanager
-network-manager-applet
-bluez
-bluez-utils
