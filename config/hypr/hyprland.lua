@@ -388,3 +388,51 @@ hl.window_rule({
 	move = "20 monitor_h-120",
 	float = true,
 })
+
+-- Waybar widget popups: small floating boxes, not tiled full-size
+-- (Hyprland tiles new windows by default, which is why these looked
+-- "full screen" before - these apps aren't actually large themselves)
+
+hl.window_rule({
+	name = "float-nm-connection-editor",
+	match = { class = "^[Nn]m-connection-editor$" },
+
+	float = true,
+	size = "450 550",
+	center = true,
+	rounding = 12,
+})
+
+hl.window_rule({
+	name = "float-pavucontrol",
+	match = { class = "^[Pp]avucontrol$" },
+
+	float = true,
+	size = "450 500",
+	center = true,
+	rounding = 12,
+})
+
+hl.window_rule({
+	name = "float-mission-center",
+	match = { class = "^io\\.missioncenter\\.MissionCenter$" },
+
+	float = true,
+	size = "800 600",
+	center = true,
+	rounding = 12,
+})
+
+hl.window_rule({
+	name = "float-blueman-manager",
+	match = { class = "^[Bb]lueman-manager$" },
+
+	float = true,
+	size = "450 550",
+	center = true,
+	rounding = 12,
+})
+
+-- Maximize/restore whichever window is currently focused - useful for
+-- the small popups above when you need more room temporarily
+hl.bind(mainMod .. " + M", hl.dsp.window.fullscreen({ mode = "maximized", action = "toggle" }))
