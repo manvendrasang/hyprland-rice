@@ -45,7 +45,7 @@
       "exec": "$HOME/.config/waybar/scripts/gpu.sh",
       "return-type": "json",
       "interval": 2,
-      "on-click": "mission-center"
+      "on-click": "$HOME/.config/waybar/scripts/system-monitor.sh"
     },
 
     "clock": {
@@ -59,7 +59,7 @@
       "exec": "$HOME/.config/waybar/scripts/cpu.sh",
       "format": "󰍛 {}%",
       "interval": 2,
-      "on-click": "mission-center"
+      "on-click": "$HOME/.config/waybar/scripts/system-monitor.sh"
     },
 
     "custom/clipboard": {
@@ -74,13 +74,13 @@
       "exec": "$HOME/.config/waybar/scripts/memory.sh",
       "format": "󰘚 {}%",
       "interval": 2,
-      "on-click": "mission-center"
+      "on-click": "$HOME/.config/waybar/scripts/system-monitor.sh"
     },
 
     "temperature": {
       "critical-threshold": 80,
       "format": "󰔄 {temperatureC}°",
-      "on-click": "mission-center"
+      "on-click": "$HOME/.config/waybar/scripts/system-monitor.sh"
     },
 
     "network": {
