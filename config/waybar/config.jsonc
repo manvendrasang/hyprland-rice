@@ -87,7 +87,7 @@
       "format-wifi": "󰖩 {signalStrength}%",
       "format-ethernet": "󰈀",
       "format-disconnected": "󰖪",
-      "on-click": "nm-connection-editor"
+      "on-click": "$HOME/.config/waybar/scripts/wifi-manager.sh"
     },
 
     "pulseaudio": {
@@ -98,7 +98,7 @@
         "",
         ""
       ],
-      "on-click": "pavucontrol"
+      "on-click": "$HOME/.config/waybar/scripts/sound-manager.sh"
     },
 
     "custom/music": {
