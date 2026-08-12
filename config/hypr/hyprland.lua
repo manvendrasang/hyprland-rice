@@ -283,7 +283,7 @@ hl.bind(secondMod .. " + down", hl.dsp.window.move({ direction = "down" }))
 
 -- Toggle Window
 hl.bind(secondMod .. " + T", hl.dsp.window.float({ action = "toggle" }))
-hl.bind(secondMod .. " + F", hl.dsp.window.fullscreen({ mode = "maximized" }))
+hl.bind(secondMod .. " + F", hl.dsp.window.fullscreen({ mode = "maximized", action = "toggle" }))
 
 -- Screenshot
 hl.bind(mainMod .. " + Print", hl.dsp.exec_cmd([[grim -g "$(slurp)" - | wl-copy]]))
@@ -432,7 +432,3 @@ hl.window_rule({
 	center = true,
 	rounding = 12,
 })
-
--- Maximize/restore whichever window is currently focused - useful for
--- the small popups above when you need more room temporarily
-hl.bind(mainMod .. " + M", hl.dsp.window.fullscreen({ mode = "maximized", action = "toggle" }))
