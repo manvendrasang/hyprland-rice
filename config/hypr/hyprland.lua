@@ -46,6 +46,7 @@ hl.on("hyprland.start", function()
 	hl.exec_cmd("pkill hyprpaper; hyprpaper")
 	hl.exec_cmd("waybar || waybar")
 	hl.exec_cmd("swaync")
+	hl.exec_cmd("hypridle")
 end)
 -------------------------------
 ---- ENVIRONMENT VARIABLES ----
@@ -262,6 +263,7 @@ hl.bind(
 	hl.dsp.exec_cmd("command -v hyprshutdown >/dev/null 2>&1 && hyprshutdown || hyprctl dispatch 'hl.dsp.exit()'")
 )
 hl.bind(mainMod .. " + F", hl.dsp.exec_cmd(fileManager))
+hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("hyprlock"))
 hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
 
 -- hl.bind(mainMod .. " + J", hl.dsp.layout("togglesplit"))    -- dwindle only

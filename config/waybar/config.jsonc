@@ -35,9 +35,9 @@
  
     "custom/logo": {
       "format": "",
-      "tooltip": false,
-      "on-click": "rofi -show drun -show-icons",
-      "on-click-right": "rofi -show run",
+      "tooltip": "Power menu",
+      "on-click": "wlogout",
+      "on-click-right": "rofi -show drun -show-icons",
       "on-click-middle": "kitty"
     },
 

@@ -4,7 +4,7 @@
 # Config directories to deploy
 ########################################
 
-HYPRX_CONFIG_TARGETS="hypr waybar"
+HYPRX_CONFIG_TARGETS="hypr waybar wlogout swaync"
 
 ########################################
 # Deploy a single config directory
