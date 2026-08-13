@@ -1,0 +1,131 @@
+* {
+    all: unset;
+    font-family: "JetBrainsMono Nerd Font", sans-serif;
+    font-size: 14px;
+}
+
+/* The popup layer background itself must be transparent, or floating
+   toasts sit inside a big opaque rectangle regardless of notification
+   styling below. */
+#notification-window-dummy {
+    background: transparent;
+}
+
+.control-center {
+    background: rgba(24, 24, 37, 0.92);
+    border: 1px solid rgba(120, 120, 160, 0.35);
+    border-radius: 16px;
+    padding: 10px;
+}
+
+.control-center-list {
+    background: transparent;
+}
+
+/* Each notification is its own separated, rounded box - not one
+   continuous white panel. */
+.notification-row {
+    margin: 6px 4px;
+    padding: 0;
+    background: transparent;
+}
+
+.notification-row:focus,
+.notification-row:hover {
+    background: transparent;
+}
+
+.notification {
+    background: rgba(36, 36, 52, 0.92);
+    border: 1px solid rgba(120, 120, 160, 0.35);
+    border-radius: 14px;
+    padding: 10px;
+    margin: 0;
+}
+
+.notification-content {
+    background: transparent;
+    padding: 4px;
+}
+
+.notification .summary {
+    color: #cdd6f4;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.notification .body {
+    color: #cdd6f4;
+    opacity: 0.85;
+    font-size: 13px;
+}
+
+.notification .time {
+    color: #cdd6f4;
+    opacity: 0.5;
+    font-size: 11px;
+}
+
+.close-button {
+    background: rgba(243, 139, 168, 0.85);
+    color: #181825;
+    border-radius: 999px;
+    padding: 4px;
+    margin: 6px;
+}
+
+.close-button:hover {
+    background: #f38ba8;
+}
+
+.notification-action {
+    background: rgba(137, 180, 250, 0.15);
+    color: #89b4fa;
+    border-radius: 10px;
+    padding: 6px;
+    margin: 4px;
+}
+
+.notification-action:hover {
+    background: rgba(137, 180, 250, 0.3);
+}
+
+.widget-title {
+    color: #cdd6f4;
+    font-weight: bold;
+    padding: 8px;
+}
+
+.widget-title > button {
+    background: rgba(137, 180, 250, 0.15);
+    color: #89b4fa;
+    border-radius: 10px;
+    padding: 6px 10px;
+}
+
+.widget-dnd {
+    background: transparent;
+    padding: 8px;
+}
+
+.widget-dnd > switch {
+    border-radius: 999px;
+    background: rgba(120, 120, 160, 0.35);
+}
+
+.widget-dnd > switch:checked {
+    background: #89b4fa;
+}
+
+.widget-dnd > switch slider {
+    border-radius: 999px;
+    background: #cdd6f4;
+}
+
+.widget-buttons-grid > flowbox > flowboxchild > button {
+    background: rgba(36, 36, 52, 0.92);
+    border-radius: 12px;
+    color: #cdd6f4;
+    margin: 4px;
+    padding: 8px;
+}

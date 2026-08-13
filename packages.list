@@ -9,6 +9,9 @@ kitty
 swaync
 thunar
 mission-center
+wlogout
+hyprlock
+hypridle
 
 # Networking
 networkmanager
@@ -16,6 +19,8 @@ network-manager-applet
 nm-connection-editor
 bluez
 bluez-utils
+firewalld
+firewall-config
 
 # Development
 git

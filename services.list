@@ -3,5 +3,6 @@
 
 bluetooth
 docker
+firewalld
 NetworkManager
 pipewire
