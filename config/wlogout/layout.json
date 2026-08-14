@@ -1,7 +1,7 @@
 [
 	{
 		"label": "lock",
-		"action": "hyprlock",
+		"action": "sh -c 'command -v hyprlock >/dev/null 2>&1 && hyprlock || notify-send \"HyprX\" \"hyprlock not found. Try: pacman -Q hyprlock\"'",
 		"text": "Lock",
 		"keybind": "l"
 	},
