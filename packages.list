@@ -12,6 +12,8 @@ mission-center
 wlogout
 hyprlock
 hypridle
+cliphist
+wl-clipboard
 
 # Networking
 networkmanager
