@@ -290,8 +290,25 @@ hl.bind(secondMod .. " + T", hl.dsp.window.float({ action = "toggle" }))
 hl.bind(secondMod .. " + F", hl.dsp.window.fullscreen({ mode = "maximized", action = "toggle" }))
 
 -- Screenshot
-hl.bind(mainMod .. " + Print", hl.dsp.exec_cmd([[grim -g "$(slurp)" - | wl-copy]]))
-hl.bind(secondMod .. " + Print", hl.dsp.exec_cmd([[grim -g "$(slurp)" ~/Pictures/Screenshots/$(date +'%Y-%m-%d_%H-%M-%S').png]]))
+-- Print                 = fullscreen, save + copy
+-- mainMod + Print        = region, save + copy
+-- secondMod + Print      = region, open in swappy to annotate (swappy saves/copies itself)
+hl.bind(
+	"Print",
+	hl.dsp.exec_cmd(
+		[[mkdir -p ~/Pictures/Screenshots && f=~/Pictures/Screenshots/$(date +'%Y-%m-%d_%H-%M-%S').png && grim "$f" && wl-copy < "$f"]]
+	)
+)
+hl.bind(
+	mainMod .. " + Print",
+	hl.dsp.exec_cmd(
+		[[mkdir -p ~/Pictures/Screenshots && f=~/Pictures/Screenshots/$(date +'%Y-%m-%d_%H-%M-%S').png && grim -g "$(slurp)" "$f" && wl-copy < "$f"]]
+	)
+)
+hl.bind(
+	secondMod .. " + Print",
+	hl.dsp.exec_cmd([[mkdir -p ~/Pictures/Screenshots && grim -g "$(slurp)" - | swappy -f -]])
+)
 
 -- Switch workspaces with mainMod + [0-9]
 -- Move active window to a workspace with mainMod + SHIFT + [0-9]

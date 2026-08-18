@@ -1,0 +1,99 @@
+configuration {
+	modi: "drun,run,filebrowser";
+	show-icons: true;
+	icon-theme: "Papirus-Dark";
+	drun-display-format: "{name}";
+	display-drun: " Applications";
+	display-run: " Run";
+	display-filebrowser: " Files";
+	font: "JetBrainsMono Nerd Font 11";
+}
+
+* {
+	bg-main:      #0d0d0dee;
+	bg-alt:       #17171766;
+	fg-main:      #f2ede4;
+	fg-dim:       #b8b0a4;
+	accent:       #c1440e;
+	accent-dark:  #8f320a;
+	selected-bg:  #c1440ecc;
+
+	background-color: transparent;
+	text-color: @fg-main;
+}
+
+window {
+	background-color: @bg-main;
+	border: 2px;
+	border-color: @accent-dark;
+	border-radius: 22px;
+	padding: 18px;
+	width: 720px;
+	location: center;
+}
+
+mainbox {
+	background-color: transparent;
+	spacing: 14px;
+	children: [ "inputbar", "listview" ];
+}
+
+inputbar {
+	background-color: @accent;
+	border-radius: 999px;
+	padding: 8px 10px;
+	spacing: 10px;
+	children: [ "prompt", "entry" ];
+}
+
+prompt {
+	background-color: @accent-dark;
+	text-color: @fg-main;
+	border-radius: 999px;
+	padding: 6px 16px;
+	font: "JetBrainsMono Nerd Font Bold 11";
+}
+
+entry {
+	background-color: transparent;
+	text-color: @fg-main;
+	placeholder: "Search...";
+	placeholder-color: #f2ede4aa;
+	padding: 6px 12px;
+}
+
+listview {
+	background-color: transparent;
+	columns: 6;
+	lines: 3;
+	spacing: 10px;
+	fixed-height: false;
+	cycle: true;
+}
+
+element {
+	background-color: @bg-alt;
+	border-radius: 16px;
+	padding: 10px 6px;
+	orientation: vertical;
+}
+
+element-icon {
+	size: 42px;
+	horizontal-align: 0.5;
+}
+
+element-text {
+	text-color: @fg-dim;
+	horizontal-align: 0.5;
+	padding: 6px 2px 0px 2px;
+	font: "JetBrainsMono Nerd Font 9";
+}
+
+element selected {
+	background-color: @selected-bg;
+}
+
+element selected element-text {
+	text-color: @fg-main;
+}

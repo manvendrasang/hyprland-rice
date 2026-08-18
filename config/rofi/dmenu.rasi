@@ -1,0 +1,79 @@
+* {
+	bg-main:      #0d0d0dee;
+	bg-alt:       #17171766;
+	fg-main:      #f2ede4;
+	fg-dim:       #b8b0a4;
+	accent:       #c1440e;
+	accent-dark:  #8f320a;
+	selected-bg:  #c1440ecc;
+
+	background-color: transparent;
+	text-color: @fg-main;
+}
+
+window {
+	background-color: @bg-main;
+	border: 2px;
+	border-color: @accent-dark;
+	border-radius: 22px;
+	padding: 16px;
+	width: 480px;
+	location: center;
+}
+
+mainbox {
+	background-color: transparent;
+	spacing: 12px;
+	children: [ "inputbar", "listview" ];
+}
+
+inputbar {
+	background-color: @accent;
+	border-radius: 999px;
+	padding: 8px 16px;
+	children: [ "prompt", "entry" ];
+}
+
+prompt {
+	background-color: @accent-dark;
+	text-color: @fg-main;
+	border-radius: 999px;
+	padding: 6px 16px;
+	font: "JetBrainsMono Nerd Font Bold 11";
+}
+
+entry {
+	background-color: transparent;
+	text-color: @fg-main;
+	placeholder-color: #f2ede4aa;
+	padding: 6px 12px;
+}
+
+listview {
+	background-color: transparent;
+	columns: 1;
+	lines: 8;
+	spacing: 6px;
+	fixed-height: false;
+	cycle: true;
+}
+
+element {
+	background-color: @bg-alt;
+	border-radius: 14px;
+	padding: 10px 14px;
+	orientation: horizontal;
+}
+
+element-text {
+	text-color: @fg-dim;
+	vertical-align: 0.5;
+}
+
+element selected {
+	background-color: @selected-bg;
+}
+
+element selected element-text {
+	text-color: @fg-main;
+}
