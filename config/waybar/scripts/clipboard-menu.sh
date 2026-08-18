@@ -6,7 +6,8 @@ selection=$(
     { echo "$CLEAR_OPTION"; cliphist list; } |
     rofi -dmenu \
         -i \
-        -p "Clipboard"
+        -p "Clipboard" \
+        -theme ~/.config/rofi/dmenu.rasi
 )
 
 [[ -z "$selection" ]] && exit
