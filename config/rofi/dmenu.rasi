@@ -1,20 +1,20 @@
 * {
-	bg-main:      #0d0d0dee;
-	bg-alt:       #17171766;
-	fg-main:      #f2ede4;
-	fg-dim:       #b8b0a4;
-	accent:       #c1440e;
-	accent-dark:  #8f320a;
-	selected-bg:  #c1440ecc;
+	glass-bg:      rgba(18, 22, 32, 0.35);
+	glass-panel:   rgba(255, 255, 255, 0.07);
+	glass-border:  rgba(255, 255, 255, 0.18);
+	accent:        #7dd3fc;
+	accent-soft:   rgba(125, 211, 252, 0.28);
+	text-main:     #f1f5f9;
+	text-dim:      #cbd5e1;
 
 	background-color: transparent;
-	text-color: @fg-main;
+	text-color: @text-main;
 }
 
 window {
-	background-color: @bg-main;
-	border: 2px;
-	border-color: @accent-dark;
+	background-color: @glass-bg;
+	border: 1px;
+	border-color: @glass-border;
 	border-radius: 22px;
 	padding: 16px;
 	width: 480px;
@@ -28,15 +28,17 @@ mainbox {
 }
 
 inputbar {
-	background-color: @accent;
+	background-color: @glass-panel;
+	border: 1px;
+	border-color: @glass-border;
 	border-radius: 999px;
 	padding: 8px 16px;
 	children: [ "prompt", "entry" ];
 }
 
 prompt {
-	background-color: @accent-dark;
-	text-color: @fg-main;
+	background-color: transparent;
+	text-color: @accent;
 	border-radius: 999px;
 	padding: 6px 16px;
 	font: "JetBrainsMono Nerd Font Bold 11";
@@ -44,36 +46,50 @@ prompt {
 
 entry {
 	background-color: transparent;
-	text-color: @fg-main;
-	placeholder-color: #f2ede4aa;
+	text-color: @text-main;
+	placeholder-color: #f1f5f988;
 	padding: 6px 12px;
 }
 
+/* fixed-height + scrollbar so lists longer than the visible window
+   are still reachable, instead of silently growing off-screen */
 listview {
 	background-color: transparent;
 	columns: 1;
 	lines: 8;
 	spacing: 6px;
-	fixed-height: false;
+	fixed-height: true;
 	cycle: true;
+	scrollbar: true;
+}
+
+scrollbar {
+	background-color: @glass-panel;
+	handle-color: @accent-soft;
+	handle-width: 6px;
+	border-radius: 999px;
+	padding: 0px 4px;
 }
 
 element {
-	background-color: @bg-alt;
+	background-color: @glass-panel;
+	border: 1px;
+	border-color: transparent;
 	border-radius: 14px;
 	padding: 10px 14px;
 	orientation: horizontal;
 }
 
 element-text {
-	text-color: @fg-dim;
+	text-color: @text-dim;
 	vertical-align: 0.5;
 }
 
 element selected {
-	background-color: @selected-bg;
+	background-color: @accent-soft;
+	border-color: @glass-border;
 }
 
 element selected element-text {
-	text-color: @fg-main;
+	text-color: @text-main;
 }

@@ -13,8 +13,20 @@ selection=$(
 [[ -z "$selection" ]] && exit
 
 if [[ "$selection" == "$CLEAR_OPTION" ]]; then
-    cliphist wipe
-    notify-send "HyprX" "Clipboard history cleared"
+    (
+        cliphist wipe
+
+        # The watchers hold the history db open for the whole session.
+        # Wiping it out from under them breaks future recording until
+        # they're restarted against the freshly recreated db.
+        pkill -f "wl-paste --type text --watch cliphist store"
+        pkill -f "wl-paste --type image --watch cliphist store"
+        wl-paste --type text --watch cliphist store &
+        wl-paste --type image --watch cliphist store &
+
+        notify-send "HyprX" "Clipboard history cleared"
+    ) &
+    disown
     exit
 fi
 

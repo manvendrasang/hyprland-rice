@@ -10,45 +10,47 @@ configuration {
 }
 
 * {
-	bg-main:      #0d0d0dee;
-	bg-alt:       #17171766;
-	fg-main:      #f2ede4;
-	fg-dim:       #b8b0a4;
-	accent:       #c1440e;
-	accent-dark:  #8f320a;
-	selected-bg:  #c1440ecc;
+	glass-bg:      rgba(18, 22, 32, 0.35);
+	glass-panel:   rgba(255, 255, 255, 0.07);
+	glass-border:  rgba(255, 255, 255, 0.18);
+	accent:        #7dd3fc;
+	accent-soft:   rgba(125, 211, 252, 0.28);
+	text-main:     #f1f5f9;
+	text-dim:      #cbd5e1;
 
 	background-color: transparent;
-	text-color: @fg-main;
+	text-color: @text-main;
 }
 
 window {
-	background-color: @bg-main;
-	border: 2px;
-	border-color: @accent-dark;
-	border-radius: 22px;
-	padding: 18px;
+	background-color: @glass-bg;
+	border: 1px;
+	border-color: @glass-border;
+	border-radius: 24px;
+	padding: 20px;
 	width: 720px;
 	location: center;
 }
 
 mainbox {
 	background-color: transparent;
-	spacing: 14px;
+	spacing: 16px;
 	children: [ "inputbar", "listview" ];
 }
 
 inputbar {
-	background-color: @accent;
+	background-color: @glass-panel;
+	border: 1px;
+	border-color: @glass-border;
 	border-radius: 999px;
-	padding: 8px 10px;
+	padding: 10px 12px;
 	spacing: 10px;
 	children: [ "prompt", "entry" ];
 }
 
 prompt {
-	background-color: @accent-dark;
-	text-color: @fg-main;
+	background-color: transparent;
+	text-color: @accent;
 	border-radius: 999px;
 	padding: 6px 16px;
 	font: "JetBrainsMono Nerd Font Bold 11";
@@ -56,9 +58,9 @@ prompt {
 
 entry {
 	background-color: transparent;
-	text-color: @fg-main;
+	text-color: @text-main;
 	placeholder: "Search...";
-	placeholder-color: #f2ede4aa;
+	placeholder-color: #f1f5f988;
 	padding: 6px 12px;
 }
 
@@ -72,7 +74,9 @@ listview {
 }
 
 element {
-	background-color: @bg-alt;
+	background-color: @glass-panel;
+	border: 1px;
+	border-color: transparent;
 	border-radius: 16px;
 	padding: 10px 6px;
 	orientation: vertical;
@@ -83,17 +87,22 @@ element-icon {
 	horizontal-align: 0.5;
 }
 
+/* Bright, high-contrast text against dark glass tiles - the
+   original "darkest text" ask was for the old light/cream tiles;
+   against this dark glass background the readable choice is the
+   opposite direction, near-white rather than near-black. */
 element-text {
-	text-color: @fg-dim;
+	text-color: @text-main;
 	horizontal-align: 0.5;
 	padding: 6px 2px 0px 2px;
-	font: "JetBrainsMono Nerd Font 9";
+	font: "JetBrainsMono Nerd Font Bold 9";
 }
 
 element selected {
-	background-color: @selected-bg;
+	background-color: @accent-soft;
+	border-color: @glass-border;
 }
 
 element selected element-text {
-	text-color: @fg-main;
+	text-color: @text-main;
 }

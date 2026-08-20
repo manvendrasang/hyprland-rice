@@ -12,8 +12,8 @@
 }
 
 .control-center {
-    background: rgba(24, 24, 37, 0.92);
-    border: 1px solid rgba(120, 120, 160, 0.35);
+    background: rgba(15, 18, 26, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 16px;
     padding: 10px;
 }
@@ -36,8 +36,8 @@
 }
 
 .notification {
-    background: rgba(36, 36, 52, 0.92);
-    border: 1px solid rgba(120, 120, 160, 0.35);
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 14px;
     padding: 10px;
     margin: 0;
@@ -49,56 +49,56 @@
 }
 
 .notification .summary {
-    color: #cdd6f4;
+    color: #f1f5f9;
     font-weight: bold;
     font-size: 14px;
 }
 
 .notification .body {
-    color: #cdd6f4;
+    color: #f1f5f9;
     opacity: 0.85;
     font-size: 13px;
 }
 
 .notification .time {
-    color: #cdd6f4;
+    color: #f1f5f9;
     opacity: 0.5;
     font-size: 11px;
 }
 
 .close-button {
-    background: rgba(243, 139, 168, 0.85);
-    color: #181825;
+    background: rgba(248, 113, 113, 0.75);
+    color: #0f121a;
     border-radius: 999px;
     padding: 4px;
     margin: 6px;
 }
 
 .close-button:hover {
-    background: #f38ba8;
+    background: #f87171;
 }
 
 .notification-action {
-    background: rgba(137, 180, 250, 0.15);
-    color: #89b4fa;
+    background: rgba(125, 211, 252, 0.15);
+    color: #7dd3fc;
     border-radius: 10px;
     padding: 6px;
     margin: 4px;
 }
 
 .notification-action:hover {
-    background: rgba(137, 180, 250, 0.3);
+    background: rgba(125, 211, 252, 0.3);
 }
 
 .widget-title {
-    color: #cdd6f4;
+    color: #f1f5f9;
     font-weight: bold;
     padding: 8px;
 }
 
 .widget-title > button {
-    background: rgba(137, 180, 250, 0.15);
-    color: #89b4fa;
+    background: rgba(125, 211, 252, 0.15);
+    color: #7dd3fc;
     border-radius: 10px;
     padding: 6px 10px;
 }
@@ -110,22 +110,22 @@
 
 .widget-dnd > switch {
     border-radius: 999px;
-    background: rgba(120, 120, 160, 0.35);
+    background: rgba(255, 255, 255, 0.18);
 }
 
 .widget-dnd > switch:checked {
-    background: #89b4fa;
+    background: #7dd3fc;
 }
 
 .widget-dnd > switch slider {
     border-radius: 999px;
-    background: #cdd6f4;
+    background: #f1f5f9;
 }
 
 .widget-buttons-grid > flowbox > flowboxchild > button {
-    background: rgba(36, 36, 52, 0.92);
+    background: rgba(255, 255, 255, 0.07);
     border-radius: 12px;
-    color: #cdd6f4;
+    color: #f1f5f9;
     margin: 4px;
     padding: 8px;
 }
