@@ -401,6 +401,15 @@ hl.window_rule({
 -- })
 -- overlayLayerRule:set_enabled(false)
 
+-- Glassmorphism: blur must be explicitly enabled per layer-shell
+-- surface via layer rules - global blur alone does not cover these.
+-- ignore_alpha controls how much of the semi-transparent background
+-- still shows blur-through rather than flat color.
+hl.layer_rule({ match = { namespace = "rofi" }, blur = true, ignore_alpha = 0.5 })
+hl.layer_rule({ match = { namespace = "swaync-notification-window" }, blur = true, ignore_alpha = 0.5 })
+hl.layer_rule({ match = { namespace = "swaync-control-center" }, blur = true, ignore_alpha = 0.5 })
+hl.layer_rule({ match = { namespace = "logout_dialog" }, blur = true, ignore_alpha = 0.5 })
+
 -- Hyprland-run windowrule
 hl.window_rule({
 	name = "move-hyprland-run",
