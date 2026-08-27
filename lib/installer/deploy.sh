@@ -4,7 +4,7 @@
 # Config directories to deploy
 ########################################
 
-HYPRX_CONFIG_TARGETS="hypr waybar wlogout swaync swappy rofi"
+HYPRX_CONFIG_TARGETS="hypr waybar wlogout swaync swappy rofi waypaper"
 
 ########################################
 # Deploy a single config directory
