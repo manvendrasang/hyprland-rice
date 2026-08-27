@@ -66,8 +66,9 @@
       "exec": "$HOME/.config/waybar/scripts/clipboard.sh",
       "return-type": "json",
       "interval": 5,
+      "signal": 8,
       "on-click": "$HOME/.config/waybar/scripts/clipboard-menu.sh",
-      "on-click-right": "cliphist wipe"
+      "on-click-right": "$HOME/.config/waybar/scripts/clipboard-clear.sh"
     },
 
     "memory": {
