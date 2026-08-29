@@ -1,34 +1,54 @@
+/*
+ * Glassmorphism, translated from the exact web CSS recipe as closely
+ * as GTK's CSS engine allows. Two properties from that recipe cannot
+ * exist here at all:
+ *   - backdrop-filter: blur() - GTK has no equivalent (open GTK
+ *     feature request, gitlab.gnome.org/GNOME/gtk/-/issues/3231).
+ *     The actual blur-behind effect comes from Hyprland's own
+ *     compositor blur via the "logout_dialog" layer rule instead.
+ *   - ::before/::after gradient highlight lines - GTK CSS doesn't
+ *     support generated pseudo-element content. Approximated instead
+ *     with brighter top/left border colors, simulating light
+ *     catching the glass edge from the same direction.
+ * Everything else (background alpha, border, border-radius,
+ * box-shadow with insets) is GTK-supported and used as given.
+ */
+
 * {
     background-image: none;
     transition: 150ms ease-in-out;
     font-family: "JetBrainsMono Nerd Font", sans-serif;
 }
 
-/* Very low alpha so Hyprland's blur-behind actually reads as glass,
-   rather than a flat dark rectangle. */
 window {
-    background-color: rgba(15, 18, 26, 0.25);
+    background-color: rgba(255, 255, 255, 0.08);
 }
 
 button {
-    color: #f1f5f9;
-    background-color: rgba(255, 255, 255, 0.07);
+    color: #1a1a1a;
+    background-color: rgba(255, 255, 255, 0.4);
     border-style: solid;
     border-width: 1px;
-    border-color: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.3);
+    border-top-color: rgba(255, 255, 255, 0.8);
+    border-left-color: rgba(255, 255, 255, 0.6);
     border-radius: 20px;
     margin: 16px;
     background-repeat: no-repeat;
     background-position: center;
     background-size: 22%;
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.5),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.1);
 }
 
 button:focus,
 button:active,
 button:hover {
-    background-color: rgba(125, 211, 252, 0.28);
-    border-color: rgba(125, 211, 252, 0.6);
-    color: #f1f5f9;
+    background-color: rgba(255, 255, 255, 0.55);
+    border-color: rgba(255, 255, 255, 0.5);
+    color: #1a1a1a;
     outline-style: none;
 }
 

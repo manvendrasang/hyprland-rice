@@ -1,3 +1,14 @@
+/*
+ * Glassmorphism, translated from the exact web CSS recipe as closely
+ * as GTK's CSS engine allows. backdrop-filter has no GTK equivalent
+ * (actual blur-behind comes from Hyprland's own layer rules on
+ * "swaync-notification-window"/"swaync-control-center"); ::before/
+ * ::after highlight lines are approximated with brighter top/left
+ * border colors instead, since GTK CSS has no generated content.
+ * background alpha, border, border-radius, and box-shadow with
+ * insets are all GTK-supported and used as given.
+ */
+
 * {
     all: unset;
     font-family: "JetBrainsMono Nerd Font", sans-serif;
@@ -12,10 +23,16 @@
 }
 
 .control-center {
-    background: rgba(15, 18, 26, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-top-color: rgba(255, 255, 255, 0.8);
+    border-left-color: rgba(255, 255, 255, 0.6);
+    border-radius: 20px;
     padding: 10px;
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.5),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .control-center-list {
@@ -23,7 +40,7 @@
 }
 
 /* Each notification is its own separated, rounded box - not one
-   continuous white panel. */
+   continuous panel. */
 .notification-row {
     margin: 6px 4px;
     padding: 0;
@@ -36,11 +53,17 @@
 }
 
 .notification {
-    background: rgba(255, 255, 255, 0.07);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-top-color: rgba(255, 255, 255, 0.8);
+    border-left-color: rgba(255, 255, 255, 0.6);
+    border-radius: 20px;
     padding: 10px;
     margin: 0;
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.5),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .notification-content {
@@ -49,26 +72,26 @@
 }
 
 .notification .summary {
-    color: #f1f5f9;
+    color: #1a1a1a;
     font-weight: bold;
     font-size: 14px;
 }
 
 .notification .body {
-    color: #f1f5f9;
-    opacity: 0.85;
+    color: #1a1a1a;
+    opacity: 0.75;
     font-size: 13px;
 }
 
 .notification .time {
-    color: #f1f5f9;
+    color: #1a1a1a;
     opacity: 0.5;
     font-size: 11px;
 }
 
 .close-button {
     background: rgba(248, 113, 113, 0.75);
-    color: #0f121a;
+    color: #1a1a1a;
     border-radius: 999px;
     padding: 4px;
     margin: 6px;
@@ -79,26 +102,26 @@
 }
 
 .notification-action {
-    background: rgba(125, 211, 252, 0.15);
-    color: #7dd3fc;
+    background: rgba(255, 255, 255, 0.3);
+    color: #1a1a1a;
     border-radius: 10px;
     padding: 6px;
     margin: 4px;
 }
 
 .notification-action:hover {
-    background: rgba(125, 211, 252, 0.3);
+    background: rgba(255, 255, 255, 0.5);
 }
 
 .widget-title {
-    color: #f1f5f9;
+    color: #1a1a1a;
     font-weight: bold;
     padding: 8px;
 }
 
 .widget-title > button {
-    background: rgba(125, 211, 252, 0.15);
-    color: #7dd3fc;
+    background: rgba(255, 255, 255, 0.3);
+    color: #1a1a1a;
     border-radius: 10px;
     padding: 6px 10px;
 }
@@ -110,22 +133,23 @@
 
 .widget-dnd > switch {
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.3);
 }
 
 .widget-dnd > switch:checked {
-    background: #7dd3fc;
+    background: rgba(255, 255, 255, 0.6);
 }
 
 .widget-dnd > switch slider {
     border-radius: 999px;
-    background: #f1f5f9;
+    background: #1a1a1a;
 }
 
 .widget-buttons-grid > flowbox > flowboxchild > button {
-    background: rgba(255, 255, 255, 0.07);
-    border-radius: 12px;
-    color: #f1f5f9;
+    background: rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 20px;
+    color: #1a1a1a;
     margin: 4px;
     padding: 8px;
 }

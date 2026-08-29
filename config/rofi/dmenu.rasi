@@ -1,11 +1,13 @@
+/* See config.rasi for notes on what does/doesn't translate from the
+   original web CSS recipe into rasi. Same palette, list layout. */
+
 * {
-	glass-bg:      rgba(18, 22, 32, 0.35);
-	glass-panel:   rgba(255, 255, 255, 0.07);
-	glass-border:  rgba(255, 255, 255, 0.18);
-	accent:        #7dd3fc;
-	accent-soft:   rgba(125, 211, 252, 0.28);
-	text-main:     #f1f5f9;
-	text-dim:      #cbd5e1;
+	glass-bg:        rgba(255, 255, 255, 0.08);
+	glass-panel:     rgba(255, 255, 255, 0.4);
+	glass-border:    rgba(255, 255, 255, 0.3);
+	glass-highlight: rgba(255, 255, 255, 0.8);
+	text-main:       #1a1a1a;
+	text-dim:        #1a1a1a99;
 
 	background-color: transparent;
 	text-color: @text-main;
@@ -38,7 +40,7 @@ inputbar {
 
 prompt {
 	background-color: transparent;
-	text-color: @accent;
+	text-color: @text-main;
 	border-radius: 999px;
 	padding: 6px 16px;
 	font: "JetBrainsMono Nerd Font Bold 11";
@@ -47,12 +49,10 @@ prompt {
 entry {
 	background-color: transparent;
 	text-color: @text-main;
-	placeholder-color: #f1f5f988;
+	placeholder-color: @text-dim;
 	padding: 6px 12px;
 }
 
-/* fixed-height + scrollbar so lists longer than the visible window
-   are still reachable, instead of silently growing off-screen */
 listview {
 	background-color: transparent;
 	columns: 1;
@@ -65,7 +65,7 @@ listview {
 
 scrollbar {
 	background-color: @glass-panel;
-	handle-color: @accent-soft;
+	handle-color: rgba(255, 255, 255, 0.6);
 	handle-width: 6px;
 	border-radius: 999px;
 	padding: 0px 4px;
@@ -74,20 +74,20 @@ scrollbar {
 element {
 	background-color: @glass-panel;
 	border: 1px;
-	border-color: transparent;
+	border-color: @glass-border;
 	border-radius: 14px;
 	padding: 10px 14px;
 	orientation: horizontal;
 }
 
 element-text {
-	text-color: @text-dim;
+	text-color: @text-main;
 	vertical-align: 0.5;
 }
 
 element selected {
-	background-color: @accent-soft;
-	border-color: @glass-border;
+	background-color: rgba(255, 255, 255, 0.55);
+	border-color: @glass-highlight;
 }
 
 element selected element-text {
