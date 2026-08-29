@@ -1,3 +1,17 @@
+/*
+ * Glassmorphism, translated from the exact web CSS recipe as closely
+ * as rofi's rasi theme format allows. Two things from that recipe
+ * don't carry over here:
+ *   - backdrop-filter: blur() has no rasi equivalent - the actual
+ *     blur-behind comes from Hyprland's layer rule on the "rofi"
+ *     namespace instead.
+ *   - box-shadow isn't a documented rasi property (unlike GTK CSS,
+ *     which does support it) - skipped rather than assumed working.
+ * background-color, border, and border-radius are used as given;
+ * the top/left highlight lines are approximated with brighter
+ * top/left border color, since rasi has no generated content.
+ */
+
 configuration {
 	modi: "drun,run,filebrowser";
 	show-icons: true;
@@ -10,13 +24,12 @@ configuration {
 }
 
 * {
-	glass-bg:      rgba(18, 22, 32, 0.35);
-	glass-panel:   rgba(255, 255, 255, 0.07);
-	glass-border:  rgba(255, 255, 255, 0.18);
-	accent:        #7dd3fc;
-	accent-soft:   rgba(125, 211, 252, 0.28);
-	text-main:     #f1f5f9;
-	text-dim:      #cbd5e1;
+	glass-bg:        rgba(255, 255, 255, 0.08);
+	glass-panel:     rgba(255, 255, 255, 0.4);
+	glass-border:    rgba(255, 255, 255, 0.3);
+	glass-highlight: rgba(255, 255, 255, 0.8);
+	text-main:       #1a1a1a;
+	text-dim:        #1a1a1a99;
 
 	background-color: transparent;
 	text-color: @text-main;
@@ -50,7 +63,7 @@ inputbar {
 
 prompt {
 	background-color: transparent;
-	text-color: @accent;
+	text-color: @text-main;
 	border-radius: 999px;
 	padding: 6px 16px;
 	font: "JetBrainsMono Nerd Font Bold 11";
@@ -60,7 +73,7 @@ entry {
 	background-color: transparent;
 	text-color: @text-main;
 	placeholder: "Search...";
-	placeholder-color: #f1f5f988;
+	placeholder-color: @text-dim;
 	padding: 6px 12px;
 }
 
@@ -76,7 +89,7 @@ listview {
 element {
 	background-color: @glass-panel;
 	border: 1px;
-	border-color: transparent;
+	border-color: @glass-border;
 	border-radius: 16px;
 	padding: 10px 6px;
 	orientation: vertical;
@@ -87,10 +100,6 @@ element-icon {
 	horizontal-align: 0.5;
 }
 
-/* Bright, high-contrast text against dark glass tiles - the
-   original "darkest text" ask was for the old light/cream tiles;
-   against this dark glass background the readable choice is the
-   opposite direction, near-white rather than near-black. */
 element-text {
 	text-color: @text-main;
 	horizontal-align: 0.5;
@@ -99,8 +108,8 @@ element-text {
 }
 
 element selected {
-	background-color: @accent-soft;
-	border-color: @glass-border;
+	background-color: rgba(255, 255, 255, 0.55);
+	border-color: @glass-highlight;
 }
 
 element selected element-text {
