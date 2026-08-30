@@ -16,6 +16,7 @@ bash "$ROOT_DIR/install.sh" >/dev/null
 [[ -d "$HYPRX_INSTALL_DIR" ]]
 [[ -f "$HYPRX_INSTALL_DIR/bin/hyprx" ]]
 [[ -L "$HYPRX_BIN_DIR/hyprx" ]]
+[[ -L "$HYPRX_BIN_DIR/prime-run" ]]
 [[ ! -d "$HYPRX_INSTALL_DIR/.git" ]]
 
 # The installed copy should actually run standalone
@@ -29,6 +30,7 @@ bash "$ROOT_DIR/uninstall.sh" >/dev/null
 
 [[ ! -d "$HYPRX_INSTALL_DIR" ]]
 [[ ! -e "$HYPRX_BIN_DIR/hyprx" ]]
+[[ ! -e "$HYPRX_BIN_DIR/prime-run" ]]
 
 rm -rf "$INSTALL_TEST_ROOT"
 

@@ -21,6 +21,10 @@ swappy
 rofimoji
 waypaper
 
+# GPU / hybrid graphics
+nvidia-utils
+supergfxctl
+
 # Networking
 networkmanager
 network-manager-applet

@@ -20,8 +20,9 @@ echo "Removing HyprX..."
 
 rm -rf "$INSTALL_DIR"
 rm -f "$BIN_DIR/hyprx"
+rm -f "$BIN_DIR/prime-run"
 
-echo "Removed $INSTALL_DIR and $BIN_DIR/hyprx"
+echo "Removed $INSTALL_DIR, $BIN_DIR/hyprx, and $BIN_DIR/prime-run"
 echo
 echo "Note: this only removes the HyprX tool itself."
 echo "It does not undo any packages or configs HyprX previously"

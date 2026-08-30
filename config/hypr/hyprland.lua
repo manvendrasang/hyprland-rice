@@ -61,6 +61,22 @@ hl.env("XCURSOR_SIZE", "24")
 hl.env("HYPRCURSOR_SIZE", "24")
 hl.env("QT_QPA_PLATFORMTHEME", "qt6ct")
 
+-- NVIDIA compatibility. Without these, Hyprland's compositor effects
+-- (blur, and potentially other rendering features) can silently fail
+-- to work at all, with no error.
+hl.env("LIBVA_DRIVER_NAME", "nvidia")
+hl.env("XDG_SESSION_TYPE", "wayland")
+hl.env("GBM_BACKEND", "nvidia-drm")
+hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
+
+-- WLR_NO_HARDWARE_CURSORS is deprecated - this is the current
+-- replacement per the Hyprland wiki.
+hl.config({
+	cursor = {
+		no_hardware_cursors = true,
+	},
+})
+
 -----------------------
 ----- PERMISSIONS -----
 -----------------------
