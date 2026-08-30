@@ -24,9 +24,9 @@
 
 .control-center {
     background: rgba(255, 255, 255, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    border-top-color: rgba(255, 255, 255, 0.8);
-    border-left-color: rgba(255, 255, 255, 0.6);
+    border: 2px solid rgba(255, 255, 255, 0.45);
+    border-top-color: rgba(255, 255, 255, 0.9);
+    border-left-color: rgba(255, 255, 255, 0.7);
     border-radius: 20px;
     padding: 10px;
     box-shadow:
@@ -54,9 +54,9 @@
 
 .notification {
     background: rgba(255, 255, 255, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    border-top-color: rgba(255, 255, 255, 0.8);
-    border-left-color: rgba(255, 255, 255, 0.6);
+    border: 2px solid rgba(255, 255, 255, 0.45);
+    border-top-color: rgba(255, 255, 255, 0.9);
+    border-left-color: rgba(255, 255, 255, 0.7);
     border-radius: 20px;
     padding: 10px;
     margin: 0;
@@ -147,7 +147,7 @@
 
 .widget-buttons-grid > flowbox > flowboxchild > button {
     background: rgba(255, 255, 255, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.45);
     border-radius: 20px;
     color: #1a1a1a;
     margin: 4px;

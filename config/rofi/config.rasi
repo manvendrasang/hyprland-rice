@@ -37,8 +37,8 @@ configuration {
 
 window {
 	background-color: @glass-bg;
-	border: 1px;
-	border-color: @glass-border;
+	border: 2px;
+	border-color: @glass-highlight;
 	border-radius: 24px;
 	padding: 20px;
 	width: 720px;
@@ -88,14 +88,15 @@ listview {
 
 element {
 	background-color: @glass-panel;
-	border: 1px;
-	border-color: @glass-border;
+	border: 2px;
+	border-color: @glass-highlight;
 	border-radius: 16px;
 	padding: 10px 6px;
 	orientation: vertical;
 }
 
 element-icon {
+	background-color: transparent;
 	size: 42px;
 	horizontal-align: 0.5;
 }
