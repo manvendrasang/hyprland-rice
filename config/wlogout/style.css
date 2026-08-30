@@ -28,10 +28,10 @@ button {
     color: #1a1a1a;
     background-color: rgba(255, 255, 255, 0.4);
     border-style: solid;
-    border-width: 1px;
-    border-color: rgba(255, 255, 255, 0.3);
-    border-top-color: rgba(255, 255, 255, 0.8);
-    border-left-color: rgba(255, 255, 255, 0.6);
+    border-width: 2px;
+    border-color: rgba(255, 255, 255, 0.45);
+    border-top-color: rgba(255, 255, 255, 0.9);
+    border-left-color: rgba(255, 255, 255, 0.7);
     border-radius: 20px;
     margin: 16px;
     background-repeat: no-repeat;

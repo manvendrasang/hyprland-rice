@@ -15,8 +15,8 @@
 
 window {
 	background-color: @glass-bg;
-	border: 1px;
-	border-color: @glass-border;
+	border: 2px;
+	border-color: @glass-highlight;
 	border-radius: 22px;
 	padding: 16px;
 	width: 480px;
@@ -73,8 +73,8 @@ scrollbar {
 
 element {
 	background-color: @glass-panel;
-	border: 1px;
-	border-color: @glass-border;
+	border: 2px;
+	border-color: @glass-highlight;
 	border-radius: 14px;
 	padding: 10px 14px;
 	orientation: horizontal;
