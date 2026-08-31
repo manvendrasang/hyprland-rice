@@ -25,6 +25,11 @@ waypaper
 nvidia-utils
 supergfxctl
 
+# GPU / hybrid graphics
+nvidia-utils
+supergfxctl
+intel-gpu-tools
+
 # Networking
 networkmanager
 network-manager-applet
