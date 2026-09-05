@@ -41,13 +41,13 @@ INTEL_UTIL="N/A"
 
 if command -v intel_gpu_top >/dev/null 2>&1; then
 
-    RAW="$(timeout 1.2 intel_gpu_top -J -o - 2>/dev/null)"
+    RAW="$(timeout 1.5 intel_gpu_top -J -o - 2>/dev/null)"
 
     PARSED="$(
         echo "$RAW" |
         grep -A2 '"Render/3D' |
         grep '"busy"' |
-        head -1 |
+        tail -1 |
         grep -oE '[0-9]+\.[0-9]+' |
         head -1
     )"
