@@ -1,0 +1,44 @@
+/*
+ * HyprX system-wide GTK3 glassmorphism override.
+ *
+ * Applies to every GTK3 app (Nemo, etc). This is the highest blast-
+ * radius theme file in the project - unlike per-app rasi/CSS themes
+ * (rofi, wlogout, swaync), this affects ANY GTK3 application, not
+ * just one at a time.
+ *
+ * GTK CSS does NOT support backdrop-filter (no blur-behind capability
+ * in this stylesheet) - real blur-through comes from the Hyprland
+ * compositor's layer/window rules (see hyprland.lua's glass-nemo
+ * window rule + global blur decoration config), not from this file.
+ * This file only sets flat/semi-transparent colors and borders to
+ * match the rest of the glass palette (Section 15).
+ */
+
+window, .background {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+headerbar, .titlebar {
+    background-color: rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-top-color: rgba(255, 255, 255, 0.8);
+    border-left-color: rgba(255, 255, 255, 0.6);
+}
+
+.view, .sidebar, notebook {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+button {
+    background-color: rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 12px;
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.5),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+}
+
+button:hover {
+    background-color: rgba(255, 255, 255, 0.45);
+}
