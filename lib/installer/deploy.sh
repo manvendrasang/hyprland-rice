@@ -4,7 +4,7 @@
 # Config directories to deploy
 ########################################
 
-HYPRX_CONFIG_TARGETS="hypr waybar wlogout swaync swappy rofi waypaper gtk-3.0"
+HYPRX_CONFIG_TARGETS="hypr waybar wlogout swaync swappy rofi waypaper"
 
 ########################################
 # Deploy a single config directory
