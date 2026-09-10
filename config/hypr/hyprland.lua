@@ -287,6 +287,8 @@ hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("waypaper"))
 hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("hyprlock"))
 hl.bind(mainMod .. " + .", hl.dsp.exec_cmd("rofimoji --action copy"))
 hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
+hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("gnome-control-center"))
+hl.bind(mainMod .. " + D", hl.dsp.exec_cmd("kitty -e fastfetch"))
 
 -- hl.bind(mainMod .. " + J", hl.dsp.layout("togglesplit"))    -- dwindle only
 hl.bind(mainMod .. " + B", hl.dsp.exec_cmd(browser))
@@ -481,4 +483,20 @@ hl.window_rule({
 	size = "450 550",
 	center = true,
 	rounding = 12,
+})
+
+-- Glass-through for the file manager (system-wide GTK3 glass theme,
+-- BUG-12). NOTE: match.class is an UNVERIFIED best guess ("^[Nn]emo$")
+-- - confirm the real class via `hyprctl clients` with Nemo open before
+-- trusting this, per Section 34/38 of HANDOFF.md. Uses active_opacity/
+-- inactive_opacity (not layer_rule - that only applies to layer-shell
+-- surfaces like rofi/wlogout/swaync, not regular XDG toplevel windows).
+-- Opacity < 1 lets the existing global blur config show through.
+hl.window_rule({
+	name = "glass-nemo",
+	match = { class = "^[Nn]emo$" },
+
+	rounding = 12,
+	active_opacity = 0.85,
+	inactive_opacity = 0.75,
 })

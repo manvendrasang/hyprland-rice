@@ -24,11 +24,9 @@ waypaper
 # GPU / hybrid graphics
 nvidia-utils
 supergfxctl
-
-# GPU / hybrid graphics
-nvidia-utils
-supergfxctl
 intel-gpu-tools
+asusctl
+rog-control-center
 
 # Networking
 networkmanager
@@ -38,6 +36,10 @@ bluez
 bluez-utils
 firewalld
 firewall-config
+
+# System
+gnome-control-center
+fastfetch
 
 # Development
 git
