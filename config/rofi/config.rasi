@@ -1,17 +1,3 @@
-/*
- * Glassmorphism, translated from the exact web CSS recipe as closely
- * as rofi's rasi theme format allows. Two things from that recipe
- * don't carry over here:
- *   - backdrop-filter: blur() has no rasi equivalent - the actual
- *     blur-behind comes from Hyprland's layer rule on the "rofi"
- *     namespace instead.
- *   - box-shadow isn't a documented rasi property (unlike GTK CSS,
- *     which does support it) - skipped rather than assumed working.
- * background-color, border, and border-radius are used as given;
- * the top/left highlight lines are approximated with brighter
- * top/left border color, since rasi has no generated content.
- */
-
 configuration {
 	modi: "drun,run,filebrowser";
 	show-icons: true;
@@ -24,46 +10,45 @@ configuration {
 }
 
 * {
-	glass-bg:        rgba(255, 255, 255, 0.08);
-	glass-panel:     rgba(255, 255, 255, 0.4);
-	glass-border:    rgba(255, 255, 255, 0.3);
-	glass-highlight: rgba(255, 255, 255, 0.8);
-	text-main:       #1a1a1a;
-	text-dim:        #1a1a1a99;
+	bg-main:      #0d0d0dee;
+	bg-alt:       #17171766;
+	fg-main:      #f2ede4;
+	fg-dim:       #b8b0a4;
+	accent:       #c1440e;
+	accent-dark:  #8f320a;
+	selected-bg:  #c1440ecc;
 
 	background-color: transparent;
-	text-color: @text-main;
+	text-color: @fg-main;
 }
 
 window {
-	background-color: @glass-bg;
+	background-color: @bg-main;
 	border: 2px;
-	border-color: @glass-highlight;
-	border-radius: 24px;
-	padding: 20px;
+	border-color: @accent-dark;
+	border-radius: 22px;
+	padding: 18px;
 	width: 720px;
 	location: center;
 }
 
 mainbox {
 	background-color: transparent;
-	spacing: 16px;
+	spacing: 14px;
 	children: [ "inputbar", "listview" ];
 }
 
 inputbar {
-	background-color: @glass-panel;
-	border: 1px;
-	border-color: @glass-border;
+	background-color: @accent;
 	border-radius: 999px;
-	padding: 10px 12px;
+	padding: 8px 10px;
 	spacing: 10px;
 	children: [ "prompt", "entry" ];
 }
 
 prompt {
-	background-color: transparent;
-	text-color: @text-main;
+	background-color: @accent-dark;
+	text-color: @fg-main;
 	border-radius: 999px;
 	padding: 6px 16px;
 	font: "JetBrainsMono Nerd Font Bold 11";
@@ -71,9 +56,9 @@ prompt {
 
 entry {
 	background-color: transparent;
-	text-color: @text-main;
+	text-color: @fg-main;
 	placeholder: "Search...";
-	placeholder-color: @text-dim;
+	placeholder-color: #f2ede4aa;
 	padding: 6px 12px;
 }
 
@@ -87,32 +72,28 @@ listview {
 }
 
 element {
-	background-color: @glass-panel;
-	border: 2px;
-	border-color: @glass-highlight;
+	background-color: @bg-alt;
 	border-radius: 16px;
 	padding: 10px 6px;
 	orientation: vertical;
 }
 
 element-icon {
-	background-color: transparent;
 	size: 42px;
 	horizontal-align: 0.5;
 }
 
 element-text {
-	text-color: @text-main;
+	text-color: @fg-dim;
 	horizontal-align: 0.5;
 	padding: 6px 2px 0px 2px;
-	font: "JetBrainsMono Nerd Font Bold 9";
+	font: "JetBrainsMono Nerd Font 9";
 }
 
 element selected {
-	background-color: rgba(255, 255, 255, 0.55);
-	border-color: @glass-highlight;
+	background-color: @selected-bg;
 }
 
 element selected element-text {
-	text-color: @text-main;
+	text-color: @fg-main;
 }

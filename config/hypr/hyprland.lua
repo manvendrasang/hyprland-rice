@@ -139,9 +139,9 @@ hl.config({
 
 		blur = {
 			enabled = true,
-			size = 8,
-			passes = 4,
-			vibrancy = 0.2,
+			size = 3,
+			passes = 1,
+			vibrancy = 0.1696,
 		},
 	},
 
@@ -423,15 +423,6 @@ hl.window_rule({
 -- })
 -- overlayLayerRule:set_enabled(false)
 
--- Glassmorphism: blur must be explicitly enabled per layer-shell
--- surface via layer rules - global blur alone does not cover these.
--- ignore_alpha controls how much of the semi-transparent background
--- still shows blur-through rather than flat color.
-hl.layer_rule({ match = { namespace = "rofi" }, blur = true, ignore_alpha = 0.5 })
-hl.layer_rule({ match = { namespace = "swaync-notification-window" }, blur = true, ignore_alpha = 0.5 })
-hl.layer_rule({ match = { namespace = "swaync-control-center" }, blur = true, ignore_alpha = 0.5 })
-hl.layer_rule({ match = { namespace = "logout_dialog" }, blur = true, ignore_alpha = 0.5 })
-
 -- Hyprland-run windowrule
 hl.window_rule({
 	name = "move-hyprland-run",
@@ -485,18 +476,3 @@ hl.window_rule({
 	rounding = 12,
 })
 
--- Glass-through for the file manager (system-wide GTK3 glass theme,
--- BUG-12). NOTE: match.class is an UNVERIFIED best guess ("^[Nn]emo$")
--- - confirm the real class via `hyprctl clients` with Nemo open before
--- trusting this, per Section 34/38 of HANDOFF.md. Uses active_opacity/
--- inactive_opacity (not layer_rule - that only applies to layer-shell
--- surfaces like rofi/wlogout/swaync, not regular XDG toplevel windows).
--- Opacity < 1 lets the existing global blur config show through.
-hl.window_rule({
-	name = "glass-nemo",
-	match = { class = "^[Nn]emo$" },
-
-	rounding = 12,
-	active_opacity = 0.85,
-	inactive_opacity = 0.75,
-})
