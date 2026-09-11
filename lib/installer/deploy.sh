@@ -67,6 +67,55 @@ deploy_config_dir() {
 }
 
 ########################################
+# Remove targets no longer deployed
+########################################
+#
+# Compares the targets deployed by the
+# previous install run (DEPLOYED_TARGETS_FILE)
+# against the current HYPRX_CONFIG_TARGETS.
+# Anything deployed before but missing from
+# the list now (a feature/theme was removed)
+# gets backed up and removed the same way an
+# in-place redeploy backs up an overwritten
+# dir - so it is restorable via rollback,
+# never just silently deleted.
+#
+
+remove_orphaned_targets() {
+
+    local previous
+    previous="$(read_deployed_targets)"
+
+    [[ -z "$previous" ]] && return 0
+
+    local dir target backup
+
+    for dir in $previous; do
+
+        # Still a current target - nothing to do.
+        if printf '%s\n' $HYPRX_CONFIG_TARGETS | grep -qx "$dir"; then
+            continue
+        fi
+
+        target="${HYPRX_TARGET_HOME:-$HOME}/.config/$dir"
+
+        [[ -e "$target" ]] || continue
+
+        backup="$(config_backup_dir_for "$(current_snapshot_id)")/$dir"
+
+        mkdir -p "$(dirname "$backup")"
+        rm -rf "$backup"
+        mv "$target" "$backup"
+
+        record_config_backup "$dir" "true"
+
+        info "Removed orphaned config: $dir (no longer a deploy target)"
+
+    done
+
+}
+
+########################################
 # Deploy every configured directory
 ########################################
 
@@ -79,5 +128,9 @@ deploy_configs() {
     for dir in $HYPRX_CONFIG_TARGETS; do
         deploy_config_dir "$dir"
     done
+
+    remove_orphaned_targets
+
+    write_deployed_targets $HYPRX_CONFIG_TARGETS
 
 }

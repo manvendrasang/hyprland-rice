@@ -168,6 +168,54 @@ snapshot_exists() {
 }
 
 ########################################
+# Deployed-targets state file
+########################################
+#
+# Persists the list of config directories
+# deployed by the most recent install run,
+# separately from per-run snapshots. This
+# lets deploy_configs() notice when a
+# directory that used to be a deploy target
+# no longer is (e.g. a feature was reverted,
+# like BUG-12's glassmorphism gtk-3.0
+# override) and clean it up, instead of
+# leaving stale deployed files on disk
+# forever with nothing referencing them.
+#
+
+DEPLOYED_TARGETS_FILE="${HYPRX_DEPLOYED_TARGETS_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/deployed-targets}"
+
+########################################
+# Read the previously deployed targets
+########################################
+#
+# One target name per line. Prints nothing
+# (not an error) if this is the first run
+# ever to use this file - there is simply
+# no prior state to compare against yet.
+#
+
+read_deployed_targets() {
+
+    [[ -f "$DEPLOYED_TARGETS_FILE" ]] || return 0
+
+    cat "$DEPLOYED_TARGETS_FILE"
+
+}
+
+########################################
+# Persist the currently deployed targets
+########################################
+
+write_deployed_targets() {
+
+    mkdir -p "$(dirname "$DEPLOYED_TARGETS_FILE")"
+
+    printf "%s\n" "$@" > "$DEPLOYED_TARGETS_FILE"
+
+}
+
+########################################
 # Get package list from a snapshot
 ########################################
 
