@@ -14,6 +14,7 @@ export HYPRX_FAILURE_LOG="$TEST_ROOT/state/hyprx-install.log"
 export HYPRX_REPORT_FILE="$TEST_ROOT/state/HyprX-Install-Report.txt"
 export HYPRX_TARGET_HOME="$TEST_ROOT/home"
 export HYPRX_CONFIG_BACKUP_ROOT="$TEST_ROOT/state/config-backups"
+export HYPRX_DEPLOYED_TARGETS_FILE="$TEST_ROOT/state/deployed-targets"
 
 mkdir -p "$HYPRX_TARGET_HOME/.config"
 
