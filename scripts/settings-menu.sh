@@ -45,7 +45,7 @@ COMMANDS=(
     "firewall-config"
     "rog-control-center"
     "mission-center"
-    "kitty --hold -e hyprx update"
+    "kitty --hold -e $HOME/.local/share/hyprx/bin/hyprx update"
 )
 
 CHOICE=$(
