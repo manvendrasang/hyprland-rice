@@ -221,7 +221,77 @@ update_system() {
 
 clean_package_cache() {
 
-    sudo pacman -Sc --noconfirm
+    if ! command -v pacman >/dev/null 2>&1; then
+        warn "pacman not found - skipping package cache clean"
+        return 0
+    fi
+
+    # Interrupted/retried downloads leave stale
+    # "download-<random>" temp files in the cache
+    # dir. pacman's own cache-clean chokes trying
+    # to read these as package archives ("could
+    # not open file ...: Error reading fd 8") -
+    # removing them first lets the real cache
+    # clean run without errors.
+    if command -v sudo >/dev/null 2>&1; then
+        sudo find /var/cache/pacman/pkg -maxdepth 1 -name 'download-*' -delete 2>/dev/null
+    fi
+
+    case "$PACKAGE_MANAGER" in
+
+        yay)
+            yay -Sc --noconfirm
+            ;;
+
+        paru)
+            paru -Sc --noconfirm
+            ;;
+
+        pacman)
+            sudo pacman -Sc --noconfirm
+            ;;
+
+        *)
+            warn "Unknown package manager - skipping cache clean"
+            return 0
+            ;;
+
+    esac
+
+}
+
+########################################
+# Orphans
+########################################
+
+list_orphan_packages() {
+
+    command -v pacman >/dev/null 2>&1 || return 0
+
+    pacman -Qtdq 2>/dev/null
+
+}
+
+remove_orphan_packages() {
+
+    if ! command -v pacman >/dev/null 2>&1; then
+        warn "pacman not found - skipping orphan package check"
+        return 0
+    fi
+
+    local orphans
+    mapfile -t orphans < <(list_orphan_packages)
+
+    if ((${#orphans[@]} == 0)); then
+        success "No orphan packages found."
+        return 0
+    fi
+
+    printf "%s\n\n" "${orphans[@]}"
+
+    if confirm "Remove orphan packages?"; then
+        command -v sudo >/dev/null 2>&1 && sudo pacman -Rns --noconfirm "${orphans[@]}"
+    fi
 
 }
 

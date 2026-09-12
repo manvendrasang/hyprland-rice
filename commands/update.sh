@@ -43,37 +43,13 @@ echo
 
 info "Checking for orphan packages..."
 
-mapfile -t orphans < <(pacman -Qtdq)
-
-if ((${#orphans[@]})); then
-
-    printf "%s\n\n" "${orphans[@]}"
-
-    if confirm "Remove orphan packages?"; then
-        sudo pacman -Rns --noconfirm "${orphans[@]}"
-    fi
-
-else
-
-    success "No orphan packages found."
-
-fi
+remove_orphan_packages
 
 echo
 
 info "Updating package cache..."
 
-case "$PACKAGE_MANAGER" in
-    yay)
-        yay -Sc --noconfirm >/dev/null
-        ;;
-    paru)
-        paru -Sc --noconfirm >/dev/null
-        ;;
-    pacman)
-        sudo pacman -Sc --noconfirm >/dev/null
-        ;;
-esac
+clean_package_cache
 
 echo
 

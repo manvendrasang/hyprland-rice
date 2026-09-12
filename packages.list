@@ -38,7 +38,8 @@ firewalld
 firewall-config
 
 # System
-gnome-control-center
+nwg-look
+nwg-displays
 fastfetch
 
 # Development

@@ -36,9 +36,11 @@ mkdir -p "$BIN_DIR"
 
 ln -sf "$INSTALL_DIR/bin/hyprx" "$BIN_DIR/hyprx"
 ln -sf "$INSTALL_DIR/scripts/prime-run.sh" "$BIN_DIR/prime-run"
+ln -sf "$INSTALL_DIR/scripts/settings-menu.sh" "$BIN_DIR/hyprx-settings"
 
 echo "Installed: $BIN_DIR/hyprx -> $INSTALL_DIR/bin/hyprx"
 echo "Installed: $BIN_DIR/prime-run -> $INSTALL_DIR/scripts/prime-run.sh"
+echo "Installed: $BIN_DIR/hyprx-settings -> $INSTALL_DIR/scripts/settings-menu.sh"
 
 case ":$PATH:" in
     *":$BIN_DIR:"*)

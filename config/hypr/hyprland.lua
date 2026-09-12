@@ -287,8 +287,10 @@ hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("waypaper"))
 hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("hyprlock"))
 hl.bind(mainMod .. " + .", hl.dsp.exec_cmd("rofimoji --action copy"))
 hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
-hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("gnome-control-center"))
-hl.bind(mainMod .. " + D", hl.dsp.exec_cmd("kitty -e fastfetch"))
+hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("hyprx-settings"))
+hl.bind(mainMod .. " + D", hl.dsp.exec_cmd("kitty --hold -e fastfetch"))
+hl.bind(mainMod .. " + F5", hl.dsp.exec_cmd("asusctl profile -n"))
+hl.bind(mainMod .. " + F6", hl.dsp.exec_cmd("rog-control-center"))
 
 -- hl.bind(mainMod .. " + J", hl.dsp.layout("togglesplit"))    -- dwindle only
 hl.bind(mainMod .. " + B", hl.dsp.exec_cmd(browser))
