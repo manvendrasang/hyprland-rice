@@ -59,6 +59,18 @@ run_install_engine() {
     deploy_configs || return 1
 
     #
+    # GPU offload for known heavy apps
+    #
+    # Best-effort: never fails the install if
+    # something about a specific .desktop file
+    # is unexpected - offload is a convenience,
+    # not a hard requirement.
+    #
+
+    section "GPU offload"
+    bash "$ROOT_DIR/scripts/gpu-offload-setup.sh" || warn "GPU offload setup had issues (non-fatal)"
+
+    #
     # Snapshot
     #
 
