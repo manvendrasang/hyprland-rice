@@ -223,8 +223,8 @@ hl.config({
 
 hl.config({
 	misc = {
-		force_default_wallpaper = -1, -- Set to 0 or 1 to disable the anime mascot wallpapers
-		disable_hyprland_logo = false, -- If true disables the random hyprland logo / anime girl background. :(
+		force_default_wallpaper = 0, -- 0 disables Hyprland's built-in default/mascot wallpapers entirely
+		disable_hyprland_logo = true, -- true disables the Hyprland logo/anime-girl background flash on first launch
 	},
 })
 
@@ -295,7 +295,7 @@ hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
 -- screenshot binds below.
 hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("~/.local/share/hyprx/scripts/settings-menu.sh"))
 hl.bind(mainMod .. " + D", hl.dsp.exec_cmd("kitty --hold -e fastfetch"))
-hl.bind(mainMod .. " + F5", hl.dsp.exec_cmd("asusctl profile -n"))
+hl.bind(mainMod .. " + F5", hl.dsp.exec_cmd("~/.local/share/hyprx/scripts/power-profile-cycle.sh"))
 hl.bind(mainMod .. " + F6", hl.dsp.exec_cmd("rog-control-center"))
 
 -- hl.bind(mainMod .. " + J", hl.dsp.layout("togglesplit"))    -- dwindle only
