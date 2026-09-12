@@ -21,13 +21,12 @@
     ],
 
     "modules-right": [
-      "custom/gpu",
       "cpu",
       "memory",
-      "temperature",
       "network",
       "custom/bluetooth",
       "custom/clipboard",
+      "backlight",
       "pulseaudio",
       "battery",
       "custom/notifications"
@@ -41,18 +40,11 @@
       "on-click-middle": "kitty"
     },
 
-    "custom/gpu": {
-      "exec": "$HOME/.config/waybar/scripts/gpu.sh",
-      "return-type": "json",
-      "interval": 2,
-      "on-click": "$HOME/.config/waybar/scripts/system-monitor.sh"
-    },
-
     "clock": {
       "format": "{:%a %d %b   %H:%M}",
       "tooltip-format": "{:%A, %d %B %Y}",
       "interval": 60,
-      "on-click": "rofi -show calendar"
+      "on-click": "gsimplecal"
     },
 
     "cpu": {
@@ -78,17 +70,18 @@
       "on-click": "$HOME/.config/waybar/scripts/system-monitor.sh"
     },
 
-    "temperature": {
-      "critical-threshold": 80,
-      "format": "󰔄 {temperatureC}°",
-      "on-click": "$HOME/.config/waybar/scripts/system-monitor.sh"
-    },
-
     "network": {
       "format-wifi": "󰖩 {signalStrength}%",
       "format-ethernet": "󰈀",
       "format-disconnected": "󰖪",
       "on-click": "$HOME/.config/waybar/scripts/wifi-manager.sh"
+    },
+
+    "backlight": {
+      "format": "{icon} {percent}%",
+      "format-icons": ["󰃞", "󰃟", "󰃠"],
+      "on-scroll-up": "brightnessctl -e4 -n2 set 5%+",
+      "on-scroll-down": "brightnessctl -e4 -n2 set 5%-"
     },
 
     "pulseaudio": {
