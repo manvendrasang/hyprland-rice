@@ -287,7 +287,13 @@ hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("waypaper"))
 hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("hyprlock"))
 hl.bind(mainMod .. " + .", hl.dsp.exec_cmd("rofimoji --action copy"))
 hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
-hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("hyprx-settings"))
+-- Bound to the script's absolute path, not the "hyprx-settings"
+-- symlink name - Hyprland's exec environment doesn't reliably
+-- inherit ~/.local/bin on PATH the way an interactive terminal
+-- shell does, even though the symlink itself resolves fine when
+-- typed directly. Same tilde-path approach already used by the
+-- screenshot binds below.
+hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("~/.local/share/hyprx/scripts/settings-menu.sh"))
 hl.bind(mainMod .. " + D", hl.dsp.exec_cmd("kitty --hold -e fastfetch"))
 hl.bind(mainMod .. " + F5", hl.dsp.exec_cmd("asusctl profile -n"))
 hl.bind(mainMod .. " + F6", hl.dsp.exec_cmd("rog-control-center"))
