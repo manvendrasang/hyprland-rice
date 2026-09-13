@@ -1,32 +1,30 @@
-[
-	{
-		"label": "lock",
-		"action": "sh -c 'command -v hyprlock >/dev/null 2>&1 && hyprlock || notify-send \"HyprX\" \"hyprlock not found. Try: pacman -Q hyprlock\"'",
-		"text": "Lock",
-		"keybind": "l"
-	},
-	{
-		"label": "suspend",
-		"action": "systemctl suspend",
-		"text": "Sleep",
-		"keybind": "u"
-	},
-	{
-		"label": "reboot",
-		"action": "systemctl reboot",
-		"text": "Restart",
-		"keybind": "r"
-	},
-	{
-		"label": "shutdown",
-		"action": "systemctl poweroff",
-		"text": "Shutdown",
-		"keybind": "s"
-	},
-	{
-		"label": "logout",
-		"action": "hyprctl dispatch exit",
-		"text": "Logout",
-		"keybind": "e"
-	}
-]
+{
+	"label": "lock",
+	"action": "sh -c 'command -v hyprlock >/dev/null 2>&1 && hyprlock || notify-send \"HyprX\" \"hyprlock not found. Try: pacman -Q hyprlock\"'",
+	"text": "Lock",
+	"keybind": "l"
+}
+{
+	"label": "suspend",
+	"action": "systemctl suspend",
+	"text": "Sleep",
+	"keybind": "u"
+}
+{
+	"label": "reboot",
+	"action": "systemctl reboot",
+	"text": "Restart",
+	"keybind": "r"
+}
+{
+	"label": "shutdown",
+	"action": "systemctl poweroff",
+	"text": "Shutdown",
+	"keybind": "s"
+}
+{
+	"label": "logout",
+	"action": "hyprctl dispatch exit",
+	"text": "Logout",
+	"keybind": "e"
+}
