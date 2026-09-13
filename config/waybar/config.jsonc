@@ -35,7 +35,7 @@
     "custom/logo": {
       "format": "",
       "tooltip": "Power menu",
-      "on-click": "wlogout",
+      "on-click": "wlogout --buttons-per-row 5",
       "on-click-right": "rofi -show drun -show-icons",
       "on-click-middle": "kitty"
     },
