@@ -44,7 +44,12 @@ local runner = "rofi -show run"
 --
 hl.on("hyprland.start", function()
 	hl.exec_cmd("pkill hyprpaper; hyprpaper")
-	hl.exec_cmd("waypaper --restore")
+	-- hyprpaper needs a moment to bring up its IPC socket before
+	-- it can accept the wallpaper-set call. Without this delay,
+	-- "waypaper --restore" can race hyprpaper's own startup and
+	-- get silently dropped, leaving no wallpaper (or the wrong
+	-- one) until manually re-run.
+	hl.exec_cmd("sleep 1 && waypaper --restore")
 	hl.exec_cmd("waybar || waybar")
 	hl.exec_cmd("swaync")
 	hl.exec_cmd("hypridle")
@@ -65,10 +70,10 @@ hl.env("QT_QPA_PLATFORMTHEME", "qt6ct")
 -- NVIDIA compatibility. Without these, Hyprland's compositor effects
 -- (blur, and potentially other rendering features) can silently fail
 -- to work at all, with no error.
-hl.env("LIBVA_DRIVER_NAME", "nvidia")
+-- hl.env("LIBVA_DRIVER_NAME", "nvidia")
 hl.env("XDG_SESSION_TYPE", "wayland")
 hl.env("GBM_BACKEND", "nvidia-drm")
-hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
+-- hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
 
 -- WLR_NO_HARDWARE_CURSORS is deprecated - this is the current
 -- replacement per the Hyprland wiki.
@@ -285,7 +290,7 @@ hl.bind(
 hl.bind(mainMod .. " + F", hl.dsp.exec_cmd(fileManager))
 hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("waypaper"))
 hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("hyprlock"))
-hl.bind(mainMod .. " + .", hl.dsp.exec_cmd("rofimoji --action copy"))
+hl.bind(mainMod .. " + period", hl.dsp.exec_cmd("rofimoji --action copy"))
 hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
 -- Bound to the script's absolute path, not the "hyprx-settings"
 -- symlink name - Hyprland's exec environment doesn't reliably
@@ -297,6 +302,7 @@ hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("~/.local/share/hyprx/scripts/setting
 hl.bind(mainMod .. " + D", hl.dsp.exec_cmd("kitty --hold -e fastfetch"))
 hl.bind(mainMod .. " + F5", hl.dsp.exec_cmd("~/.local/share/hyprx/scripts/power-profile-cycle.sh"))
 hl.bind(mainMod .. " + F6", hl.dsp.exec_cmd("rog-control-center"))
+hl.bind(secondMod .. " + Q", hl.dsp.exec_cmd("code ~/.config/hypr"))
 
 -- hl.bind(mainMod .. " + J", hl.dsp.layout("togglesplit"))    -- dwindle only
 hl.bind(mainMod .. " + B", hl.dsp.exec_cmd(browser))
