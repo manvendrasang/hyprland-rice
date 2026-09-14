@@ -46,10 +46,13 @@ hl.on("hyprland.start", function()
 	hl.exec_cmd("pkill hyprpaper; hyprpaper")
 	-- hyprpaper needs a moment to bring up its IPC socket before
 	-- it can accept the wallpaper-set call. Without this delay,
-	-- "waypaper --restore" can race hyprpaper's own startup and
+	-- the restore call below can race hyprpaper's own startup and
 	-- get silently dropped, leaving no wallpaper (or the wrong
 	-- one) until manually re-run.
-	hl.exec_cmd("sleep 1 && waypaper --restore")
+	-- Also handles waypaper --restore having nothing to restore on
+	-- a completely fresh install (falls back to --random) - see
+	-- scripts/wallpaper-restore.sh for why.
+	hl.exec_cmd("sleep 1 && ~/.local/share/hyprx/scripts/wallpaper-restore.sh")
 	hl.exec_cmd("waybar || waybar")
 	hl.exec_cmd("swaync")
 	hl.exec_cmd("hypridle")
