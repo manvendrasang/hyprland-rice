@@ -105,19 +105,149 @@ Runs the full test suite: unit tests, ShellCheck, and syntax checks. CI runs the
 
 ### Layout
 
+Every directory maps to one job. Within a directory, each file is one
+feature or one concern — nothing in here is a grab-bag.
+
 ```
-packages.list  Flat list of everything HyprX installs
-services.list  Flat list of systemd services HyprX enables
-install.sh     Installs the hyprx tool itself (not packages)
-uninstall.sh   Removes the installed hyprx tool
-bin/           Entry point (hyprx)
-commands/      One file per CLI command
-lib/           Shared library code
-  installer/   Install engine, validation, snapshots, config deploy
-config/        Dotfiles that get deployed (hypr, waybar) plus hyprx.conf
-database/      Small lookup tables (package replacements, requirement hints)
-tests/         Test suite
+packages.list   Flat list of everything HyprX installs (one package per line)
+services.list   Flat list of systemd services HyprX enables
+install.sh      Installs the hyprx tool itself into ~/.local/share/hyprx (not packages)
+uninstall.sh    Removes the installed hyprx tool (packages/configs untouched - see Rollback)
 ```
+
+**`bin/`** — CLI entry point.
+```
+hyprx           Resolves its own real path, sources lib/bootstrap.sh, dispatches
+                 to commands/<name>.sh based on argv[1] (defaults to "help")
+```
+
+**`commands/`** — one file per `hyprx <command>`, matched 1:1 to the
+`## Commands` table above.
+```
+install.sh      hyprx install    -> calls run_install_engine (lib/installer/engine.sh)
+update.sh       hyprx update     -> pacman/yay/paru -Syu, package-manager aware
+rollback.sh     hyprx rollback   -> list / latest / <id>, backed by lib/installer/snapshot.sh
+clean.sh        hyprx clean      -> conservative cache/thumbnail/old-screenshot cleanup only
+doctor.sh       hyprx doctor     -> read-only system health report (config, packages, services)
+help.sh         hyprx help       -> usage text (also the default with no args)
+```
+
+**`lib/`** — shared library code, sourced by every command via
+`lib/bootstrap.sh`. Nothing in here is a CLI entry point itself.
+```
+bootstrap.sh    Sources every other lib/*.sh and exports HYPRX_* path vars
+config.sh       Loads config/hyprx.conf into shell vars (load_config)
+detect.sh       OS/distro detection (reads /etc/os-release)
+packages.sh     Package manager detection (yay > paru > pacman)
+logger.sh       Structured logging to ~/.local/state/hyprx/hyprx.log
+ui.sh           Terminal colors + section/header/divider helpers
+table.sh        table_header/table_row - the two-column tables doctor.sh prints
+progress.sh     Text progress bar (used during package installs)
+spinner.sh      Background-process spinner (tput civis, braille spinner glyphs)
+utils.sh        Generic one-liners (command_exists, is_root, timestamp)
+
+installer/      The actual install engine - everything commands/install.sh calls into
+  engine.sh          run_install_engine - orchestrates the full install, in order
+  preflight.sh        Pre-flight checks before touching anything
+  compatibility.sh    Distro/dependency compatibility gate
+  resolver.sh          Reads packages.list -> PACKAGE_QUEUE
+  requirements.sh      Loads database/package-requirements.conf (steam/wine/etc hints)
+  replacements.sh       Loads database/package-replacements.conf (e.g. code -> code-bin)
+  validator.sh          Validates PACKAGE_QUEUE, applies replacements/requirements
+  install_packages.sh    Actually installs, tracks INSTALLED/SKIPPED/FAILED
+  retry.sh                Generic retry() wrapper with backoff, used around installs
+  failure_logger.sh        Appends failed packages to hyprx-install.log
+  deploy.sh                Deploys config/{hypr,waybar,wlogout,swaync,swappy,rofi,waypaper}
+                             to ~/.config/ - the HYPRX_CONFIG_TARGETS list here is the
+                             single source of truth for what counts as a "dotfile"
+  snapshot.sh               Snapshot storage (~/.local/state/hyprx/snapshots) - what
+                              hyprx rollback reads from
+  recovery.sh                Saves/restores install.state for resuming a failed install
+  report.sh                   Generates HyprX-Install-Report.txt at end of install
+```
+
+**`config/`** — the actual dotfiles that get deployed to `~/.config/`,
+one directory per app (see `HYPRX_CONFIG_TARGETS` in `deploy.sh` above
+for the authoritative list), plus HyprX's own settings file.
+```
+hyprx.conf      HyprX's own settings (read by lib/config.sh) - not deployed anywhere
+hypr/           Hyprland itself: hyprland.lua (binds/autostart), hypridle, etc.
+waybar/         Status bar: config.jsonc, style.css, styles/, scripts/, themes/
+rofi/           App launcher/dmenu theme
+wlogout/        Logout/power menu
+swaync/         Notification daemon config
+swappy/         Screenshot annotation tool config
+waypaper/       Wallpaper picker config
+```
+
+**`database/`** — small flat lookup tables the installer reads at
+runtime, never hand-edited by the user during normal use.
+```
+package-requirements.conf   pkg=hint text - shown when a package needs manual
+                             setup first (e.g. steam needs [multilib] enabled)
+package-replacements.conf   pkg=replacement - packages.list entries that map to
+                             a different real package name (code -> code-bin)
+deprecated-packages.conf    Packages HyprX no longer installs but may still see
+                             referenced in an old snapshot/report
+mirrors.conf                Mirror-related lookups for package operations
+```
+
+**`scripts/`** — standalone utility scripts invoked directly (by
+keybinds in `hyprland.lua`, by Waybar module `on-click`s, or manually),
+as opposed to `lib/` which is only ever sourced. Nothing here is
+reached through the `hyprx` CLI.
+```
+settings-menu.sh        SUPER+I - rofi-based HyprX settings menu
+power-profile-cycle.sh  SUPER+F5 - cycles ASUS fan/power profiles (asusctl)
+wallpaper-restore.sh    Runs at session start - restores last wallpaper via
+                          waypaper --restore, falls back to --random on a fresh install
+gpu-offload-setup.sh    Sets up PRIME/dGPU offload env vars for a hardcoded
+                          list of GPU-heavy apps
+prime-run.sh            On-demand "run this one app on the dGPU" launcher
+fix-sddm-greeter.sh     Syncs SDDM's own Hyprland greeter config with the user's
+reload-hypr.sh          hyprctl reload - trivial config-reload helper
+reload-waybar.sh        Kill + relaunch waybar (used after editing waybar configs)
+backup-config.sh        Ad-hoc ~/.config snapshot to a timestamped folder
+restore-config.sh       Restores from the HyprX-managed backup at ~/.config/hyprx-backup
+system-clean.sh         Broader system cache cleanup - NOT the same code path as
+                          commands/clean.sh (hyprx clean); see item #5, pending redesign
+dev-sync.sh             Dev-loop helper for syncing local changes while iterating
+```
+
+**`tests/`** — the test suite `bash tests/run.sh` runs (unit tests,
+ShellCheck, syntax checks - see `## Development` above). One
+`test_*.sh` file per subsystem, named after what it covers:
+```
+run.sh              Entry point - runs everything below plus ShellCheck/syntax
+common.sh / setup.sh / teardown.sh   Shared fixtures, test env setup/teardown
+test_cli.sh          bin/hyprx dispatch behavior
+test_bootstrap.sh    lib/bootstrap.sh sourcing/exports
+test_config.sh       lib/config.sh / hyprx.conf loading
+test_detection.sh    lib/detect.sh, lib/packages.sh
+test_logging.sh      lib/logger.sh
+test_progress.sh     lib/progress.sh
+test_packages.sh     lib/installer/resolver.sh, validator.sh
+test_requirements.sh lib/installer/requirements.sh
+test_replacements.sh lib/installer/replacements.sh
+test_installer.sh    lib/installer/engine.sh end-to-end
+test_install.sh      commands/install.sh
+test_deploy.sh        lib/installer/deploy.sh (config deployment)
+test_recovery.sh      lib/installer/recovery.sh (resume-after-failure)
+test_snapshot.sh      lib/installer/snapshot.sh (rollback data)
+test_report.sh        lib/installer/report.sh
+test_permissions.sh   File permission expectations across the repo
+test_scripts.sh       scripts/*.sh (the standalone utilities, not lib/)
+test_shellcheck.sh    Runs ShellCheck across the repo
+test_syntax.sh        bash -n syntax check across the repo
+test_source.sh        Every lib/*.sh sources cleanly on its own
+test_smoke.sh         Fast end-to-end sanity pass
+test_coverage.sh       Meta-test: flags files with no corresponding test_*.sh
+```
+
+> **Note:** `lib/bootstrap.sh` exports `HYPRX_THEMES="$ROOT_DIR/themes"`,
+> but no `themes/` directory currently exists in the repo. Either it's
+> planned but not yet built, or it's dead code left over from an earlier
+> design — worth resolving next time `lib/bootstrap.sh` is touched.
 
 ## Known limitations
 
