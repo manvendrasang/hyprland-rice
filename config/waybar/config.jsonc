@@ -48,9 +48,8 @@
     },
 
     "cpu": {
-      "exec": "$HOME/.config/waybar/scripts/cpu.sh",
-      "format": "󰍛 {}%",
-      "interval": 2,
+      "format": "󰍛 {usage}%",
+      "interval": 5,
       "on-click": "$HOME/.config/waybar/scripts/system-monitor.sh"
     },
 
@@ -64,9 +63,8 @@
     },
 
     "memory": {
-      "exec": "$HOME/.config/waybar/scripts/memory.sh",
-      "format": "󰘚 {}%",
-      "interval": 2,
+      "format": "󰘚 {percentage}%",
+      "interval": 5,
       "on-click": "$HOME/.config/waybar/scripts/system-monitor.sh"
     },
 
