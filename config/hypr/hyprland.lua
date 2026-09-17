@@ -59,6 +59,10 @@ hl.on("hyprland.start", function()
 	hl.exec_cmd("wl-paste --type text --watch cliphist store")
 	hl.exec_cmd("wl-paste --type image --watch cliphist store")
 	hl.exec_cmd("nm-applet --indicator")
+	-- Event-driven replacements for what used to be 1s/3s Waybar
+	-- polling scripts - see config/waybar/scripts/{music,bluetooth}-daemon.sh.
+	hl.exec_cmd("~/.config/waybar/scripts/music-daemon.sh")
+	hl.exec_cmd("~/.config/waybar/scripts/bluetooth-daemon.sh")
 end)
 -------------------------------
 ---- ENVIRONMENT VARIABLES ----
