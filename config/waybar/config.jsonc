@@ -48,9 +48,8 @@
     },
 
     "cpu": {
-      "exec": "$HOME/.config/waybar/scripts/cpu.sh",
-      "format": "󰍛 {}%",
-      "interval": 2,
+      "format": "󰍛 {usage}%",
+      "interval": 5,
       "on-click": "$HOME/.config/waybar/scripts/system-monitor.sh"
     },
 
@@ -64,9 +63,8 @@
     },
 
     "memory": {
-      "exec": "$HOME/.config/waybar/scripts/memory.sh",
-      "format": "󰘚 {}%",
-      "interval": 2,
+      "format": "󰘚 {percentage}%",
+      "interval": 5,
       "on-click": "$HOME/.config/waybar/scripts/system-monitor.sh"
     },
 
@@ -98,7 +96,8 @@
     "custom/music": {
     "exec": "$HOME/.config/waybar/scripts/music.sh",
     "return-type": "json",
-    "interval": 1,
+    "interval": 30,
+    "signal": 9,
       "on-click": "playerctl play-pause",
       "on-click-middle": "playerctl stop",
       "on-click-right": "spotify-launcher",
@@ -121,7 +120,8 @@
     "custom/bluetooth": {
       "exec": "$HOME/.config/waybar/scripts/bluetooth.sh",
       "return-type": "json",
-      "interval": 3,
+      "interval": 30,
+      "signal": 10,
       "on-click": "blueman-manager",
       "on-click-right": "kitty -e bluetoothctl"
     },
