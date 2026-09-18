@@ -209,8 +209,6 @@ reload-hypr.sh          hyprctl reload - trivial config-reload helper
 reload-waybar.sh        Kill + relaunch waybar (used after editing waybar configs)
 backup-config.sh        Ad-hoc ~/.config snapshot to a timestamped folder
 restore-config.sh       Restores from the HyprX-managed backup at ~/.config/hyprx-backup
-system-clean.sh         Broader system cache cleanup - NOT the same code path as
-                          commands/clean.sh (hyprx clean); see item #5, pending redesign
 dev-sync.sh             Dev-loop helper for syncing local changes while iterating
 ```
 
