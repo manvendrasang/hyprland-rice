@@ -125,6 +125,75 @@ done
 
 echo
 
+########################################
+# System journal (absorbed from the old
+# scripts/system-clean.sh, now removed -
+# see git history)
+########################################
+#
+# Time-boxed, same philosophy as the
+# screenshot cleanup above: only entries
+# older than the retention window are
+# ever touched, so this never needs a
+# confirmation prompt.
+#
+
+section "System Logs"
+
+JOURNAL_RETENTION_DAYS=7
+
+if $DRY_RUN; then
+    info "[dry-run] Would vacuum journal entries older than ${JOURNAL_RETENTION_DAYS} days"
+else
+    if command -v sudo >/dev/null 2>&1 && command -v journalctl >/dev/null 2>&1; then
+        sudo journalctl --vacuum-time="${JOURNAL_RETENTION_DAYS}d"
+        success "Vacuumed journal entries older than ${JOURNAL_RETENTION_DAYS} days"
+    else
+        info "journalctl/sudo not available - skipping"
+    fi
+fi
+
+echo
+
+########################################
+# Temporary files
+########################################
+#
+# Age-gated (not a blanket wipe like the
+# old system-clean.sh) so this can't touch
+# a socket/lockfile a running process on
+# this session dropped in /tmp minutes ago.
+# Note the age filter applies per top-level
+# entry, not recursively - a dir older than
+# the threshold is removed whole even if a
+# file inside it is newer.
+#
+
+section "Temporary Files"
+
+TMP_AGE_DAYS=1
+CURRENT_USER="$(id -un)"
+
+if [[ -d /tmp ]]; then
+
+    mapfile -t old_tmp < <(find /tmp -mindepth 1 -user "$CURRENT_USER" -mtime "+$TMP_AGE_DAYS" 2>/dev/null)
+
+    if ((${#old_tmp[@]})); then
+        if $DRY_RUN; then
+            printf "%s\n" "${old_tmp[@]}"
+            info "[dry-run] Would delete ${#old_tmp[@]} item(s) in /tmp older than ${TMP_AGE_DAYS} day(s), owned by $CURRENT_USER"
+        else
+            rm -rf "${old_tmp[@]}" 2>/dev/null
+            success "Removed ${#old_tmp[@]} item(s) in /tmp older than ${TMP_AGE_DAYS} day(s)"
+        fi
+    else
+        success "No stale temp files owned by $CURRENT_USER."
+    fi
+
+fi
+
+echo
+
 divider
 
 if $DRY_RUN; then
