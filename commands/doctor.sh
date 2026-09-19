@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 
-header
-info_log "Running doctor"
-
-echo
-
 ########################################
 # Result tally (for the Summary at the
 # end / the process exit code). Only
@@ -89,6 +84,16 @@ check_failed_units() {
     fi
 
 }
+
+# Everything below is wrapped in one function so a single run can be
+# piped to both the terminal and a saved report file (see the very
+# bottom of this script) without restructuring every section.
+run_doctor_checks() {
+
+header
+info_log "Running doctor"
+
+echo
 
 ########################################
 # Configuration
@@ -356,6 +361,67 @@ fi
 echo
 
 ########################################
+# Session Health
+#
+# Everything in this section checks LIVE
+# runtime state (is a daemon not just
+# running, but actually doing its job)
+# rather than static config - added after
+# a session where hyprpaper stayed alive
+# with no active wallpaper layer, and
+# waybar silently failed to launch, with
+# neither condition visible from process
+# lists or config files alone.
+########################################
+
+section "Session Health"
+
+if command_exists hyprctl && pgrep -x Hyprland >/dev/null 2>&1; then
+
+    layers_out=$(hyprctl layers 2>/dev/null || true)
+
+    # hyprpaper
+    if pgrep -x hyprpaper >/dev/null 2>&1; then
+        if echo "$layers_out" | grep -q "namespace: hyprpaper"; then
+            note_ok "hyprpaper running with an active background layer"
+        else
+            note_warn "hyprpaper is running but has no active background layer (no wallpaper set) - try: ~/.local/share/hyprx/scripts/wallpaper-restore.sh"
+        fi
+    else
+        note_warn "hyprpaper is not running"
+    fi
+
+    # waybar
+    if pgrep -x waybar >/dev/null 2>&1; then
+        if echo "$layers_out" | grep -q "namespace: waybar"; then
+            note_ok "waybar running with an active layer"
+        else
+            note_warn "waybar process is running but has no registered layer - may still be starting, or crashed after initial launch"
+        fi
+    else
+        note_warn "waybar is not running"
+    fi
+
+    # Live GBM/render backend, read from the actual running Hyprland
+    # process - not the config file, which can say one thing while a
+    # stale/different value is what's actually active this session.
+    hypr_pid=$(pgrep -x Hyprland | head -1)
+    gbm_backend=$(tr '\0' '\n' < "/proc/$hypr_pid/environ" 2>/dev/null | grep '^GBM_BACKEND=' | cut -d= -f2)
+    if [[ "$gbm_backend" == "nvidia-drm" ]]; then
+        note_warn "GBM_BACKEND=nvidia-drm is active in the live Hyprland process - on a MUX-less hybrid laptop this can leave the panel blank (Hyprland renders correctly, but nothing reaches the screen). See the comment above this setting in config/hypr/hyprland.lua."
+    elif [[ -n "$gbm_backend" ]]; then
+        info "GBM_BACKEND=$gbm_backend active in the live Hyprland process"
+    else
+        note_ok "No GBM_BACKEND override active (auto-detect)"
+    fi
+
+else
+    info "Hyprland/hyprctl not available, skipping session health checks"
+fi
+
+echo
+
+########################################
 # Hybrid GPU
 #
 # Only runs on machines with supergfxd
@@ -399,6 +465,39 @@ if command_exists supergfxctl; then
     echo
 
 fi
+
+########################################
+# Network & Radios
+########################################
+
+section "Network & Radios"
+
+if command_exists rfkill; then
+    rfkill_out=$(rfkill list 2>/dev/null)
+    if echo "$rfkill_out" | grep -qi "blocked: yes"; then
+        note_warn "One or more radios are soft/hard blocked:"
+        echo "$rfkill_out" | grep -B2 -i "blocked: yes"
+    else
+        note_ok "No radios blocked (bluetooth/wifi/etc all unblocked)"
+    fi
+else
+    info "rfkill not available, skipping radio block check"
+fi
+
+if command_exists nmcli; then
+    conn_state=$(nmcli -t -f STATE general status 2>/dev/null)
+    if [[ "$conn_state" == "connected" ]]; then
+        note_ok "NetworkManager: connected"
+    elif [[ -n "$conn_state" ]]; then
+        note_warn "NetworkManager state: $conn_state (not fully connected)"
+    else
+        info "Could not query NetworkManager state"
+    fi
+else
+    info "nmcli not available, skipping network state check"
+fi
+
+echo
 
 ########################################
 # Pacman
@@ -452,3 +551,28 @@ else
     success "All checks passed"
     success_log "Doctor finished clean"
 fi
+
+}
+
+########################################
+# Run + save a report
+#
+# Every run is saved as a timestamped,
+# color-stripped log under
+# ~/.local/state/hyprx/reports/, so a
+# single `hyprx doctor` run produces a
+# durable diagnostic document - not just
+# terminal output that scrolls away.
+########################################
+
+REPORT_DIR="$HOME/.local/state/hyprx/reports"
+mkdir -p "$REPORT_DIR"
+REPORT_FILE="$REPORT_DIR/doctor-$(date +%Y%m%d-%H%M%S).log"
+
+run_doctor_checks 2>&1 | tee >(sed -u 's/\x1b\[[0-9;]*m//g' > "$REPORT_FILE")
+DOCTOR_EXIT="${PIPESTATUS[0]}"
+
+echo
+info "Full report saved to: $REPORT_FILE"
+
+exit "$DOCTOR_EXIT"
