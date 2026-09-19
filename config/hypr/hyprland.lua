@@ -53,7 +53,11 @@ hl.on("hyprland.start", function()
 	-- a completely fresh install (falls back to --random) - see
 	-- scripts/wallpaper-restore.sh for why.
 	hl.exec_cmd("sleep 1 && ~/.local/share/hyprx/scripts/wallpaper-restore.sh")
-	hl.exec_cmd("waybar || waybar")
+	-- waybar's own layer-shell surface can lose an early-session race
+	-- against Hyprland/the Wayland socket not being fully ready yet,
+	-- with no error logged anywhere - it just silently never launches.
+	-- Same class of race as hyprpaper's above; give it the same guard.
+	hl.exec_cmd("sleep 1 && waybar")
 	hl.exec_cmd("swaync")
 	hl.exec_cmd("hypridle")
 	hl.exec_cmd("wl-paste --type text --watch cliphist store")
@@ -79,7 +83,17 @@ hl.env("QT_QPA_PLATFORMTHEME", "qt6ct")
 -- to work at all, with no error.
 -- hl.env("LIBVA_DRIVER_NAME", "nvidia")
 hl.env("XDG_SESSION_TYPE", "wayland")
-hl.env("GBM_BACKEND", "nvidia-drm")
+-- Only uncomment GBM_BACKEND=nvidia-drm if your laptop has a real MUX
+-- switch letting the dGPU drive the internal panel directly. On a
+-- MUX-less hybrid Optimus setup (most laptops, including this rig),
+-- the internal panel is wired only to the iGPU - forcing the whole
+-- compositor's GBM backend to nvidia-drm in that case means Hyprland
+-- renders everything correctly but nothing ever reaches the screen
+-- (hyprctl layers looks perfect; the panel just stays blank). Confirm
+-- via your laptop's spec sheet or `cat /sys/kernel/debug/vgaswitcheroo/switch`
+-- before enabling this. scripts/prime-run.sh already exists for running
+-- one specific app on the dGPU without touching this global setting.
+-- hl.env("GBM_BACKEND", "nvidia-drm")
 -- hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
 
 -- WLR_NO_HARDWARE_CURSORS is deprecated - this is the current
