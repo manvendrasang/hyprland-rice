@@ -207,6 +207,49 @@ else
     [[ "$found_json" == false ]] && info "No deployed JSON/JSONC config files found"
 fi
 
+# hyprland.lua and hyprlock.conf aren't JSON, so they need their own
+# checks - added after a session where a broken sed edit to
+# hyprland.lua silently corrupted a line (no crash, no error until
+# the next reload/restart tried to use it).
+lua_checker=""
+for candidate in luac luac5.4 luac5.3 luac5.1; do
+    if command_exists "$candidate"; then
+        lua_checker="$candidate"
+        break
+    fi
+done
+
+hyprland_lua="${HYPRX_TARGET_HOME:-$HOME}/.config/hypr/hyprland.lua"
+if [[ -f "$hyprland_lua" ]]; then
+    if [[ -n "$lua_checker" ]]; then
+        if "$lua_checker" -p "$hyprland_lua" >/dev/null 2>&1; then
+            note_ok "hyprland.lua: valid Lua syntax"
+        else
+            note_err "hyprland.lua: Lua syntax error - a reload or session restart will fail to pick up recent edits. Run: $lua_checker -p ~/.config/hypr/hyprland.lua for details"
+        fi
+    else
+        info "No Lua syntax checker (luac) available - skipping hyprland.lua check"
+    fi
+else
+    info "hyprland.lua not found, skipping"
+fi
+
+# Not a real hyprlang parser, just a balanced-braces check - cheap,
+# but catches an obviously malformed file (a missing/extra brace from
+# a bad manual edit) without needing any extra tooling.
+hyprlock_conf="${HYPRX_TARGET_HOME:-$HOME}/.config/hypr/hyprlock.conf"
+if [[ -f "$hyprlock_conf" ]]; then
+    open_braces=$(grep -o '{' "$hyprlock_conf" 2>/dev/null | wc -l || true)
+    close_braces=$(grep -o '}' "$hyprlock_conf" 2>/dev/null | wc -l || true)
+    if [[ "$open_braces" == "$close_braces" ]]; then
+        note_ok "hyprlock.conf: braces balanced ($open_braces pairs)"
+    else
+        note_err "hyprlock.conf: unbalanced braces ($open_braces open, $close_braces close) - hyprlock will fail to start or misparse a block"
+    fi
+else
+    info "hyprlock.conf not found, skipping"
+fi
+
 echo
 
 ########################################
