@@ -70,8 +70,16 @@ check_failed_units() {
     local scope="$1"
     local label="$2"
     local output
+    local -a systemctl_args=()
 
-    if ! output=$(systemctl "$scope" --failed --no-legend 2>&1); then
+    # An empty scope means "system" (no flag needed) - passing "" as
+    # a literal argument makes systemctl choke on the stray empty
+    # arg and fail, which this code then wrongly reported as "bus
+    # unreachable" even when the user-scope call right below it
+    # (with a real "--user" argument) worked fine.
+    [[ -n "$scope" ]] && systemctl_args+=("$scope")
+
+    if ! output=$(systemctl "${systemctl_args[@]}" --failed --no-legend 2>&1); then
         info "$label: unable to query (systemctl unavailable or bus unreachable)"
         return
     fi
@@ -449,7 +457,7 @@ if command_exists hyprctl && pgrep -x Hyprland >/dev/null 2>&1; then
     # process - not the config file, which can say one thing while a
     # stale/different value is what's actually active this session.
     hypr_pid=$(pgrep -x Hyprland | head -1)
-    gbm_backend=$(tr '\0' '\n' < "/proc/$hypr_pid/environ" 2>/dev/null | grep '^GBM_BACKEND=' | cut -d= -f2)
+    gbm_backend=$(tr '\0' '\n' < "/proc/$hypr_pid/environ" 2>/dev/null | grep '^GBM_BACKEND=' | cut -d= -f2 || true)
     if [[ "$gbm_backend" == "nvidia-drm" ]]; then
         note_warn "GBM_BACKEND=nvidia-drm is active in the live Hyprland process - on a MUX-less hybrid laptop this can leave the panel blank (Hyprland renders correctly, but nothing reaches the screen). See the comment above this setting in config/hypr/hyprland.lua."
     elif [[ -n "$gbm_backend" ]]; then
