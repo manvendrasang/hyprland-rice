@@ -64,6 +64,19 @@ deploy_config_dir() {
 
     success "Deployed $dir"
 
+    # swaync ships a systemd user service, enabled by the package's
+    # own preset, that races against this rice's own exec_cmd("swaync")
+    # autostart (config/hypr/hyprland.lua) - whichever wins launches
+    # fine, the other hits "instance already running", exits 1, and
+    # systemd burns through 5 retries before giving up
+    # (start-limit-hit). Harmless (swaync ends up running either way)
+    # but noisy and pointless. This rice always launches session
+    # daemons via exec_cmd, never systemd --user units, so disable the
+    # redundant path rather than the one this rice actually relies on.
+    if [[ "$dir" == "swaync" ]] && command -v systemctl >/dev/null 2>&1; then
+        systemctl --user disable swaync.service >/dev/null 2>&1 || true
+    fi
+
 }
 
 ########################################
