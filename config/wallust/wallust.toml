@@ -29,26 +29,26 @@ backend = "full"
 
 [templates]
 
-waybar.template = "templates/waybar-colors.css"
+waybar.template = "waybar-colors.css"
 waybar.target = "~/.config/waybar/styles/colors.css"
 waybar.pywal = true
 
-rofi.template = "templates/rofi-colors.rasi"
+rofi.template = "rofi-colors.rasi"
 rofi.target = "~/.config/rofi/colors.rasi"
 rofi.pywal = true
 
-swaync.template = "templates/swaync-colors.css"
+swaync.template = "swaync-colors.css"
 swaync.target = "~/.config/swaync/colors.css"
 swaync.pywal = true
 
-wlogout.template = "templates/wlogout-colors.css"
+wlogout.template = "wlogout-colors.css"
 wlogout.target = "~/.config/wlogout/colors.css"
 wlogout.pywal = true
 
-hypr.template = "templates/hypr-colors.lua"
+hypr.template = "hypr-colors.lua"
 hypr.target = "~/.config/hypr/colors.lua"
 hypr.pywal = true
 
-hyprlock.template = "templates/hypr-colors.conf"
+hyprlock.template = "hypr-colors.conf"
 hyprlock.target = "~/.config/hypr/colors.conf"
 hyprlock.pywal = true
