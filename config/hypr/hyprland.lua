@@ -322,7 +322,18 @@ hl.bind(mainMod .. " + M", hl.dsp.exit())
 hl.bind(mainMod .. " + F", hl.dsp.exec_cmd(fileManager))
 hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("waypaper"))
 hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("hyprlock"))
-hl.bind(secondMod .. " + L", hl.dsp.exec_cmd("pkill -x wlogout >/dev/null 2>&1 || wlogout --buttons-per-row 5"))
+hl.bind(secondMod .. " + L", hl.dsp.exec_cmd(
+	"pkill -x wlogout >/dev/null 2>&1 || wlogout --buttons-per-row 5"
+	.. " --margin-top 420 --margin-bottom 420 --margin-left 500 --margin-right 500"
+	.. " --column-spacing 24"
+	-- Compact-dock look (config/wlogout/style.css) - these margins are
+	-- what actually constrains the button row into a small centered
+	-- cluster (GTK3 has no max-width/max-height CSS property, so
+	-- buttons always stretch to fill whatever space they're given).
+	-- Tuned for this machine's 1920x1080 panel; rendered and
+	-- confirmed with a real screenshot (sway + grim), not guessed.
+	-- On a different resolution, rescale these roughly proportionally.
+))
 hl.bind(mainMod .. " + period", hl.dsp.exec_cmd("rofimoji --action copy"))
 hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
 -- Bound to the script's absolute path, not the "hyprx-settings"
