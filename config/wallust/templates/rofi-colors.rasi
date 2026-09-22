@@ -1,0 +1,9 @@
+* {
+	bg-main:      {background}ee;
+	bg-alt:       {color0}66;
+	fg-main:      {foreground};
+	fg-dim:       {color7};
+	accent:       {color12};
+	accent-dark:  {color4};
+	selected-bg:  {color12}cc;
+}

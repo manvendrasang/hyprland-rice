@@ -1,0 +1,15 @@
+@define-color bg        rgba({background.rgb},0.88);
+@define-color bg-alt    rgba({color0.rgb},0.88);
+
+@define-color border    rgba({color8.rgb},0.35);
+
+@define-color fg        {foreground};
+
+@define-color blue      {color12};
+@define-color cyan      {color6};
+@define-color green     {color2};
+@define-color yellow    {color3};
+@define-color orange    {color11};
+@define-color red       {color1};
+@define-color pink      {color5};
+@define-color purple    {color13};

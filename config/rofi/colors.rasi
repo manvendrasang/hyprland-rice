@@ -1,0 +1,15 @@
+/* Default palette, used until the first `wallust run <wallpaper>` (or
+   automatically, the first time you change your wallpaper via waypaper
+   - see config/waypaper/config.ini's post_command). Once wallust has
+   run, this file is regenerated from
+   config/wallust/templates/rofi-colors.rasi and should not be
+   hand-edited - it will be overwritten on the next wallpaper change. */
+* {
+	bg-main:      #0d0d0dee;
+	bg-alt:       #17171766;
+	fg-main:      #f2ede4;
+	fg-dim:       #b8b0a4;
+	accent:       #c1440e;
+	accent-dark:  #8f320a;
+	selected-bg:  #c1440ecc;
+}

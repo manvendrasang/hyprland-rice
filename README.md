@@ -75,9 +75,23 @@ Everything in `packages.list` (one package per line, edit directly to customize)
 
 Services enabled: `bluetooth`, `docker`, `NetworkManager`, `pipewire` (see `services.list`).
 
-Dotfiles deployed to `~/.config/`: `hypr` and `waybar` (see `config/`).
+Dotfiles deployed to `~/.config/`: `hypr`, `waybar`, `wlogout`, `swaync`, `swappy`, `rofi`, `waypaper`, `wallust` (see `config/`).
 
 Some packages need extra system setup before they'll install — for example `steam` requires the `multilib` repository enabled in `/etc/pacman.conf`. When a package fails validation for a known reason like this, HyprX tells you exactly what to do about it instead of just saying "not found."
+
+## Dynamic Theming
+
+Change your wallpaper through waypaper, and every app's colors update to match it automatically - Waybar, Rofi, SwayNC, wlogout, hyprlock's text/panel colors, and Hyprland's active/inactive border colors.
+
+This is powered by [wallust](https://codeberg.org/explosion-mental/wallust), which extracts a 16-color palette from the new wallpaper and regenerates a small `colors.*` file per app from the templates in `config/wallust/templates/`. `config/waypaper/config.ini`'s `post_command` is what triggers this automatically on every wallpaper change; `scripts/apply-wallust-theme.sh` is the actual trigger script, and it also reloads Waybar/SwayNC/Hyprland so the new colors take effect immediately rather than on next launch.
+
+You can also trigger it by hand, without changing your wallpaper:
+
+```bash
+wallust run /path/to/any/image.jpg
+```
+
+Each app's `colors.*` file (`config/{waybar/styles,rofi,swaync,wlogout}/colors.css` or `.rasi`, `config/hypr/colors.lua`) is checked into the repo with a static default value, so a fresh install looks correct before wallust has ever run - don't hand-edit these, they get overwritten on the next wallpaper change. If you want to change the color *mapping* itself (which palette color drives which role), edit the templates in `config/wallust/templates/` and `config/wallust/wallust.toml` instead - the mapping convention used across all of them is documented in comments at the top of `wallust.toml`.
 
 ## Rollback
 
@@ -177,7 +191,10 @@ rofi/           App launcher/dmenu theme
 wlogout/        Logout/power menu
 swaync/         Notification daemon config
 swappy/         Screenshot annotation tool config
-waypaper/       Wallpaper picker config
+waypaper/       Wallpaper picker config - its post_command is what
+                 triggers dynamic theming on every wallpaper change
+wallust/        Dynamic theming: wallust.toml + templates/ - see the
+                 "Dynamic Theming" section above
 ```
 
 **`database/`** — small flat lookup tables the installer reads at
@@ -204,6 +221,8 @@ wallpaper-restore.sh    Runs at session start - restores last wallpaper via
 gpu-offload-setup.sh    Sets up PRIME/dGPU offload env vars for a hardcoded
                           list of GPU-heavy apps
 prime-run.sh            On-demand "run this one app on the dGPU" launcher
+apply-wallust-theme.sh  Runs wallust + reloads affected apps - triggered by
+                          waypaper's post_command, see "Dynamic Theming" above
 fix-sddm-greeter.sh     Syncs SDDM's own Hyprland greeter config with the user's
 reload-hypr.sh          hyprctl reload - trivial config-reload helper
 reload-waybar.sh        Kill + relaunch waybar (used after editing waybar configs)
