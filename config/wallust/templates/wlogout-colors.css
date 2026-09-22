@@ -1,0 +1,2 @@
+@define-color bg  rgba({background.rgb},0.55);
+@define-color fg  {foreground};
