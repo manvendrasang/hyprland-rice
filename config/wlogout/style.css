@@ -3,57 +3,45 @@
    config/wlogout/colors.css (the checked-in fallback). */
 @import "colors.css";
 
-/* Compact dock: a small, centered cluster of pill buttons with most
-   of the screen (and wallpaper) left open around it - deliberately
-   distinct from hyprlock's look, which stays full-bleed/minimal.
-   The window is fully transparent (no full-screen dim) - the "dock"
-   shape comes entirely from the --margin-* flags on the wlogout
-   invocation itself (see config/hypr/hyprland.lua's SUPER+SHIFT+L
-   bind), which constrain the available layout area on every side.
-   GTK3 has no max-width/max-height CSS property, so buttons always
-   stretch to fill whatever space they're given - min-width/height
-   below are a floor for small/odd screen sizes, not what actually
-   makes the buttons dock-sized; that's the margin flags. Verified
-   with a real render (sway + grim), not just CSS parsing - GTK3
-   also doesn't support the `transform` property at all (a GTK4/web
-   CSS thing), so the hover feedback below is background/border/
-   shadow only, not a scale effect. */
+/* Restyled around the reference wlogout theme (upstream's own default
+   style.css/example.png): a stark grid of solid, sharp-cornered
+   panels with thin dividing borders and one bold accent-color hover/
+   focus highlight - replacing the earlier "compact dock" look
+   (rounded floating pills, mostly-transparent). This is a genuine
+   reversal of that direction, not a refinement of it - the two are
+   structurally incompatible (edge-to-edge grid vs. a small floating
+   island), so the SUPER+SHIFT+L margin flags in hyprland.lua changed
+   too (see that file's comment). */
 
 * {
     background-image: none;
+    box-shadow: none;
     transition: 150ms ease-in-out;
     font-family: "Caudex", "JetBrainsMono Nerd Font", sans-serif;
 }
 
 window {
-    background-color: transparent;
+    background-color: @bg;
 }
 
 button {
+    border-radius: 0;
+    border-color: @border;
     color: @fg;
-    background-color: alpha(@bg, 0.55);
+    background-color: @bg-alt;
     border-style: solid;
     border-width: 1px;
-    border-color: alpha(@fg, 0.12);
-    border-radius: 999px;
-    min-width: 64px;
-    min-height: 64px;
-    margin: 8px;
     background-repeat: no-repeat;
     background-position: center;
-    background-size: 42%;
-    box-shadow: 0 4px 16px alpha(black, 0.35);
+    background-size: 25%;
 }
 
 button:focus,
 button:active,
 button:hover {
-    background-color: alpha(@bg, 0.85);
-    border-color: alpha(@fg, 0.35);
-    border-width: 2px;
-    color: @fg;
+    background-color: @accent;
+    color: @bg;
     outline-style: none;
-    box-shadow: 0 6px 20px alpha(black, 0.45);
 }
 
 #lock {

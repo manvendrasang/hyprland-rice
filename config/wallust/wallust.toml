@@ -48,3 +48,7 @@ wlogout.pywal = true
 hypr.template = "templates/hypr-colors.lua"
 hypr.target = "~/.config/hypr/colors.lua"
 hypr.pywal = true
+
+hyprlock.template = "templates/hypr-colors.conf"
+hyprlock.target = "~/.config/hypr/colors.conf"
+hyprlock.pywal = true

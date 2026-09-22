@@ -81,7 +81,7 @@ Some packages need extra system setup before they'll install — for example `st
 
 ## Dynamic Theming
 
-Change your wallpaper through waypaper, and every app's colors update to match it automatically - Waybar, Rofi, SwayNC, wlogout, and Hyprland's active/inactive border colors.
+Change your wallpaper through waypaper, and every app's colors update to match it automatically - Waybar, Rofi, SwayNC, wlogout, hyprlock's text/panel colors, and Hyprland's active/inactive border colors.
 
 This is powered by [wallust](https://codeberg.org/explosion-mental/wallust), which extracts a 16-color palette from the new wallpaper and regenerates a small `colors.*` file per app from the templates in `config/wallust/templates/`. `config/waypaper/config.ini`'s `post_command` is what triggers this automatically on every wallpaper change; `scripts/apply-wallust-theme.sh` is the actual trigger script, and it also reloads Waybar/SwayNC/Hyprland so the new colors take effect immediately rather than on next launch.
 

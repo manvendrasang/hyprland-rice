@@ -1,2 +1,5 @@
-@define-color bg  rgba({background.rgb},0.55);
-@define-color fg  {foreground};
+@define-color bg      rgba({background.rgb},0.92);
+@define-color bg-alt  rgba({color0.rgb},0.92);
+@define-color border  rgba({color8.rgb},0.6);
+@define-color fg      {foreground};
+@define-color accent  {color12};
