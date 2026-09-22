@@ -39,7 +39,7 @@ prompt {
 	text-color: @fg-main;
 	border-radius: 999px;
 	padding: 6px 16px;
-	font: "JetBrainsMono Nerd Font Bold 11";
+	font: "Caudex Bold, JetBrainsMono Nerd Font Bold 11";
 }
 
 entry {

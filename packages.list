@@ -1,6 +1,16 @@
 # HyprX package list
 # One package per line. Comments start with #.
 
+# Fonts
+# Caudex isn't in the official repos or a small dedicated AUR
+# package - ttf-google-fonts-git bundles Google's whole font
+# catalog (confirmed via Google's own fonts repo, ofl/caudex),
+# which is the standard way to get less-common Google Fonts on
+# Arch. JetBrainsMono Nerd Font itself is assumed pre-installed
+# (pre-existing gap, not introduced here - it was never in this
+# list even though every UI font-family already depended on it).
+ttf-google-fonts-git
+
 # Core desktop
 hyprland
 waybar
