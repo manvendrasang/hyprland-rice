@@ -75,15 +75,15 @@ Everything in `packages.list` (one package per line, edit directly to customize)
 
 Services enabled: `bluetooth`, `docker`, `NetworkManager`, `pipewire` (see `services.list`).
 
-Dotfiles deployed to `~/.config/`: `hypr`, `waybar`, `wlogout`, `swaync`, `swappy`, `rofi`, `waypaper`, `wallust` (see `config/`).
+Dotfiles deployed to `~/.config/`: `hypr`, `waybar`, `wlogout`, `swaync`, `swappy`, `rofi`, `waypaper`, `wallust`, `gtk-3.0` (see `config/`).
 
 Some packages need extra system setup before they'll install — for example `steam` requires the `multilib` repository enabled in `/etc/pacman.conf`. When a package fails validation for a known reason like this, HyprX tells you exactly what to do about it instead of just saying "not found."
 
 ## Dynamic Theming
 
-Change your wallpaper through waypaper, and every app's colors update to match it automatically - Waybar, Rofi, SwayNC, wlogout, hyprlock's text/panel colors, and Hyprland's active/inactive border colors.
+Change your wallpaper - however you change it, not just through waypaper - and every app's colors update to match it automatically: Waybar, Rofi, SwayNC, wlogout, hyprlock's text/panel colors, Hyprland's active/inactive border colors, and (via a global GTK3 theme override) any other GTK3 app, such as Nemo.
 
-This is powered by [wallust](https://codeberg.org/explosion-mental/wallust), which extracts a 16-color palette from the new wallpaper and regenerates a small `colors.*` file per app from the templates in `config/wallust/templates/`. `config/waypaper/config.ini`'s `post_command` is what triggers this automatically on every wallpaper change; `scripts/apply-wallust-theme.sh` is the actual trigger script, and it also reloads Waybar/SwayNC/Hyprland so the new colors take effect immediately rather than on next launch.
+This is powered by [wallust](https://codeberg.org/explosion-mental/wallust), which extracts a 16-color palette from the new wallpaper and regenerates a small `colors.*` file per app from the templates in `config/wallust/templates/`. The trigger is `config/waybar/scripts/wallust-hyprpaper-sync.sh`, a small daemon (started at session launch, alongside waybar/hypridle) that polls hyprpaper directly for its active wallpaper - not waypaper's `post_command` - so it catches a wallpaper change no matter what set it: waypaper's picker, a keybind, a manual `hyprctl hyprpaper wallpaper` call, anything. `scripts/apply-wallust-theme.sh` is the actual trigger script it calls, and it also reloads Waybar/SwayNC/Hyprland so the new colors take effect immediately rather than on next launch (GTK3 apps like Nemo pick up the new `gtk.css` on their next own launch, same as Rofi/wlogout - nothing forces already-open GTK3 windows to restart).
 
 You can also trigger it by hand, without changing your wallpaper:
 
@@ -91,7 +91,9 @@ You can also trigger it by hand, without changing your wallpaper:
 wallust run /path/to/any/image.jpg
 ```
 
-Each app's `colors.*` file (`config/{waybar/styles,rofi,swaync,wlogout}/colors.css` or `.rasi`, `config/hypr/colors.lua`) is checked into the repo with a static default value, so a fresh install looks correct before wallust has ever run - don't hand-edit these, they get overwritten on the next wallpaper change. If you want to change the color *mapping* itself (which palette color drives which role), edit the templates in `config/wallust/templates/` and `config/wallust/wallust.toml` instead - the mapping convention used across all of them is documented in comments at the top of `wallust.toml`.
+Each app's `colors.*` file (`config/{waybar/styles,rofi,swaync,wlogout,gtk-3.0}/colors.css` or `.rasi`, `config/hypr/colors.lua`, `config/hypr/colors.conf`) is checked into the repo with a static default value, so a fresh install looks correct before wallust has ever run - don't hand-edit these, they get overwritten on the next wallpaper change. If you want to change the color *mapping* itself (which palette color drives which role), edit the templates in `config/wallust/templates/` and `config/wallust/wallust.toml` instead - the mapping convention used across all of them is documented in comments at the top of `wallust.toml`.
+
+The GTK3 override (`config/gtk-3.0/gtk.css`) only visibly changes anything in apps whose active GTK3 theme uses GTK's standard named color variables internally (most modern themes do - Adwaita, Arc, Materia, Yaru); if no GTK3 theme is set at all, pair this with `nwg-look` to pick one first.
 
 ## Rollback
 
@@ -171,7 +173,7 @@ installer/      The actual install engine - everything commands/install.sh calls
   install_packages.sh    Actually installs, tracks INSTALLED/SKIPPED/FAILED
   retry.sh                Generic retry() wrapper with backoff, used around installs
   failure_logger.sh        Appends failed packages to hyprx-install.log
-  deploy.sh                Deploys config/{hypr,waybar,wlogout,swaync,swappy,rofi,waypaper}
+  deploy.sh                Deploys config/{hypr,waybar,wlogout,swaync,swappy,rofi,waypaper,wallust,gtk-3.0}
                              to ~/.config/ - the HYPRX_CONFIG_TARGETS list here is the
                              single source of truth for what counts as a "dotfile"
   snapshot.sh               Snapshot storage (~/.local/state/hyprx/snapshots) - what

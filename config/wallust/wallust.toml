@@ -52,3 +52,7 @@ hypr.pywal = true
 hyprlock.template = "hypr-colors.conf"
 hyprlock.target = "~/.config/hypr/colors.conf"
 hyprlock.pywal = true
+
+gtk.template = "gtk-colors.css"
+gtk.target = "~/.config/gtk-3.0/gtk.css"
+gtk.pywal = true
