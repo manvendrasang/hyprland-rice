@@ -55,9 +55,11 @@ hl.on("hyprland.start", function()
 	hl.exec_cmd("sleep 1 && ~/.local/share/hyprx/scripts/wallpaper-restore.sh")
 	-- waybar's own layer-shell surface can lose an early-session race
 	-- against Hyprland/the Wayland socket not being fully ready yet,
-	-- with no error logged anywhere - it just silently never launches.
-	-- Same class of race as hyprpaper's above; give it the same guard.
-	hl.exec_cmd("sleep 1 && waybar")
+	-- with no error logged anywhere - it just silently never
+	-- launches. A fixed sleep wasn't reliable on every boot, so this
+	-- retries until waybar is confirmed actually running - see
+	-- config/waybar/scripts/ensure-waybar.sh.
+	hl.exec_cmd("~/.config/waybar/scripts/ensure-waybar.sh &")
 	hl.exec_cmd("swaync")
 	hl.exec_cmd("hypridle")
 	hl.exec_cmd("wl-paste --type text --watch cliphist store")
@@ -67,6 +69,11 @@ hl.on("hyprland.start", function()
 	-- polling scripts - see config/waybar/scripts/{music,bluetooth}-daemon.sh.
 	hl.exec_cmd("~/.config/waybar/scripts/music-daemon.sh &")
 	hl.exec_cmd("~/.config/waybar/scripts/bluetooth-daemon.sh &")
+	-- Dynamic wallpaper-based theming (item #5) - watches hyprpaper
+	-- directly and re-runs wallust whenever the active wallpaper
+	-- changes, regardless of what changed it. See
+	-- config/waybar/scripts/wallust-hyprpaper-sync.sh.
+	hl.exec_cmd("~/.config/waybar/scripts/wallust-hyprpaper-sync.sh &")
 end)
 -------------------------------
 ---- ENVIRONMENT VARIABLES ----

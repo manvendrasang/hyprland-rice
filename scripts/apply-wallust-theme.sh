@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Triggered by waypaper's post_command (see config/waypaper/config.ini)
-# every time the wallpaper changes. Regenerates every templated color
-# file via wallust (config/wallust/wallust.toml), then reloads only
-# what doesn't already pick up a changed file on its own.
+# Triggered by scripts/wallust-hyprpaper-sync.sh whenever it detects
+# hyprpaper's active wallpaper has changed (polling hyprctl directly,
+# not waypaper's post_command - see that script for why). Regenerates
+# every templated color file via wallust (config/wallust/wallust.toml),
+# then reloads only what doesn't already pick up a changed file on
+# its own.
 #
 # Rofi and wlogout are launched fresh every time they're opened, so
 # they need no reload here - the next launch just reads the new
