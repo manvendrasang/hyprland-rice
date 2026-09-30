@@ -30,10 +30,21 @@ while true; do
 
     if [[ -n "$current_state" && "$current_state" != "$last_state" ]]; then
         last_state="$current_state"
-        # listactive can report one line per monitor - one wallpaper
-        # is representative enough for a single palette, so just take
-        # the first line's path (the text after "= ").
-        wallpaper_path=$(printf '%s\n' "$current_state" | head -1 | sed 's/^[^=]*= *//')
+        # listactive prints one line per monitor. Current hyprpaper
+        # (0.8.x, per the wiki) prints "MONITOR: /path"; older builds
+        # printed "MONITOR = /path", and an unassigned fallback shows
+        # up with an empty monitor name. Handle both separators, skip
+        # any line whose path doesn't exist on disk (ghost/fallback
+        # entries), and use the first real one - one wallpaper is
+        # representative enough for a single palette.
+        wallpaper_path=""
+        while IFS= read -r line; do
+            candidate=$(printf '%s' "$line" | sed -E 's/^[^=:]*(=|:) *//')
+            if [[ -n "$candidate" && -f "$candidate" ]]; then
+                wallpaper_path="$candidate"
+                break
+            fi
+        done <<< "$current_state"
         if [[ -n "$wallpaper_path" && -f "$wallpaper_path" ]]; then
             ~/.local/share/hyprx/scripts/apply-wallust-theme.sh "$wallpaper_path"
         fi
