@@ -13,8 +13,8 @@
 }
 
 window#waybar {
-
-    background: transparent;
-
+    background: alpha(@bg, 0.85);
     color: white;
+    border-radius: 16px;
+    padding: 4px;
 }

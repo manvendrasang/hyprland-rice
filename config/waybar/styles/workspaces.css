@@ -1,36 +1,23 @@
 #workspaces {
-
     background: @bg;
-
     border-radius: 14px;
-
     border: 1px solid @border;
-
-    margin: 2px 3px;
-
-    padding: 1px;
+    margin: 4px 3px;
+    padding: 2px;
 }
 
 #workspaces button {
-
-    min-width: 8px;
-    min-height: 8px;
-
-    margin: 1px;
-
-    padding: 0 5px;
-
+    min-width: 10px;
+    min-height: 10px;
+    margin: 2px;
+    padding: 0 6px;
     border-radius: 999px;
-
     background: rgba(255,255,255,0.08);
 }
 
 #workspaces button.active {
-
-    min-width: 28px;
-
+    min-width: 32px;
     background: @blue;
-
     color: @bg;
 }
 #workspaces button:hover {

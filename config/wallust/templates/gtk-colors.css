@@ -6,12 +6,12 @@
    internally (most modern ones do - Adwaita, Arc, Materia, Yaru); if
    no GTK3 theme is set at all, this alone won't do much - pair it
    with nwg-look to pick an actual theme first. */
-@define-color theme_bg_color rgba({background.rgb},1);
-@define-color theme_fg_color {foreground};
-@define-color theme_base_color rgba({color0.rgb},1);
-@define-color theme_text_color {foreground};
-@define-color theme_selected_bg_color {color12};
-@define-color theme_selected_fg_color rgba({background.rgb},1);
-@define-color accent_color {color12};
-@define-color accent_bg_color {color12};
-@define-color accent_fg_color rgba({background.rgb},1);
+@define-color theme_bg_color rgba({{background | rgb}},1);
+@define-color theme_fg_color {{foreground}};
+@define-color theme_base_color rgba({{color0 | rgb}},1);
+@define-color theme_text_color {{foreground}};
+@define-color theme_selected_bg_color {{color12}};
+@define-color theme_selected_fg_color rgba({{background | rgb}},1);
+@define-color accent_color {{color12}};
+@define-color accent_bg_color {{color12}};
+@define-color accent_fg_color rgba({{background | rgb}},1);

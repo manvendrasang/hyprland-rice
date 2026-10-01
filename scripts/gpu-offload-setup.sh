@@ -29,18 +29,27 @@
 # name) to GPU_HEAVY_APPS below.
 #
 
-GPU_HEAVY_APPS=(
-    blender
-    steam
-    steam-native
-    lutris
-    net.lutris.Lutris
-    com.heroicgameslauncher.hgl
-    prismlauncher
-    org.prismlauncher.PrismLauncher
-    godot
-    unityhub
-)
+# GPU-heavy apps list - can be overridden via external config file
+# To add apps, either edit this list or create ~/.config/hyprx/gpu-apps.conf
+# with one .desktop base name per line.
+GPU_APPS_FILE="${HYPRX_CONFIG:-$HOME/.config/hyprx}/gpu-apps.conf"
+
+if [[ -f "$GPU_APPS_FILE" ]]; then
+    mapfile -t GPU_HEAVY_APPS < <(grep -v '^#' "$GPU_APPS_FILE" | grep -v '^$')
+else
+    GPU_HEAVY_APPS=(
+        blender
+        steam
+        steam-native
+        lutris
+        net.lutris.Lutris
+        com.heroicgameslauncher.hgl
+        prismlauncher
+        org.prismlauncher.PrismLauncher
+        godot
+        unityhub
+    )
+fi
 
 OVERRIDE_DIR="${HYPRX_TARGET_HOME:-$HOME}/.local/share/applications"
 

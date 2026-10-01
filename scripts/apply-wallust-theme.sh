@@ -21,7 +21,7 @@ fi
 
 command -v wallust >/dev/null 2>&1 || exit 0
 
-wallust run "$WALLPAPER" --quiet
+wallust run "$WALLPAPER" --quiet --check-contrast
 
 # Waybar only reads colors.css at (re)start.
 ~/.local/share/hyprx/scripts/reload-waybar.sh >/dev/null 2>&1 &

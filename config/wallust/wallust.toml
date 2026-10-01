@@ -1,16 +1,19 @@
 # HyprX dynamic theming.
 #
 # Normally triggered automatically whenever you change your wallpaper
-# via waypaper (see config/waypaper/config.ini's post_command, which
-# runs scripts/apply-wallust-theme.sh). To run it by hand:
+# (see config/waybar/scripts/wallust-hyprpaper-sync.sh, which polls
+# hyprpaper directly and calls scripts/apply-wallust-theme.sh). To
+# run it by hand:
 #
 #   wallust run /path/to/wallpaper.jpg
 #
-# Every entry below uses pywal-compatible template syntax
-# ({background}, {foreground}, {color0}..{color15}, plus the
-# .strip / .rgb suffixes - see the templates/ directory) rather than
-# wallust's newer Jinja2-style engine, since it's the better-documented,
-# more stable syntax across wallust versions.
+# Every entry below uses wallust's Jinja2-style template syntax
+# ({{variable}}, {{variable | rgb}}, {{variable | strip}}, etc.) -
+# see the templates/ directory for examples.
+#
+# check_contrast ensures wallust picks colors that are readable
+# against the background, so waybar items and other UI elements
+# don't blend into the wallpaper.
 #
 # Color role convention used across every template in templates/ (keep
 # these consistent if you add a new one):
@@ -26,33 +29,27 @@
 #                   used only where waybar needs a distinct named hue
 
 backend = "full"
+check_contrast = true
 
 [templates]
 
 waybar.template = "waybar-colors.css"
 waybar.target = "~/.config/waybar/styles/colors.css"
-waybar.pywal = true
 
 rofi.template = "rofi-colors.rasi"
 rofi.target = "~/.config/rofi/colors.rasi"
-rofi.pywal = true
 
 swaync.template = "swaync-colors.css"
 swaync.target = "~/.config/swaync/colors.css"
-swaync.pywal = true
 
 wlogout.template = "wlogout-colors.css"
 wlogout.target = "~/.config/wlogout/colors.css"
-wlogout.pywal = true
 
 hypr.template = "hypr-colors.lua"
 hypr.target = "~/.config/hypr/colors.lua"
-hypr.pywal = true
 
 hyprlock.template = "hypr-colors.conf"
 hyprlock.target = "~/.config/hypr/colors.conf"
-hyprlock.pywal = true
 
 gtk.template = "gtk-colors.css"
 gtk.target = "~/.config/gtk-3.0/gtk.css"
-gtk.pywal = true

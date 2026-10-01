@@ -1,12 +1,7 @@
 #tray {
-
     background: alpha(@bg0, 0.90);
-
     border: 1px solid alpha(@bg3, 0.75);
-
-    border-radius: 10px;
-
-    padding: 0 8px;
-
-    margin: 2px;
+    border-radius: 12px;
+    padding: 0 10px;
+    margin: 4px 3px;
 }

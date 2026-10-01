@@ -12,8 +12,7 @@ export HYPRX_LIB="$ROOT_DIR/lib"
 export HYPRX_COMMANDS="$ROOT_DIR/commands"
 export HYPRX_DATABASE="$ROOT_DIR/database"
 export HYPRX_CONFIG="${HYPRX_CONFIG:-$ROOT_DIR/config}"
-export HYPRX_THEMES="$ROOT_DIR/themes"
-export HYPRX_ASSETS="$ROOT_DIR/assets"
+
 
 #
 # Core libraries

@@ -6,7 +6,7 @@ source "$(dirname "$0")/common.sh"
 
 echo "Testing replacements..."
 
-if [[ -f "$HYPRX_DATABASE/replacements.conf" ]]; then
+if [[ -f "$HYPRX_DATABASE/package-replacements.conf" ]]; then
 
     while IFS='=' read -r old new; do
 
@@ -18,7 +18,7 @@ if [[ -f "$HYPRX_DATABASE/replacements.conf" ]]; then
 
         [[ "$replacement" == "$new" ]]
 
-    done < "$HYPRX_DATABASE/replacements.conf"
+    done < "$HYPRX_DATABASE/package-replacements.conf"
 
 fi
 

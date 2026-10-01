@@ -2,6 +2,6 @@
 -- ~/.config/hypr/colors.lua. Edit this template instead (and see
 -- config/wallust/wallust.toml for how it's wired up).
 return {
-	active_border = "rgba({color12.strip}ee)",
-	inactive_border = "rgba({color8.strip}aa)",
+	active_border = "rgba({{color12 | strip}}ee)",
+	inactive_border = "rgba({{color8 | strip}}aa)",
 }

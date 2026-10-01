@@ -3,10 +3,10 @@
     "layer": "top",
     "position": "top",
 
-    "height": 34,
-    "spacing": 4,
+    "height": 36,
+    "spacing": 6,
 
-    "margin-top": 2,
+    "margin-top": 4,
     "margin-left": 10,
     "margin-right": 10,
 
@@ -16,7 +16,6 @@
     ],
 
     "modules-center": [
-      "custom/music",
       "clock"
     ],
 
@@ -93,18 +92,6 @@
       "on-click": "$HOME/.config/waybar/scripts/sound-manager.sh"
     },
 
-    "custom/music": {
-    "exec": "$HOME/.config/waybar/scripts/music.sh",
-    "return-type": "json",
-    "interval": 30,
-    "signal": 9,
-      "on-click": "playerctl play-pause",
-      "on-click-middle": "playerctl stop",
-      "on-click-right": "spotify-launcher",
-      "on-scroll-up": "playerctl next",
-      "on-scroll-down": "playerctl previous",
-      "escape": true
-    },
 
     "battery": {
       "format": "{icon} {capacity}%",
