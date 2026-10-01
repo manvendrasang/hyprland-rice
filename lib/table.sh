@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-table_header() {
+hyprx_table_header() {
 
     printf "\n"
 
@@ -11,7 +11,7 @@ table_header() {
     "──────────────────"
 }
 
-table_row() {
+hyprx_table_row() {
 
     printf "%-28s %-18s\n" "$1" "$2"
 

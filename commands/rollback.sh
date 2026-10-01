@@ -6,42 +6,42 @@ case "$ACTION" in
 
     list)
 
-        section "Available Snapshots"
+        hyprx_ui_section "Available Snapshots"
 
-        if [[ -z "$(list_snapshots)" ]]; then
-            info "No snapshots found."
+        if [[ -z "$(hyprx_snapshot_list)" ]]; then
+            hyprx_ui_info "No snapshots found."
         else
-            list_snapshots
+            hyprx_snapshot_list
         fi
 
         ;;
 
     latest)
 
-        SNAPSHOT_ID="$(latest_snapshot)"
+        SNAPSHOT_ID="$(hyprx_snapshot_latest)"
 
         [[ -z "$SNAPSHOT_ID" ]] && {
-            info "No snapshots found."
+            hyprx_ui_info "No snapshots found."
             exit 0
         }
 
-        section "Rolling back: $SNAPSHOT_ID"
+        hyprx_ui_section "Rolling back: $SNAPSHOT_ID"
 
-        rollback_snapshot "$SNAPSHOT_ID"
+        hyprx_snapshot_rollback "$SNAPSHOT_ID"
 
         ;;
 
     "")
 
-        section "Rollback"
+        hyprx_ui_section "Rollback"
 
-        info "No snapshot specified. Use 'hyprx rollback list' to see options."
+        hyprx_ui_info "No snapshot specified. Use 'hyprx rollback list' to see options."
 
         ;;
 
     help)
 
-        section "Rollback"
+        hyprx_ui_section "Rollback"
 
         cat <<EOF
 Usage:
@@ -60,16 +60,23 @@ EOF
 
         SNAPSHOT_ID="$ACTION"
 
-        if ! snapshot_exists "$SNAPSHOT_ID"; then
-            error "Unknown snapshot: $SNAPSHOT_ID"
+        if ! hyprx_util_validate_snapshot_id "$SNAPSHOT_ID"; then
+            hyprx_ui_error "Invalid snapshot ID format: $SNAPSHOT_ID"
             echo
-            info "Use 'hyprx rollback list' to see available snapshots."
+            hyprx_ui_info "Use 'hyprx rollback list' to see available snapshots."
             exit 1
         fi
 
-        section "Rolling back: $SNAPSHOT_ID"
+        if ! hyprx_snapshot_exists "$SNAPSHOT_ID"; then
+            hyprx_ui_error "Unknown snapshot: $SNAPSHOT_ID"
+            echo
+            hyprx_ui_info "Use 'hyprx rollback list' to see available snapshots."
+            exit 1
+        fi
 
-        rollback_snapshot "$SNAPSHOT_ID"
+        hyprx_ui_section "Rolling back: $SNAPSHOT_ID"
+
+        hyprx_snapshot_rollback "$SNAPSHOT_ID"
 
         ;;
 

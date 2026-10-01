@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-check_compatibility() {
+hyprx_compatibility_check() {
 
-    header
+    hyprx_ui_header
 
-    info "Checking system compatibility..."
+    hyprx_ui_info "Checking system compatibility..."
 
     local failed=false
 
@@ -14,13 +14,13 @@ check_compatibility() {
 
     if [[ ! -f /etc/arch-release ]]; then
 
-        error "Unsupported distribution."
+        hyprx_ui_error "Unsupported distribution."
 
         failed=true
 
     else
 
-        success "Arch Linux"
+        hyprx_ui_success "Arch Linux"
 
     fi
 
@@ -28,15 +28,15 @@ check_compatibility() {
     # Package manager
     ########################################
 
-    if [[ "$PACKAGE_MANAGER" == "unknown" ]]; then
+    if [[ "$HYPRX_DETECT_PACKAGE_MANAGER" == "unknown" ]]; then
 
-        error "No supported package manager."
+        hyprx_ui_error "No supported package manager."
 
         failed=true
 
     else
 
-        success "Package manager: $PACKAGE_MANAGER"
+        hyprx_ui_success "Package manager: $HYPRX_DETECT_PACKAGE_MANAGER"
 
     fi
 
@@ -46,11 +46,11 @@ check_compatibility() {
 
     if ping -c1 -W2 archlinux.org >/dev/null 2>&1; then
 
-        success "Internet connection"
+        hyprx_ui_success "Internet connection"
 
     else
 
-        warn "Internet unavailable"
+        hyprx_ui_warn "Internet unavailable"
 
     fi
 
@@ -60,11 +60,18 @@ check_compatibility() {
 
     if sudo -v >/dev/null 2>&1; then
 
-        success "Sudo access"
+        hyprx_ui_success "Sudo access"
+
+    elif hyprx_util_dry_run; then
+
+        # See preflight.sh: `sudo -v` cannot prompt without a TTY, and a
+        # dry run never escalates, so don't fail the preview on it.
+
+        hyprx_ui_warn "Sudo unavailable (not required for a dry run)"
 
     else
 
-        error "Sudo unavailable"
+        hyprx_ui_error "Sudo unavailable"
 
         failed=true
 
@@ -78,17 +85,17 @@ check_compatibility() {
 
         wayland)
 
-            success "Wayland session"
+            hyprx_ui_success "Wayland session"
             ;;
 
         x11)
 
-            warn "X11 session"
+            hyprx_ui_warn "X11 session"
             ;;
 
         *)
 
-            warn "Unknown session"
+            hyprx_ui_warn "Unknown session"
             ;;
 
     esac
@@ -103,11 +110,11 @@ check_compatibility() {
 
     if (( free < 1048576 )); then
 
-        warn "Less than 1GB free space."
+        hyprx_ui_warn "Less than 1GB free space."
 
     else
 
-        success "Disk space OK"
+        hyprx_ui_success "Disk space OK"
 
     fi
 
@@ -121,11 +128,11 @@ check_compatibility() {
 
     if (( ram < 4096 )); then
 
-        warn "Less than 4GB RAM."
+        hyprx_ui_warn "Less than 4GB RAM."
 
     else
 
-        success "Memory OK"
+        hyprx_ui_success "Memory OK"
 
     fi
 
@@ -133,23 +140,23 @@ check_compatibility() {
     # CPU
     ########################################
 
-    success "CPU: $(nproc) threads"
+    hyprx_ui_success "CPU: $(nproc) threads"
 
     ########################################
     # Finish
     ########################################
 
-    divider
+    hyprx_ui_divider
 
     if $failed; then
 
-        error "Compatibility check failed."
+        hyprx_ui_error "Compatibility check failed."
 
         return 1
 
     fi
 
-    success "Compatibility check passed."
+    hyprx_ui_success "Compatibility check passed."
 
     return 0
 

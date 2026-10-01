@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 
-declare -gA PACKAGE_REPLACEMENTS
-declare -gA REPLACEMENT_MODE
+declare -gA HYPRX_REPLACEMENTS
+declare -gA HYPRX_REPLACEMENT_MODE
 
-load_replacements() {
+hyprx_replacements_load() {
 
-    PACKAGE_REPLACEMENTS=()
-    REPLACEMENT_MODE=()
+    HYPRX_REPLACEMENTS=()
+    HYPRX_REPLACEMENT_MODE=()
 
-    local db="$ROOT_DIR/database/package-replacements.conf"
+    local db="$HYPRX_ROOT/database/package-replacements.conf"
 
     [[ -f "$db" ]] || return 0
 
@@ -40,51 +40,51 @@ load_replacements() {
         [[ -z "$old" ]] && continue
         [[ -z "$new" ]] && continue
 
-        PACKAGE_REPLACEMENTS["$old"]="$new"
-        REPLACEMENT_MODE["$old"]="$mode"
+        HYPRX_REPLACEMENTS["$old"]="$new"
+        HYPRX_REPLACEMENT_MODE["$old"]="$mode"
 
     done < "$db"
 
 }
 
-get_replacement() {
+hyprx_replacements_get() {
 
     local pkg="$1"
 
-    echo "${PACKAGE_REPLACEMENTS[$pkg]:-}"
+    echo "${HYPRX_REPLACEMENTS[$pkg]:-}"
 
 }
 
-get_replacement_mode() {
+hyprx_replacements_get_mode() {
 
     local pkg="$1"
 
-    echo "${REPLACEMENT_MODE[$pkg]:-forced}"
+    echo "${HYPRX_REPLACEMENT_MODE[$pkg]:-forced}"
 
 }
 
-print_replacements() {
+hyprx_replacements_print() {
 
-    divider
+    hyprx_ui_divider
 
-    info "Package Replacement Database"
+    hyprx_ui_info "Package Replacement Database"
 
     printf "%-30s %-30s %-10s\n" \
         "Original" \
         "Replacement" \
         "Mode"
 
-    divider
+    hyprx_ui_divider
 
-    for pkg in "${!PACKAGE_REPLACEMENTS[@]}"; do
+    for pkg in "${!HYPRX_REPLACEMENTS[@]}"; do
 
         printf "%-30s %-30s %-10s\n" \
             "$pkg" \
-            "${PACKAGE_REPLACEMENTS[$pkg]}" \
-            "${REPLACEMENT_MODE[$pkg]}"
+            "${HYPRX_REPLACEMENTS[$pkg]}" \
+            "${HYPRX_REPLACEMENT_MODE[$pkg]}"
 
     done
 
 }
 
-load_replacements
+hyprx_replacements_load

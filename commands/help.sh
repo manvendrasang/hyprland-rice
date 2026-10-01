@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-section "HyprX"
+hyprx_ui_section "HyprX"
 
 cat <<EOF
 Usage:

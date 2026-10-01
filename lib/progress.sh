@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-progress() {
+hyprx_progress_bar() {
 
     local current=$1
     local total=$2

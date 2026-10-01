@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 
 ########################################
-# hyprx clean
+# hyprx clean [--dry-run]
 ########################################
-#
 # Deliberately conservative: only removes
 # things that either regenerate themselves
 # automatically (package cache, thumbnail/
@@ -12,29 +11,95 @@
 # Never touches user data or anything not
 # owned by HyprX/the package manager.
 #
+# Two independent switches:
+#
+#   --dry-run / HYPRX_DRY_RUN=1
+#       Report everything, remove nothing.
+#
+#   HYPRX_CLEAN_ROOT=<dir>
+#       Redirect the home-relative paths (screenshots, ~/.cache) at <dir>
+#       instead of $HOME, and report rather than perform the steps that
+#       cannot be redirected (package cache, orphans, journal, /tmp).
+#       This is what lets the test suite exercise the real deletion logic
+#       against a throwaway tree instead of only ever testing --dry-run.
+#
 
 DRY_RUN=false
+FAILURES=0
 
-if [[ "${1:-}" == "--dry-run" ]]; then
-    DRY_RUN=true
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN=true ;;
+        -h|--help)
+            hyprx_ui_section "hyprx clean"
+            cat <<'EOF'
+Usage:
+    hyprx clean [--dry-run]
+
+Options:
+    --dry-run   Report every step without removing anything.
+
+Environment:
+    HYPRX_CLEAN_ROOT   Redirect the home-relative cleanup targets
+                       (screenshots, ~/.cache) at this directory.
+                       System-wide steps are then reported, not performed.
+    HYPRX_DRY_RUN=1    Same as --dry-run.
+EOF
+            exit 0
+            ;;
+        *)
+            hyprx_ui_error "Unknown option: $arg"
+            hyprx_ui_info "Run 'hyprx clean --help' for usage."
+            exit 1
+            ;;
+    esac
+done
+
+[[ "${HYPRX_DRY_RUN:-0}" == "1" ]] && DRY_RUN=true
+
+CLEAN_ROOT="${HYPRX_CLEAN_ROOT:-${HYPRX_TARGET_HOME:-$HOME}}"
+SANDBOX=false
+[[ -n "${HYPRX_CLEAN_ROOT:-}" ]] && SANDBOX=true
+
+# Steps that reach outside CLEAN_ROOT cannot be sandboxed, so when running
+# inside a sandbox they are reported only - performing them would mean
+# cleaning the real system during a test.
+REPORT_ONLY=false
+$DRY_RUN  && REPORT_ONLY=true
+$SANDBOX  && REPORT_ONLY=true
+
+hyprx_ui_header
+hyprx_logger_info "Running cleanup"
+
+if $SANDBOX; then
+    hyprx_ui_warn "SANDBOX - home-relative targets redirected to $CLEAN_ROOT;"
+    hyprx_ui_warn "system-wide steps (package cache, orphans, journal, /tmp) will be reported, not performed."
+    echo
 fi
 
-header
-info_log "Running cleanup"
-
 echo
+
+# Report-only sudo helper: escalate if we can do so without a password
+# prompt, otherwise say so instead of dying (or silently doing nothing).
+CLEAN_CAN_SUDO=false
+if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    CLEAN_CAN_SUDO=true
+fi
 
 ########################################
 # Package manager cache
 ########################################
 
-section "Package cache"
+hyprx_ui_section "Package cache"
 
-if $DRY_RUN; then
-    info "[dry-run] Would remove stale pacman cache download-* temp files"
-    info "[dry-run] Would run the $PACKAGE_MANAGER cache clean"
+if $REPORT_ONLY; then
+    hyprx_util_would "remove stale pacman cache download-* temp files"
+    hyprx_util_would "run the $HYPRX_DETECT_PACKAGE_MANAGER cache clean"
+elif ! $CLEAN_CAN_SUDO; then
+    hyprx_ui_warn "sudo unavailable or unauthenticated - skipping package cache clean"
+    FAILURES=$((FAILURES + 1))
 else
-    clean_package_cache
+    hyprx_pkg_clean_cache || FAILURES=$((FAILURES + 1))
 fi
 
 echo
@@ -43,21 +108,20 @@ echo
 # Orphaned packages
 ########################################
 
-section "Orphaned packages"
+hyprx_ui_section "Orphaned packages"
 
-if $DRY_RUN; then
+mapfile -t ORPHANS < <(hyprx_pkg_list_orphans)
 
-    mapfile -t orphans < <(list_orphan_packages)
-
-    if ((${#orphans[@]})); then
-        printf "%s\n" "${orphans[@]}"
-        info "[dry-run] Would prompt to remove the above with: sudo pacman -Rns"
-    else
-        success "No orphan packages found."
-    fi
-
+if ((${#ORPHANS[@]} == 0)); then
+    hyprx_ui_success "No orphan packages found."
+elif $REPORT_ONLY; then
+    printf "%s\n" "${ORPHANS[@]}"
+    hyprx_util_would "prompt to remove the above with: sudo pacman -Rns"
+elif ! $CLEAN_CAN_SUDO; then
+    hyprx_ui_warn "sudo unavailable or unauthenticated - leaving ${#ORPHANS[@]} orphan(s) installed"
+    FAILURES=$((FAILURES + 1))
 else
-    remove_orphan_packages
+    hyprx_pkg_remove_orphans || FAILURES=$((FAILURES + 1))
 fi
 
 echo
@@ -65,31 +129,33 @@ echo
 ########################################
 # Screenshots older than 2 days
 ########################################
+# Redirectable: runs for real under a sandbox, which is the point.
 
-section "Old screenshots"
+hyprx_ui_section "Old screenshots"
 
-SCREENSHOT_DIR="${HYPRX_TARGET_HOME:-$HOME}/Pictures/Screenshots"
+SCREENSHOT_DIR="$CLEAN_ROOT/Pictures/Screenshots"
+SCREENSHOT_AGE_DAYS=2
 
 if [[ -d "$SCREENSHOT_DIR" ]]; then
 
-    mapfile -t old_shots < <(find "$SCREENSHOT_DIR" -maxdepth 1 -type f -mtime +2)
+    mapfile -t OLD_SHOTS < <(find "$SCREENSHOT_DIR" -maxdepth 1 -type f -mtime "+$SCREENSHOT_AGE_DAYS")
 
-    if ((${#old_shots[@]})); then
+    if ((${#OLD_SHOTS[@]})); then
 
         if $DRY_RUN; then
-            printf "%s\n" "${old_shots[@]}"
-            info "[dry-run] Would delete ${#old_shots[@]} screenshot(s) older than 2 days"
+            printf "%s\n" "${OLD_SHOTS[@]}"
+            hyprx_util_would "delete ${#OLD_SHOTS[@]} screenshot(s) older than $SCREENSHOT_AGE_DAYS days"
         else
-            rm -f "${old_shots[@]}"
-            success "Removed ${#old_shots[@]} screenshot(s) older than 2 days."
+            rm -f "${OLD_SHOTS[@]}"
+            hyprx_ui_success "Removed ${#OLD_SHOTS[@]} screenshot(s) older than $SCREENSHOT_AGE_DAYS days."
         fi
 
     else
-        success "No screenshots older than 2 days."
+        hyprx_ui_success "No screenshots older than $SCREENSHOT_AGE_DAYS days."
     fi
 
 else
-    info "No screenshots directory found."
+    hyprx_ui_info "No screenshots directory found ($SCREENSHOT_DIR)."
 fi
 
 echo
@@ -97,60 +163,55 @@ echo
 ########################################
 # Regenerable caches
 ########################################
-#
-# Every entry here regenerates itself
-# automatically the next time it's needed -
-# safe to clear unconditionally.
-#
+# Redirectable: runs for real under a sandbox.
 
-section "Regenerable caches"
+hyprx_ui_section "Regenerable caches"
 
 CACHE_TARGETS=(
-    "${HYPRX_TARGET_HOME:-$HOME}/.cache/thumbnails"
-    "${HYPRX_TARGET_HOME:-$HOME}/.cache/mesa_shader_cache"
+    "$CLEAN_ROOT/.cache/thumbnails"
+    "$CLEAN_ROOT/.cache/mesa_shader_cache"
 )
+
+CACHES_CLEARED=0
 
 for dir in "${CACHE_TARGETS[@]}"; do
 
     [[ -d "$dir" ]] || continue
 
+    CACHES_CLEARED=$((CACHES_CLEARED + 1))
+
     if $DRY_RUN; then
-        info "[dry-run] Would clear: $dir"
+        hyprx_util_would "clear: $dir"
     else
         find "$dir" -mindepth 1 -delete 2>/dev/null
-        success "Cleared $dir"
+        hyprx_ui_success "Cleared $dir"
     fi
 
 done
 
+(( CACHES_CLEARED == 0 )) && hyprx_ui_info "No regenerable caches present."
+
 echo
 
 ########################################
-# System journal (absorbed from the old
-# scripts/system-clean.sh, now removed -
-# see git history)
+# System journal
 ########################################
-#
-# Time-boxed, same philosophy as the
-# screenshot cleanup above: only entries
-# older than the retention window are
-# ever touched, so this never needs a
-# confirmation prompt.
-#
+# System-wide: report only under --dry-run or a sandbox.
 
-section "System Logs"
+hyprx_ui_section "System Logs"
 
 JOURNAL_RETENTION_DAYS=7
 
-if $DRY_RUN; then
-    info "[dry-run] Would vacuum journal entries older than ${JOURNAL_RETENTION_DAYS} days"
+if $REPORT_ONLY; then
+    hyprx_util_would "vacuum journal entries older than $JOURNAL_RETENTION_DAYS days"
+elif ! command -v journalctl >/dev/null 2>&1; then
+    hyprx_ui_info "journalctl not available - skipping"
+elif ! $CLEAN_CAN_SUDO; then
+    hyprx_ui_warn "sudo unavailable or unauthenticated - skipping journal vacuum"
+    FAILURES=$((FAILURES + 1))
 else
-    if command -v sudo >/dev/null 2>&1 && command -v journalctl >/dev/null 2>&1; then
-        sudo journalctl --vacuum-time="${JOURNAL_RETENTION_DAYS}d"
-        success "Vacuumed journal entries older than ${JOURNAL_RETENTION_DAYS} days"
-    else
-        info "journalctl/sudo not available - skipping"
-    fi
+    sudo journalctl --vacuum-time="${JOURNAL_RETENTION_DAYS}d"
+    hyprx_ui_success "Vacuumed journal entries older than $JOURNAL_RETENTION_DAYS days"
 fi
 
 echo
@@ -158,47 +219,50 @@ echo
 ########################################
 # Temporary files
 ########################################
-#
-# Age-gated (not a blanket wipe like the
-# old system-clean.sh) so this can't touch
-# a socket/lockfile a running process on
-# this session dropped in /tmp minutes ago.
-# Note the age filter applies per top-level
-# entry, not recursively - a dir older than
-# the threshold is removed whole even if a
-# file inside it is newer.
-#
+# System-wide: report only under --dry-run or a sandbox.
 
-section "Temporary Files"
+hyprx_ui_section "Temporary Files"
 
 TMP_AGE_DAYS=1
 CURRENT_USER="$(id -un)"
 
-if [[ -d /tmp ]]; then
-
-    mapfile -t old_tmp < <(find /tmp -mindepth 1 -user "$CURRENT_USER" -mtime "+$TMP_AGE_DAYS" 2>/dev/null)
-
-    if ((${#old_tmp[@]})); then
-        if $DRY_RUN; then
-            printf "%s\n" "${old_tmp[@]}"
-            info "[dry-run] Would delete ${#old_tmp[@]} item(s) in /tmp older than ${TMP_AGE_DAYS} day(s), owned by $CURRENT_USER"
-        else
-            rm -rf "${old_tmp[@]}" 2>/dev/null
-            success "Removed ${#old_tmp[@]} item(s) in /tmp older than ${TMP_AGE_DAYS} day(s)"
-        fi
+if $REPORT_ONLY; then
+    mapfile -t OLD_TMP < <(find /tmp -mindepth 1 -user "$CURRENT_USER" -mtime "+$TMP_AGE_DAYS" 2>/dev/null)
+    if ((${#OLD_TMP[@]})); then
+        hyprx_util_would "delete ${#OLD_TMP[@]} item(s) in /tmp older than $TMP_AGE_DAYS day(s), owned by $CURRENT_USER"
     else
-        success "No stale temp files owned by $CURRENT_USER."
+        hyprx_ui_info "No stale temp files owned by $CURRENT_USER."
+    fi
+elif [[ -d /tmp ]]; then
+
+    mapfile -t OLD_TMP < <(find /tmp -mindepth 1 -user "$CURRENT_USER" -mtime "+$TMP_AGE_DAYS" 2>/dev/null)
+
+    if ((${#OLD_TMP[@]})); then
+        rm -rf "${OLD_TMP[@]}" 2>/dev/null
+        hyprx_ui_success "Removed ${#OLD_TMP[@]} item(s) in /tmp older than $TMP_AGE_DAYS day(s)"
+    else
+        hyprx_ui_success "No stale temp files owned by $CURRENT_USER."
     fi
 
 fi
 
 echo
 
-divider
+hyprx_ui_divider
 
-if $DRY_RUN; then
-    info "Dry run complete - nothing was removed."
+if $REPORT_ONLY; then
+    if $SANDBOX; then
+        hyprx_ui_info "Sandbox run complete - see above for what was and was not touched."
+    else
+        hyprx_ui_info "Dry run complete - nothing was removed."
+    fi
+elif (( FAILURES > 0 )); then
+    hyprx_ui_warn "Cleanup finished with $FAILURES step(s) skipped or failed - see above."
+    hyprx_logger_warn "Cleanup finished with $FAILURES skipped/failed step(s)"
+    exit 1
 else
-    success "Cleanup completed."
-    success_log "Cleanup completed successfully."
+    hyprx_ui_success "Cleanup completed."
+    hyprx_logger_success "Cleanup completed successfully."
 fi
+
+exit 0

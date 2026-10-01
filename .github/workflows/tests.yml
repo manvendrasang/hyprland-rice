@@ -28,13 +28,16 @@ jobs:
           sudo apt update
           sudo apt install -y shellcheck
 
-      - name: Bash Syntax
+      # tests/run_tests.sh also runs ShellCheck over the whole tree, so this
+      # job is partly redundant with the `tests` job below. That is
+      # intentional: it fails fast on style errors before the slower job.
+      #
+      # The suite skips its pacman/lscpu/lspci assertions when those tools
+      # are absent, so ubuntu is a valid environment for it even though
+      # HyprX itself only supports Arch.
+      - name: Run Tests
 
-        run: bash tests/test_syntax.sh
-
-      - name: ShellCheck
-
-        run: bash tests/test_shellcheck.sh
+        run: bash tests/run_tests.sh
 
   tests:
 
@@ -58,4 +61,4 @@ jobs:
 
       - name: Run Tests
 
-        run: bash tests/run.sh
+        run: bash tests/run_tests.sh

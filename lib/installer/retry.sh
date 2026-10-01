@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 
-MAX_RETRIES=3
-RETRY_BASE_DELAY=2
+HYPRX_RETRY_MAX=3
+HYPRX_RETRY_BASE_DELAY=2
 
 ########################################
 # Generic retry wrapper
-# Usage: retry <max_attempts> <command> [args...]
+# Usage: hyprx_retry <max_attempts> <command> [args...]
 ########################################
 
-retry() {
+hyprx_retry() {
 
     local max_attempts="$1"
     shift
@@ -22,7 +22,7 @@ retry() {
         fi
 
         attempt=$((attempt + 1))
-        sleep "$((RETRY_BASE_DELAY))"
+        sleep "$((HYPRX_RETRY_BASE_DELAY))"
 
     done
 
@@ -30,63 +30,63 @@ retry() {
 
 }
 
-retry_failed_packages() {
+hyprx_retry_failed_packages() {
 
-    [[ ${#FAILED_PACKAGES[@]} -eq 0 ]] && return 0
+    [[ ${#HYPRX_INSTALL_FAILED[@]} -eq 0 ]] && return 0
 
-    local remaining=("${FAILED_PACKAGES[@]}")
+    local remaining=("${HYPRX_INSTALL_FAILED[@]}")
 
-    FAILED_PACKAGES=()
+    HYPRX_INSTALL_FAILED=()
 
     local attempt
     local delay
 
-    for ((attempt=1; attempt<=MAX_RETRIES; attempt++)); do
+    for ((attempt=1; attempt<=HYPRX_RETRY_MAX; attempt++)); do
 
         [[ ${#remaining[@]} -eq 0 ]] && break
 
-        divider
+        hyprx_ui_divider
 
-        info "Retry attempt $attempt/$MAX_RETRIES"
+        hyprx_ui_info "Retry attempt $attempt/$HYPRX_RETRY_MAX"
 
         local current_failed=()
 
         for pkg in "${remaining[@]}"; do
 
-            info "Retrying $pkg"
+            hyprx_ui_info "Retrying $pkg"
 
-            install_package "$pkg"
+            hyprx_pkg_install "$pkg"
             status=$?
 
             case "$status" in
 
                 0)
 
-                    success "$pkg"
+                    hyprx_ui_success "$pkg"
 
-                    INSTALLED_PACKAGES+=("$pkg")
+                    HYPRX_INSTALL_INSTALLED+=("$pkg")
 
-                    mark_package_complete "$pkg"
+                    hyprx_recovery_mark_complete "$pkg"
 
                     ;;
 
                 10)
 
-                    info "$pkg already installed."
+                    hyprx_ui_info "$pkg already installed."
 
-                    SKIPPED_PACKAGES+=("$pkg")
+                    HYPRX_INSTALL_SKIPPED+=("$pkg")
 
-                    mark_package_complete "$pkg"
+                    hyprx_recovery_mark_complete "$pkg"
 
                     ;;
 
                 *)
 
-                    warn "$pkg failed again"
+                    hyprx_ui_warn "$pkg failed again"
 
                     current_failed+=("$pkg")
 
-                    log_failed_package \
+                    hyprx_failure_logger_log \
                         "$pkg" \
                         "Retry $attempt failed"
 
@@ -102,11 +102,11 @@ retry_failed_packages() {
             break
         fi
 
-        if (( attempt < MAX_RETRIES )); then
+        if (( attempt < HYPRX_RETRY_MAX )); then
 
-            delay=$((RETRY_BASE_DELAY ** attempt))
+            delay=$((HYPRX_RETRY_BASE_DELAY ** attempt))
 
-            warn "Waiting ${delay}s before next retry..."
+            hyprx_ui_warn "Waiting ${delay}s before next retry..."
 
             sleep "$delay"
 
@@ -114,15 +114,15 @@ retry_failed_packages() {
 
     done
 
-    FAILED_PACKAGES=("${remaining[@]}")
+    HYPRX_INSTALL_FAILED=("${remaining[@]}")
 
-    if (( ${#FAILED_PACKAGES[@]} == 0 )); then
+    if (( ${#HYPRX_INSTALL_FAILED[@]} == 0 )); then
 
-        success "All failed packages recovered."
+        hyprx_ui_success "All failed packages recovered."
 
     else
 
-        warn "Some packages could not be installed."
+        hyprx_ui_warn "Some packages could not be installed."
 
     fi
 

@@ -9,13 +9,8 @@ HYPRX_CONFIG_TARGETS="hypr waybar wlogout swaync swappy rofi waypaper wallust gt
 ########################################
 # Deploy a single config directory
 ########################################
-#
-# Backs up whatever already exists at the
-# target before overwriting it, and records
-# the outcome so rollback can undo it later.
-#
 
-deploy_config_dir() {
+hyprx_deploy_config_dir() {
 
     local dir="$1"
 
@@ -23,9 +18,35 @@ deploy_config_dir() {
     local target="${HYPRX_TARGET_HOME:-$HOME}/.config/$dir"
     local staging="${target}.hyprx-staging.$$"
 
-    if [[ ! -d "$source" ]]; then
-        warn "Missing config source: $dir"
+    # Validate directory name to prevent path traversal.
+    #
+    # Dots are deliberately ALLOWED: a real target in HYPRX_CONFIG_TARGETS is
+    # "gtk-3.0", and an earlier `[^a-zA-Z0-9_-]` check rejected it - so that
+    # config directory was silently never deployed, on every install, with only
+    # a one-line error scrolling past. What actually needs blocking is a name
+    # that can escape the target: any path separator, or a relative segment.
+    if [[ "$dir" =~ [/] ]] || [[ "$dir" == "." ]] || [[ "$dir" == ".." ]] \
+       || [[ ! "$dir" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+        hyprx_ui_error "Invalid config directory name: $dir"
         return 1
+    fi
+
+    if [[ ! -d "$source" ]]; then
+        hyprx_ui_warn "Missing config source: $dir"
+        return 1
+    fi
+
+    # Report the plan and touch nothing. Deliberately placed after the
+    # validation checks above so a dry run still surfaces a missing or
+    # malformed source, and after the target-exists probe so it can say
+    # whether a backup would be taken.
+    if hyprx_util_dry_run; then
+        if [[ -e "$target" ]]; then
+            hyprx_util_would "back up existing $dir, then deploy $dir -> $target"
+        else
+            hyprx_util_would "deploy $dir -> $target (new)"
+        fi
+        return 0
     fi
 
     mkdir -p "$(dirname "$target")"
@@ -40,7 +61,7 @@ deploy_config_dir() {
     if [[ -e "$target" ]]; then
 
         local backup
-        backup="$(config_backup_dir_for "$(current_snapshot_id)")/$dir"
+        backup="$(hyprx_snapshot_backup_dir_for "$(hyprx_snapshot_current_id)")/$dir"
 
         mkdir -p "$(dirname "$backup")"
         rm -rf "$backup"
@@ -50,19 +71,19 @@ deploy_config_dir() {
         mv "$target" "$backup"
         mv "$staging" "$target"
 
-        record_config_backup "$dir" "true"
+        hyprx_snapshot_record_config "$dir" "true"
 
-        info "Backed up existing $dir"
+        hyprx_ui_info "Backed up existing $dir"
 
     else
 
         mv "$staging" "$target"
 
-        record_config_backup "$dir" "false"
+        hyprx_snapshot_record_config "$dir" "false"
 
     fi
 
-    success "Deployed $dir"
+    hyprx_ui_success "Deployed $dir"
 
     # swaync ships a systemd user service, enabled by the package's
     # own preset, that races against this rice's own exec_cmd("swaync")
@@ -82,22 +103,11 @@ deploy_config_dir() {
 ########################################
 # Remove targets no longer deployed
 ########################################
-#
-# Compares the targets deployed by the
-# previous install run (DEPLOYED_TARGETS_FILE)
-# against the current HYPRX_CONFIG_TARGETS.
-# Anything deployed before but missing from
-# the list now (a feature/theme was removed)
-# gets backed up and removed the same way an
-# in-place redeploy backs up an overwritten
-# dir - so it is restorable via rollback,
-# never just silently deleted.
-#
 
-remove_orphaned_targets() {
+hyprx_deploy_remove_orphaned() {
 
     local previous
-    previous="$(read_deployed_targets)"
+    previous="$(hyprx_snapshot_read_deployed)"
 
     [[ -z "$previous" ]] && return 0
 
@@ -114,15 +124,20 @@ remove_orphaned_targets() {
 
         [[ -e "$target" ]] || continue
 
-        backup="$(config_backup_dir_for "$(current_snapshot_id)")/$dir"
+        if hyprx_util_dry_run; then
+            hyprx_util_would "move orphaned config $dir out of $target (no longer a deploy target)"
+            continue
+        fi
+
+        backup="$(hyprx_snapshot_backup_dir_for "$(hyprx_snapshot_current_id)")/$dir"
 
         mkdir -p "$(dirname "$backup")"
         rm -rf "$backup"
         mv "$target" "$backup"
 
-        record_config_backup "$dir" "true"
+        hyprx_snapshot_record_config "$dir" "true"
 
-        info "Removed orphaned config: $dir (no longer a deploy target)"
+        hyprx_ui_info "Removed orphaned config: $dir (no longer a deploy target)"
 
     done
 
@@ -132,18 +147,25 @@ remove_orphaned_targets() {
 # Deploy every configured directory
 ########################################
 
-deploy_configs() {
+hyprx_deploy_all() {
 
-    section "Deploying configuration"
+    hyprx_ui_section "Deploying configuration"
 
     local dir
 
     for dir in $HYPRX_CONFIG_TARGETS; do
-        deploy_config_dir "$dir"
+        hyprx_deploy_config_dir "$dir"
     done
 
-    remove_orphaned_targets
+    hyprx_deploy_remove_orphaned
 
-    write_deployed_targets $HYPRX_CONFIG_TARGETS
+    # This file drives the next run's orphan detection. Writing it during a
+    # dry run would make the *next* real run believe targets it never
+    # deployed were already deployed, so it must be skipped.
+    if hyprx_util_dry_run; then
+        hyprx_util_would "record deploy targets for the next run"
+    else
+        hyprx_snapshot_write_deployed $HYPRX_CONFIG_TARGETS
+    fi
 
 }

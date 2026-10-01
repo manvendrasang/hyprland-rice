@@ -4,58 +4,38 @@
 # Snapshot storage locations
 ########################################
 
-SNAPSHOT_DIR="${HYPRX_SNAPSHOT_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/snapshots}"
+HYPRX_SNAPSHOT_DIR="${HYPRX_SNAPSHOT_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/snapshots}"
 
-CONFIG_BACKUPS=()
+HYPRX_SNAPSHOT_CONFIG_BACKUPS=()
 
 ########################################
 # Shared snapshot id for this install run
 ########################################
-#
-# Packages and config backups from the
-# same install run share one id, so a
-# single rollback undoes both together.
-#
 
-CURRENT_SNAPSHOT_ID=""
+HYPRX_SNAPSHOT_CURRENT_ID=""
 
 ########################################
 # Initialize the snapshot id for this run
 ########################################
-#
-# MUST be called directly (init_snapshot_id),
-# never via $(...). Command substitution
-# always forks a subshell, so any mutation
-# made only inside a $(...) call is discarded
-# the moment that subshell exits - the id
-# would silently regenerate on every read,
-# letting packages and configs from the same
-# install drift onto different snapshot ids.
-#
 
-init_snapshot_id() {
+hyprx_snapshot_init_id() {
 
-    CURRENT_SNAPSHOT_ID="$(date +%Y%m%d-%H%M%S)"
+    HYPRX_SNAPSHOT_CURRENT_ID="$(date +%Y%m%d-%H%M%S)"
 
 }
 
 ########################################
 # Read the current snapshot id
 ########################################
-#
-# Safe to call via $(...) - this only reads,
-# it never mutates. init_snapshot_id must
-# have already run directly before this.
-#
 
-current_snapshot_id() {
+hyprx_snapshot_current_id() {
 
-    if [[ -z "$CURRENT_SNAPSHOT_ID" ]]; then
-        warn "current_snapshot_id read before init_snapshot_id was called"
-        init_snapshot_id
+    if [[ -z "$HYPRX_SNAPSHOT_CURRENT_ID" ]]; then
+        hyprx_ui_warn "hyprx_snapshot_current_id read before hyprx_snapshot_init_id was called"
+        hyprx_snapshot_init_id
     fi
 
-    echo "$CURRENT_SNAPSHOT_ID"
+    echo "$HYPRX_SNAPSHOT_CURRENT_ID"
 
 }
 
@@ -63,71 +43,63 @@ current_snapshot_id() {
 # Config backup root
 ########################################
 
-config_backup_root() {
+hyprx_snapshot_backup_root() {
 
     echo "${HYPRX_CONFIG_BACKUP_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/config-backups}"
 
 }
 
-config_backup_dir_for() {
+hyprx_snapshot_backup_dir_for() {
 
-    echo "$(config_backup_root)/$1"
+    echo "$(hyprx_snapshot_backup_root)/$1"
 
 }
 
 ########################################
 # Record that a config dir was touched
 ########################################
-#
-# existed = true  -> a backup was made, restore it on rollback
-# existed = false -> nothing existed before, remove it on rollback
-#
 
-record_config_backup() {
+hyprx_snapshot_record_config() {
 
-    CONFIG_BACKUPS+=("$1:$2")
+    HYPRX_SNAPSHOT_CONFIG_BACKUPS+=("$1:$2")
 
 }
 
 ########################################
 # Save a snapshot of this install run
 ########################################
-#
-# Records packages newly installed this
-# run (INSTALLED_PACKAGES) and any config
-# directories touched by deploy_configs
-# (CONFIG_BACKUPS). Already-present
-# packages and untouched configs are
-# never recorded, so rollback can never
-# affect anything HyprX didn't change.
-#
 
-save_snapshot() {
+hyprx_snapshot_save() {
 
-    mkdir -p "$SNAPSHOT_DIR"
+    # Nothing was changed by a dry run, so there is nothing to roll back.
+    # Writing a snapshot here would also pollute `hyprx rollback list`
+    # with an entry that would remove packages the user still has.
+    hyprx_util_dry_run && return 0
 
-    if (( ${#INSTALLED_PACKAGES[@]} == 0 )) && (( ${#CONFIG_BACKUPS[@]} == 0 )); then
+    mkdir -p "$HYPRX_SNAPSHOT_DIR"
+
+    if (( ${#HYPRX_INSTALL_INSTALLED[@]} == 0 )) && (( ${#HYPRX_SNAPSHOT_CONFIG_BACKUPS[@]} == 0 )); then
         return 0
     fi
 
     local id
-    id="$(current_snapshot_id)"
+    id="$(hyprx_snapshot_current_id)"
 
-    local file="$SNAPSHOT_DIR/$id.snapshot"
+    local file="$HYPRX_SNAPSHOT_DIR/$id.snapshot"
 
     {
         echo "DATE=$(date)"
-        echo "PACKAGES=${#INSTALLED_PACKAGES[@]}"
-        echo "CONFIGS=${#CONFIG_BACKUPS[@]}"
+        echo "PACKAGES=${#HYPRX_INSTALL_INSTALLED[@]}"
+        echo "CONFIGS=${#HYPRX_SNAPSHOT_CONFIG_BACKUPS[@]}"
         echo "---PACKAGES---"
-        printf "%s\n" "${INSTALLED_PACKAGES[@]}"
+        printf "%s\n" "${HYPRX_INSTALL_INSTALLED[@]}"
         echo "---CONFIGS---"
-        printf "%s\n" "${CONFIG_BACKUPS[@]}"
+        printf "%s\n" "${HYPRX_SNAPSHOT_CONFIG_BACKUPS[@]}"
     } > "$file"
 
-    info "Snapshot saved: $id"
+    hyprx_ui_info "Snapshot saved: $id"
 
-    LAST_SNAPSHOT_ID="$id"
+    HYPRX_SNAPSHOT_LAST_ID="$id"
 
 }
 
@@ -135,13 +107,13 @@ save_snapshot() {
 # List available snapshots
 ########################################
 
-list_snapshots() {
+hyprx_snapshot_list() {
 
-    [[ -d "$SNAPSHOT_DIR" ]] || return 0
+    [[ -d "$HYPRX_SNAPSHOT_DIR" ]] || return 0
 
     local file id date pkg_count cfg_count
 
-    for file in "$SNAPSHOT_DIR"/*.snapshot; do
+    for file in "$HYPRX_SNAPSHOT_DIR"/*.snapshot; do
 
         [[ -f "$file" ]] || continue
 
@@ -161,45 +133,27 @@ list_snapshots() {
 # Snapshot exists?
 ########################################
 
-snapshot_exists() {
+hyprx_snapshot_exists() {
 
-    [[ -f "$SNAPSHOT_DIR/$1.snapshot" ]]
+    [[ -f "$HYPRX_SNAPSHOT_DIR/$1.snapshot" ]]
 
 }
 
 ########################################
 # Deployed-targets state file
 ########################################
-#
-# Persists the list of config directories
-# deployed by the most recent install run,
-# separately from per-run snapshots. This
-# lets deploy_configs() notice when a
-# directory that used to be a deploy target
-# no longer is (e.g. a feature was reverted,
-# like BUG-12's glassmorphism gtk-3.0
-# override) and clean it up, instead of
-# leaving stale deployed files on disk
-# forever with nothing referencing them.
-#
 
-DEPLOYED_TARGETS_FILE="${HYPRX_DEPLOYED_TARGETS_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/deployed-targets}"
+HYPRX_DEPLOYED_TARGETS_FILE="${HYPRX_DEPLOYED_TARGETS_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/deployed-targets}"
 
 ########################################
 # Read the previously deployed targets
 ########################################
-#
-# One target name per line. Prints nothing
-# (not an error) if this is the first run
-# ever to use this file - there is simply
-# no prior state to compare against yet.
-#
 
-read_deployed_targets() {
+hyprx_snapshot_read_deployed() {
 
-    [[ -f "$DEPLOYED_TARGETS_FILE" ]] || return 0
+    [[ -f "$HYPRX_DEPLOYED_TARGETS_FILE" ]] || return 0
 
-    cat "$DEPLOYED_TARGETS_FILE"
+    cat "$HYPRX_DEPLOYED_TARGETS_FILE"
 
 }
 
@@ -207,11 +161,11 @@ read_deployed_targets() {
 # Persist the currently deployed targets
 ########################################
 
-write_deployed_targets() {
+hyprx_snapshot_write_deployed() {
 
-    mkdir -p "$(dirname "$DEPLOYED_TARGETS_FILE")"
+    mkdir -p "$(dirname "$HYPRX_DEPLOYED_TARGETS_FILE")"
 
-    printf "%s\n" "$@" > "$DEPLOYED_TARGETS_FILE"
+    printf "%s\n" "$@" > "$HYPRX_DEPLOYED_TARGETS_FILE"
 
 }
 
@@ -219,10 +173,10 @@ write_deployed_targets() {
 # Get package list from a snapshot
 ########################################
 
-snapshot_packages() {
+hyprx_snapshot_packages() {
 
     local id="$1"
-    local file="$SNAPSHOT_DIR/$id.snapshot"
+    local file="$HYPRX_SNAPSHOT_DIR/$id.snapshot"
 
     [[ -f "$file" ]] || return 1
 
@@ -234,10 +188,10 @@ snapshot_packages() {
 # Get config backup entries from a snapshot
 ########################################
 
-snapshot_configs() {
+hyprx_snapshot_configs() {
 
     local id="$1"
-    local file="$SNAPSHOT_DIR/$id.snapshot"
+    local file="$HYPRX_SNAPSHOT_DIR/$id.snapshot"
 
     [[ -f "$file" ]] || return 1
 
@@ -249,11 +203,11 @@ snapshot_configs() {
 # Most recent snapshot id
 ########################################
 
-latest_snapshot() {
+hyprx_snapshot_latest() {
 
-    [[ -d "$SNAPSHOT_DIR" ]] || return 1
+    [[ -d "$HYPRX_SNAPSHOT_DIR" ]] || return 1
 
-    find "$SNAPSHOT_DIR" -maxdepth 1 -name "*.snapshot" -printf '%f\n' 2>/dev/null \
+    find "$HYPRX_SNAPSHOT_DIR" -maxdepth 1 -name "*.snapshot" -printf '%f\n' 2>/dev/null \
         | sed 's/\.snapshot$//' \
         | sort \
         | tail -n1
@@ -264,14 +218,14 @@ latest_snapshot() {
 # Delete a snapshot (after successful rollback)
 ########################################
 
-remove_snapshot() {
+hyprx_snapshot_remove() {
 
     local id="$1"
-    local file="$SNAPSHOT_DIR/$id.snapshot"
+    local file="$HYPRX_SNAPSHOT_DIR/$id.snapshot"
 
     [[ -f "$file" ]] && rm -f "$file"
 
-    rm -rf "$(config_backup_dir_for "$id")"
+    rm -rf "$(hyprx_snapshot_backup_dir_for "$id")"
 
 }
 
@@ -279,7 +233,7 @@ remove_snapshot() {
 # Restore (or remove) a single config dir
 ########################################
 
-restore_config_dir() {
+hyprx_snapshot_restore_config() {
 
     local id="$1"
     local dir="$2"
@@ -287,23 +241,23 @@ restore_config_dir() {
 
     local target="${HYPRX_TARGET_HOME:-$HOME}/.config/$dir"
     local backup
-    backup="$(config_backup_dir_for "$id")/$dir"
+    backup="$(hyprx_snapshot_backup_dir_for "$id")/$dir"
 
     if [[ "$existed" == "true" ]]; then
 
         if [[ ! -d "$backup" ]]; then
-            error "Missing backup for $dir, cannot restore"
+            hyprx_ui_error "Missing backup for $dir, cannot restore"
             return 1
         fi
 
         rm -rf "$target"
         cp -r "$backup" "$target"
-        success "Restored $dir"
+        hyprx_ui_success "Restored $dir"
 
     else
 
         rm -rf "$target"
-        success "Removed $dir (was newly deployed)"
+        hyprx_ui_success "Removed $dir (was newly deployed)"
 
     fi
 
@@ -313,12 +267,17 @@ restore_config_dir() {
 # Roll back a snapshot
 ########################################
 
-rollback_snapshot() {
+hyprx_snapshot_rollback() {
 
     local id="$1"
 
-    if ! snapshot_exists "$id"; then
-        error "No such snapshot: $id"
+    if ! hyprx_util_validate_snapshot_id "$id"; then
+        hyprx_ui_error "Invalid snapshot ID format: $id"
+        return 1
+    fi
+
+    if ! hyprx_snapshot_exists "$id"; then
+        hyprx_ui_error "No such snapshot: $id"
         return 1
     fi
 
@@ -334,16 +293,16 @@ rollback_snapshot() {
 
         [[ -z "$pkg" ]] && continue
 
-        info "Removing $pkg"
+        hyprx_ui_info "Removing $pkg"
 
-        if remove_package "$pkg"; then
-            success "$pkg"
+        if hyprx_pkg_remove "$pkg"; then
+            hyprx_ui_success "$pkg"
         else
-            error "$pkg"
+            hyprx_ui_error "$pkg"
             failed=1
         fi
 
-    done < <(snapshot_packages "$id")
+    done < <(hyprx_snapshot_packages "$id")
 
     ####################################
     # Configs
@@ -358,19 +317,19 @@ rollback_snapshot() {
         dir="${entry%%:*}"
         existed="${entry##*:}"
 
-        restore_config_dir "$id" "$dir" "$existed" || failed=1
+        hyprx_snapshot_restore_config "$id" "$dir" "$existed" || failed=1
 
-    done < <(snapshot_configs "$id")
+    done < <(hyprx_snapshot_configs "$id")
 
     ####################################
     # Result
     ####################################
 
     if (( failed == 0 )); then
-        remove_snapshot "$id"
-        success "Rollback complete. Snapshot $id removed."
+        hyprx_snapshot_remove "$id"
+        hyprx_ui_success "Rollback complete. Snapshot $id removed."
     else
-        warn "Rollback finished with errors. Snapshot $id retained."
+        hyprx_ui_warn "Rollback finished with errors. Snapshot $id retained."
     fi
 
     return "$failed"

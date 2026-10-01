@@ -1,90 +1,98 @@
 #!/usr/bin/env bash
 
-run_install_engine() {
+hyprx_engine_run() {
 
-    divider
-    header "HyprX Installer"
-    divider
+    hyprx_ui_divider
+    hyprx_ui_header
+    hyprx_ui_divider
 
     #
     # Snapshot id for this run
     #
-    # Must happen via direct call, not $(...),
-    # so the id genuinely persists for every
-    # later read in this same install run.
-    #
 
-    init_snapshot_id
+    hyprx_snapshot_init_id
 
     #
     # Preflight
     #
 
-    preflight || return 1
+    hyprx_preflight_check || return 1
 
     #
     # Compatibility
     #
 
-    check_compatibility || return 1
+    hyprx_compatibility_check || return 1
 
     #
     # Resume installation if available
     #
 
-    if has_install_state; then
-        info "Previous installation detected."
+    if hyprx_recovery_has_state; then
+        hyprx_ui_info "Previous installation detected."
 
-        resume_install || return 1
+        hyprx_recovery_resume || return 1
     else
-        resolve_packages || return 1
+        hyprx_resolver_resolve || return 1
     fi
 
     #
     # Validate packages
     #
 
-    validate_packages || return 1
+    hyprx_validator_validate || return 1
 
     #
     # Install packages
     #
 
-    install_packages || return 1
+    hyprx_install_packages_run || return 1
 
     #
     # Deploy configs
     #
 
-    deploy_configs || return 1
+    hyprx_deploy_all || return 1
 
     #
     # GPU offload for known heavy apps
     #
-    # Best-effort: never fails the install if
-    # something about a specific .desktop file
-    # is unexpected - offload is a convenience,
-    # not a hard requirement.
-    #
 
-    section "GPU offload"
-    bash "$ROOT_DIR/scripts/gpu-offload-setup.sh" || warn "GPU offload setup had issues (non-fatal)"
+    hyprx_ui_section "GPU offload"
+
+    if hyprx_util_dry_run; then
+        hyprx_util_would "run scripts/gpu-offload-setup.sh"
+    else
+        bash "$HYPRX_ROOT/scripts/gpu-offload-setup.sh" \
+            || hyprx_ui_warn "GPU offload setup had issues (non-fatal)"
+    fi
 
     #
     # Snapshot
     #
 
-    save_snapshot
+    if hyprx_util_dry_run; then
+        hyprx_util_would "write a rollback snapshot (nothing to roll back to, since nothing changed)"
+    else
+        hyprx_snapshot_save
+    fi
 
     #
     # Generate report
     #
 
-    generate_report || return 1
+    hyprx_report_generate || return 1
 
-    divider
-    success "Installation completed successfully."
-    divider
+    hyprx_ui_divider
+
+    if hyprx_util_dry_run; then
+        hyprx_ui_warn "Dry run complete - nothing was installed, deployed or changed."
+        hyprx_ui_info "Re-run without --dry-run to apply."
+    else
+        hyprx_ui_success "Installation completed successfully."
+    fi
+
+    hyprx_ui_divider
 
     return 0
 }

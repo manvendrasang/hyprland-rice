@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+# NOTE: deliberately no `set -e` here.
+#
+# `set -e` at the dispatcher level aborts the whole process the moment any
+# command file returns non-zero internally. That is wrong for a dispatcher:
+# several commands legitimately probe things that can fail (does sudo have a
+# cached ticket? is there a tty? did the package manager answer?) and must be
+# able to report and carry on. With `-e`, `hyprx clean` used to die mid-way
+# through its first section and print nothing about it.
+#
+# Each command owns its own error handling and returns an explicit exit code.
+# `set -u` (catch typos in variable names) and `set -o pipefail` (catch failures
+# hidden in a pipeline) are kept - neither causes an early exit.
+set -uo pipefail
 
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
@@ -16,9 +28,9 @@ shift || true
 COMMAND_FILE="$HYPRX_COMMANDS/$COMMAND.sh"
 
 if [[ ! -f "$COMMAND_FILE" ]]; then
-    error "Unknown command: $COMMAND"
+    hyprx_ui_error "Unknown command: $COMMAND"
     echo
-    info "Available commands:"
+    hyprx_ui_info "Available commands:"
     find "$HYPRX_COMMANDS" -maxdepth 1 -type f -name "*.sh" \
         -printf "%f\n" | sed 's/\.sh$//' | sort
     exit 1

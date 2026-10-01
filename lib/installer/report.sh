@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-generate_report() {
+hyprx_report_generate() {
 
     local report="${HYPRX_REPORT_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/HyprX-Install-Report.txt}"
     local now
@@ -9,20 +9,26 @@ generate_report() {
 
     mkdir -p "$(dirname "$report")"
 
-    for _arr in INSTALLED_PACKAGES SKIPPED_PACKAGES FAILED_PACKAGES INVALID_PACKAGES REPLACED_PACKAGES; do
+    for _arr in HYPRX_INSTALL_INSTALLED HYPRX_INSTALL_SKIPPED HYPRX_INSTALL_FAILED HYPRX_INVALID_PACKAGES HYPRX_REPLACED_PACKAGES; do
         declare -p "$_arr" &>/dev/null || eval "$_arr=()"
     done
 
     now="$(date)"
 
-    duration_minutes=$(( ${INSTALL_DURATION:-0} / 60 ))
-    duration_seconds=$(( ${INSTALL_DURATION:-0} % 60 ))
+    duration_minutes=$(( ${HYPRX_INSTALL_DURATION:-0} / 60 ))
+    duration_seconds=$(( ${HYPRX_INSTALL_DURATION:-0} % 60 ))
 
     {
         echo "=========================================================="
         echo "                 HyprX Installation Report"
         echo "=========================================================="
         echo
+
+        if hyprx_util_dry_run; then
+            echo "!! DRY RUN - this report describes what WOULD happen."
+            echo "!! No packages were installed and no configs were deployed."
+            echo
+        fi
 
         echo "Date"
         echo "----"
@@ -51,7 +57,7 @@ generate_report() {
 
         echo "Package Manager"
         echo "---------------"
-        echo "${PACKAGE_MANAGER:-Unknown}"
+        echo "${HYPRX_DETECT_PACKAGE_MANAGER:-Unknown}"
         echo
 
         echo "Installation Time"
@@ -64,20 +70,20 @@ generate_report() {
         echo "Statistics"
         echo "----------"
 
-        printf "Installed : %d\n" "${#INSTALLED_PACKAGES[@]}"
-        printf "Skipped   : %d\n" "${#SKIPPED_PACKAGES[@]}"
-        printf "Failed    : %d\n" "${#FAILED_PACKAGES[@]}"
-        printf "Invalid   : %d\n" "${#INVALID_PACKAGES[@]}"
-        printf "Replaced  : %d\n" "${#REPLACED_PACKAGES[@]}"
+        printf "Installed : %d\n" "${#HYPRX_INSTALL_INSTALLED[@]}"
+        printf "Skipped   : %d\n" "${#HYPRX_INSTALL_SKIPPED[@]}"
+        printf "Failed    : %d\n" "${#HYPRX_INSTALL_FAILED[@]}"
+        printf "Invalid   : %d\n" "${#HYPRX_INVALID_PACKAGES[@]}"
+        printf "Replaced  : %d\n" "${#HYPRX_REPLACED_PACKAGES[@]}"
 
         echo
 
         for section in \
-            "Installed Packages:✓:${INSTALLED_PACKAGES[*]}" \
-            "Skipped Packages:•:${SKIPPED_PACKAGES[*]}" \
-            "Failed Packages:✗:${FAILED_PACKAGES[*]}" \
-            "Replaced Packages:→:${REPLACED_PACKAGES[*]}" \
-            "Invalid Packages:✗:${INVALID_PACKAGES[*]}"; do
+            "Installed Packages:✓:${HYPRX_INSTALL_INSTALLED[*]}" \
+            "Skipped Packages:•:${HYPRX_INSTALL_SKIPPED[*]}" \
+            "Failed Packages:✗:${HYPRX_INSTALL_FAILED[*]}" \
+            "Replaced Packages:→:${HYPRX_REPLACED_PACKAGES[*]}" \
+            "Invalid Packages:✗:${HYPRX_INVALID_PACKAGES[*]}"; do
 
             IFS=: read -r title symbol _ <<<"$section"
 
@@ -85,18 +91,18 @@ generate_report() {
             printf '%*s\n' "${#title}" '' | tr ' ' '-'
 
             case "$title" in
-                "Installed Packages") arr=("${INSTALLED_PACKAGES[@]}") ;;
-                "Skipped Packages") arr=("${SKIPPED_PACKAGES[@]}") ;;
-                "Failed Packages") arr=("${FAILED_PACKAGES[@]}") ;;
-                "Replaced Packages") arr=("${REPLACED_PACKAGES[@]}") ;;
-                "Invalid Packages") arr=("${INVALID_PACKAGES[@]}") ;;
+                "Installed Packages") arr=("${HYPRX_INSTALL_INSTALLED[@]}") ;;
+                "Skipped Packages") arr=("${HYPRX_INSTALL_SKIPPED[@]}") ;;
+                "Failed Packages") arr=("${HYPRX_INSTALL_FAILED[@]}") ;;
+                "Replaced Packages") arr=("${HYPRX_REPLACED_PACKAGES[@]}") ;;
+                "Invalid Packages") arr=("${HYPRX_INVALID_PACKAGES[@]}") ;;
             esac
 
             if (( ${#arr[@]} > 0 )); then
                 for item in "${arr[@]}"; do
                     if [[ "$title" == "Invalid Packages" ]]; then
                         local hint
-                        hint="$(get_requirement_hint "$item")"
+                        hint="$(hyprx_requirements_get_hint "$item")"
                         if [[ -n "$hint" ]]; then
                             echo "$symbol $item — $hint"
                         else
@@ -117,7 +123,7 @@ generate_report() {
 
     } >"$report"
 
-    success "Report written:"
+    hyprx_ui_success "Report written:"
     echo "  $report"
 
 }

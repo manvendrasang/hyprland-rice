@@ -1,38 +1,17 @@
-## License
-
-Copyright © 2026 Manvendra Sang. All rights reserved.
-
-This repository and all of its contents are proprietary software.
-
-No permission is granted to use, copy, modify, reproduce, distribute,
-publish, sublicense, sell, or incorporate any portion of this software
-into another project without prior written permission from the copyright
-holder.
-
-This restriction applies to the current version and all historical
-versions, commits, releases, branches, and other versions of the
-repository.(all past commits and updates and future ones as well are included)
-
-Viewing or accessing this repository does not grant a license or any
-other right to use the software.
-
-For licensing or commercial-use inquiries, contact the copyright holder.
-
-
 # HyprX
 
-A single, opinionated Hyprland desktop installer for Arch Linux — one flat configuration, automatic package validation, and safe rollback of anything it changes.
+A single, opinionated Hyprland desktop installer for Arch Linux — one flat configuration, automatic package validation, and safe rollback of anything it changes. There's no profile switching or optional modules — HyprX installs one complete, fixed desktop setup: Hyprland, Waybar, development tools, gaming utilities, media tools, and networking, all in one pass. If you want a different set of packages, edit `packages.list` directly.
 
-There's no profile switching or optional modules — HyprX installs one complete, fixed desktop setup: Hyprland, Waybar, development tools, gaming utilities, media tools, and networking, all in one pass. If you want a different set of packages, edit `packages.list` directly.
+## What Changes This Project Brings
 
-## Requirements
+- **Packages installed** (~50): Hyprland, Waybar, Rofi, Kitty, SwayNC, Thunar, Hyprlock, Hypridle, development tools (git, neovim, VS Code, lazygit, GitHub CLI), gaming utilities (Steam, GameMode, MangoHud), media tools (mpv, VLC, Spotify, pavucontrol, playerctl), networking (NetworkManager, Bluetooth, firewalld), GPU management (nvidia-utils, supergfxctl, asusctl, rog-control-center), and system utilities (nwg-look, nwg-displays, fastfetch, wallust, cliphist, wl-clipboard, gsimplecal, grim, slurp, swappy, rofimoji, waypaper)
+- **Systemd services enabled**: bluetooth, docker, firewalld, NetworkManager, pipewire, supergfxd, asusd
+- **Dotfiles deployed to `~/.config/`**: hypr, waybar, wlogout, swaync, swappy, rofi, waypaper, wallust, gtk-3.0
+- **Dynamic theming**: wallpaper changes automatically regenerate color schemes across all apps via wallust
+- **GPU offload**: PRIME render-offload .desktop overrides for GPU-heavy apps
+- **CLI tool**: `hyprx` command for install, update, rollback, clean, and doctor operations
 
-- Arch Linux (or an Arch-based distro)
-- `bash`
-- `pacman`, and optionally `yay` or `paru` for AUR packages
-- `git`
-
-## Getting started
+## Installation
 
 ```bash
 git clone https://github.com/manvendrasang/hyprland-rice.git
@@ -63,66 +42,23 @@ hyprx doctor       Diagnose system health
 hyprx help         Show usage
 ```
 
-## What gets installed
+### Command Details
 
-Everything in `packages.list` (one package per line, edit directly to customize):
+**`hyprx install`** — Reads `packages.list`, validates each package against official repos and AUR, applies known replacements (e.g., `code` → `visual-studio-code-bin`), installs via the detected package manager (yay > paru > pacman), deploys all configs atomically, sets up GPU offload, and saves a snapshot for rollback.
 
-- **Desktop**: Hyprland, Waybar, Rofi, Kitty, SwayNC, Thunar
-- **Development**: git, neovim, VS Code, lazygit, GitHub CLI
-- **Gaming**: Steam, GameMode, MangoHud
-- **Media**: mpv, VLC, Spotify (via spotify-launcher), pavucontrol, playerctl
-- **Networking**: NetworkManager, Bluetooth (bluez)
+**`hyprx update`** — Runs a full system update via the detected package manager, refreshes the package database, removes orphaned packages, and cleans the package cache.
 
-Services enabled: `bluetooth`, `docker`, `NetworkManager`, `pipewire` (see `services.list`).
+**`hyprx rollback list`** — Shows all available snapshots with their package/config counts and timestamps.
 
-Dotfiles deployed to `~/.config/`: `hypr`, `waybar`, `wlogout`, `swaync`, `swappy`, `rofi`, `waypaper`, `wallust`, `gtk-3.0` (see `config/`).
+**`hyprx rollback latest`** — Undoes the most recent install: removes newly installed packages and restores/removes config directories to their pre-install state.
 
-Some packages need extra system setup before they'll install — for example `steam` requires the `multilib` repository enabled in `/etc/pacman.conf`. When a package fails validation for a known reason like this, HyprX tells you exactly what to do about it instead of just saying "not found."
+**`hyprx rollback <id>` — Undoes a specific snapshot by ID.
 
-## Dynamic Theming
+**`hyprx clean`** — Conservative cleanup: removes stale pacman cache files, prompts to remove orphaned packages, deletes screenshots older than 2 days, clears thumbnail/shader caches, vacuums journal entries older than 7 days, and removes /tmp files older than 1 day (owned by current user). Supports `--dry-run` to preview.
 
-Change your wallpaper - however you change it, not just through waypaper - and every app's colors update to match it automatically: Waybar, Rofi, SwayNC, wlogout, hyprlock's text/panel colors, Hyprland's active/inactive border colors, and (via a global GTK3 theme override) any other GTK3 app, such as Nemo.
+**`hyprx doctor`** — Read-only system health report covering: config validation (JSON/Lua/hyprlock syntax), deployment drift, storage, memory, swap, systemd services, session health, hybrid GPU status, network/radios, pacman state, and a summary. Saves timestamped reports to `~/.local/state/hyprx/reports/`.
 
-This is powered by [wallust](https://codeberg.org/explosion-mental/wallust), which extracts a 16-color palette from the new wallpaper and regenerates a small `colors.*` file per app from the templates in `config/wallust/templates/`. The trigger is `config/waybar/scripts/wallust-hyprpaper-sync.sh`, a small daemon (started at session launch, alongside waybar/hypridle) that polls hyprpaper directly for its active wallpaper - not waypaper's `post_command` - so it catches a wallpaper change no matter what set it: waypaper's picker, a keybind, a manual `hyprctl hyprpaper wallpaper` call, anything. `scripts/apply-wallust-theme.sh` is the actual trigger script it calls, and it also reloads Waybar/SwayNC/Hyprland so the new colors take effect immediately rather than on next launch (GTK3 apps like Nemo pick up the new `gtk.css` on their next own launch, same as Rofi/wlogout - nothing forces already-open GTK3 windows to restart).
-
-You can also trigger it by hand, without changing your wallpaper:
-
-```bash
-wallust run /path/to/any/image.jpg
-```
-
-Each app's `colors.*` file (`config/{waybar/styles,rofi,swaync,wlogout,gtk-3.0}/colors.css` or `.rasi`, `config/hypr/colors.lua`, `config/hypr/colors.conf`) is checked into the repo with a static default value, so a fresh install looks correct before wallust has ever run - don't hand-edit these, they get overwritten on the next wallpaper change. If you want to change the color *mapping* itself (which palette color drives which role), edit the templates in `config/wallust/templates/` and `config/wallust/wallust.toml` instead - the mapping convention used across all of them is documented in comments at the top of `wallust.toml`.
-
-The GTK3 override (`config/gtk-3.0/gtk.css`) only visibly changes anything in apps whose active GTK3 theme uses GTK's standard named color variables internally (most modern themes do - Adwaita, Arc, Materia, Yaru); if no GTK3 theme is set at all, pair this with `nwg-look` to pick one first.
-
-## Rollback
-
-Every `hyprx install` run saves a snapshot of exactly what it changed:
-
-- Which packages were **newly** installed (packages that were already on your system are never touched or tracked)
-- Any config directories it deployed — with an automatic backup of whatever was there before, if anything
-
-```bash
-hyprx rollback list      # see what's available
-hyprx rollback latest     # undo the most recent install
-```
-
-If a config directory existed before the install, rollback restores it from backup. If it didn't exist before (a fresh deployment), rollback removes it. Either way, you're returned to exactly the state you were in before HyprX touched anything.
-
-Config deployment is atomic — new content is fully staged before anything live is touched, so a partially-applied config can't be left behind mid-copy, even for a live-reloading process like Hyprland watching its own config directory.
-
-## Development
-
-```bash
-bash tests/run.sh
-```
-
-Runs the full test suite: unit tests, ShellCheck, and syntax checks. CI runs the same suite on every push and pull request, split into a `Lint` job and a `Unit Tests` job (the latter runs inside an Arch Linux container, since `pacman`-dependent tests need a real Arch environment).
-
-### Layout
-
-Every directory maps to one job. Within a directory, each file is one
-feature or one concern — nothing in here is a grab-bag.
+## Directory Layout
 
 ```
 packages.list   Flat list of everything HyprX installs (one package per line)
@@ -137,8 +73,7 @@ hyprx           Resolves its own real path, sources lib/bootstrap.sh, dispatches
                  to commands/<name>.sh based on argv[1] (defaults to "help")
 ```
 
-**`commands/`** — one file per `hyprx <command>`, matched 1:1 to the
-`## Commands` table above.
+**`commands/`** — one file per `hyprx <command>`, matched 1:1 to the Commands table above.
 ```
 install.sh      hyprx install    -> calls run_install_engine (lib/installer/engine.sh)
 update.sh       hyprx update     -> pacman/yay/paru -Syu, package-manager aware
@@ -148,8 +83,7 @@ doctor.sh       hyprx doctor     -> read-only system health report (config, pack
 help.sh         hyprx help       -> usage text (also the default with no args)
 ```
 
-**`lib/`** — shared library code, sourced by every command via
-`lib/bootstrap.sh`. Nothing in here is a CLI entry point itself.
+**`lib/`** — shared library code, sourced by every command via `lib/bootstrap.sh`. Nothing in here is a CLI entry point itself.
 ```
 bootstrap.sh    Sources every other lib/*.sh and exports HYPRX_* path vars
 config.sh       Loads config/hyprx.conf into shell vars (load_config)
@@ -174,17 +108,15 @@ installer/      The actual install engine - everything commands/install.sh calls
   retry.sh                Generic retry() wrapper with backoff, used around installs
   failure_logger.sh        Appends failed packages to hyprx-install.log
   deploy.sh                Deploys config/{hypr,waybar,wlogout,swaync,swappy,rofi,waypaper,wallust,gtk-3.0}
-                             to ~/.config/ - the HYPRX_CONFIG_TARGETS list here is the
-                             single source of truth for what counts as a "dotfile"
+                           to ~/.config/ - the HYPRX_CONFIG_TARGETS list here is the
+                           single source of truth for what counts as a "dotfile"
   snapshot.sh               Snapshot storage (~/.local/state/hyprx/snapshots) - what
-                              hyprx rollback reads from
+                           hyprx rollback reads from
   recovery.sh                Saves/restores install.state for resuming a failed install
   report.sh                   Generates HyprX-Install-Report.txt at end of install
 ```
 
-**`config/`** — the actual dotfiles that get deployed to `~/.config/`,
-one directory per app (see `HYPRX_CONFIG_TARGETS` in `deploy.sh` above
-for the authoritative list), plus HyprX's own settings file.
+**`config/`** — the actual dotfiles that get deployed to `~/.config/`, one directory per app (see `HYPRX_CONFIG_TARGETS` in `deploy.sh` above for the authoritative list), plus HyprX's own settings file.
 ```
 hyprx.conf      HyprX's own settings (read by lib/config.sh) - not deployed anywhere
 hypr/           Hyprland itself: hyprland.lua (binds/autostart), hypridle, etc.
@@ -194,37 +126,31 @@ wlogout/        Logout/power menu
 swaync/         Notification daemon config
 swappy/         Screenshot annotation tool config
 waypaper/       Wallpaper picker config - its post_command is what
-                 triggers dynamic theming on every wallpaper change
+                triggers dynamic theming on every wallpaper change
 wallust/        Dynamic theming: wallust.toml + templates/ - see the
-                 "Dynamic Theming" section above
+                "Dynamic Theming" section above
 ```
 
-**`database/`** — small flat lookup tables the installer reads at
-runtime, never hand-edited by the user during normal use.
+**`database/`** — small flat lookup tables the installer reads at runtime, never hand-edited by the user during normal use.
 ```
 package-requirements.conf   pkg=hint text - shown when a package needs manual
-                             setup first (e.g. steam needs [multilib] enabled)
+                            setup first (e.g. steam needs [multilib] enabled)
 package-replacements.conf   pkg=replacement - packages.list entries that map to
-                             a different real package name (code -> code-bin)
-deprecated-packages.conf    Packages HyprX no longer installs but may still see
-                             referenced in an old snapshot/report
+                            a different real package name (code -> code-bin)
+deprecated-packages.conf     Packages HyprX no longer installs but may still see
+                            referenced in an old snapshot/report
 mirrors.conf                Mirror-related lookups for package operations
 ```
 
-**`scripts/`** — standalone utility scripts invoked directly (by
-keybinds in `hyprland.lua`, by Waybar module `on-click`s, or manually),
-as opposed to `lib/` which is only ever sourced. Nothing here is
-reached through the `hyprx` CLI.
+**`scripts/`** — standalone utility scripts invoked directly (by keybinds in `hyprland.lua`, by Waybar module `on-click`s, or manually), as opposed to `lib/` which is only ever sourced. Nothing here is reached through the `hyprx` CLI.
 ```
 settings-menu.sh        SUPER+I - rofi-based HyprX settings menu
 power-profile-cycle.sh  SUPER+F5 - cycles ASUS fan/power profiles (asusctl)
 wallpaper-restore.sh    Runs at session start - restores last wallpaper via
-                          waypaper --restore, falls back to --random on a fresh install
-gpu-offload-setup.sh    Sets up PRIME/dGPU offload env vars for a hardcoded
-                          list of GPU-heavy apps
+                        waypaper --restore, falls back to --random on a fresh install
+gpu-offload-setup.sh    Sets up PRIME/dGPU offload env vars for GPU-heavy apps
 prime-run.sh            On-demand "run this one app on the dGPU" launcher
-apply-wallust-theme.sh  Runs wallust + reloads affected apps - triggered by
-                          waypaper's post_command, see "Dynamic Theming" above
+apply-wallust-theme.sh  Runs wallust + reloads affected apps
 fix-sddm-greeter.sh     Syncs SDDM's own Hyprland greeter config with the user's
 reload-hypr.sh          hyprctl reload - trivial config-reload helper
 reload-waybar.sh        Kill + relaunch waybar (used after editing waybar configs)
@@ -233,42 +159,38 @@ restore-config.sh       Restores from the HyprX-managed backup at ~/.config/hypr
 dev-sync.sh             Dev-loop helper for syncing local changes while iterating
 ```
 
-**`tests/`** — the test suite `bash tests/run.sh` runs (unit tests,
-ShellCheck, syntax checks - see `## Development` above). One
-`test_*.sh` file per subsystem, named after what it covers:
-```
-run.sh              Entry point - runs everything below plus ShellCheck/syntax
-common.sh / setup.sh / teardown.sh   Shared fixtures, test env setup/teardown
-test_cli.sh          bin/hyprx dispatch behavior
-test_bootstrap.sh    lib/bootstrap.sh sourcing/exports
-test_config.sh       lib/config.sh / hyprx.conf loading
-test_detection.sh    lib/detect.sh, lib/packages.sh
-test_logging.sh      lib/logger.sh
-test_progress.sh     lib/progress.sh
-test_packages.sh     lib/installer/resolver.sh, validator.sh
-test_requirements.sh lib/installer/requirements.sh
-test_replacements.sh lib/installer/replacements.sh
-test_installer.sh    lib/installer/engine.sh end-to-end
-test_install.sh      commands/install.sh
-test_deploy.sh        lib/installer/deploy.sh (config deployment)
-test_recovery.sh      lib/installer/recovery.sh (resume-after-failure)
-test_snapshot.sh      lib/installer/snapshot.sh (rollback data)
-test_report.sh        lib/installer/report.sh
-test_permissions.sh   File permission expectations across the repo
-test_scripts.sh       scripts/*.sh (the standalone utilities, not lib/)
-test_shellcheck.sh    Runs ShellCheck across the repo
-test_syntax.sh        bash -n syntax check across the repo
-test_source.sh        Every lib/*.sh sources cleanly on its own
-test_smoke.sh         Fast end-to-end sanity pass
-test_coverage.sh       Meta-test: flags files with no corresponding test_*.sh
-```
+**`tests/`** — the test suite. Run it with `bash tests/run_tests.sh`; the full transcript of the most recent run is written to `tests/test-results.log`. One self-contained script covers unit tests, ShellCheck, syntax checks, deploy/rollback round-trips, dry-run semantics, and the `clean` sandbox.
 
-> **Note:** `lib/bootstrap.sh` exports `HYPRX_THEMES="$ROOT_DIR/themes"`,
-> but no `themes/` directory currently exists in the repo. Either it's
-> planned but not yet built, or it's dead code left over from an earlier
-> design — worth resolving next time `lib/bootstrap.sh` is touched.
+## Files Touched by HyprX Upon Installation
 
-## Known limitations
+| Path | Action |
+|---|---|
+| `~/.local/share/hyprx/` | Created — installed copy of the tool |
+| `~/.local/bin/hyprx` | Symlink created |
+| `~/.local/bin/prime-run` | Symlink created |
+| `~/.local/bin/hyprx-settings` | Symlink created |
+| `~/.config/hypr/` | Deployed (backed up if exists) |
+| `~/.config/waybar/` | Deployed (backed up if exists) |
+| `~/.config/wlogout/` | Deployed (backed up if exists) |
+| `~/.config/swaync/` | Deployed (backed up if exists) |
+| `~/.config/swappy/` | Deployed (backed up if exists) |
+| `~/.config/rofi/` | Deployed (backed up if exists) |
+| `~/.config/waypaper/` | Deployed (backed up if exists) |
+| `~/.config/wallust/` | Deployed (backed up if exists) |
+| `~/.config/gtk-3.0/` | Deployed (backed up if exists) |
+| `~/.local/share/applications/*.desktop` | GPU offload overrides created |
+| `~/.local/state/hyprx/` | Created — logs, snapshots, reports |
+| `~/.local/state/hyprx/snapshots/` | Created — rollback data |
+| `~/.local/state/hyprx/reports/` | Created — doctor reports |
+| `~/.local/state/hyprx/hyprx.log` | Created — operation log |
+| `~/.local/state/hyprx/hyprx-install.log` | Created — failure log |
+| `~/.local/state/hyprx/install.state` | Created during install, removed on completion |
+| `~/.local/state/hyprx/deployed-targets` | Created — tracks deployed config dirs |
+| `~/.local/state/hyprx/config-backups/` | Created — config backups for rollback |
+| System packages | Installed via pacman/yay/paru |
+| Systemd services | Enabled per `services.list` |
+
+## Known Limitations
 
 - Arch Linux only — package management is built around `pacman`/`yay`/`paru`
 - No distro package yet (AUR, etc.) — `install.sh` gives you a standalone install, but there's no `pacman -S hyprx` style package

@@ -6,142 +6,150 @@
 
 if [[ -f /etc/os-release ]]; then
     source /etc/os-release
-    DISTRO="$ID"
-    DISTRO_NAME="$PRETTY_NAME"
+    HYPRX_DETECT_DISTRO="$ID"
+    HYPRX_DETECT_DISTRO_NAME="$PRETTY_NAME"
 else
-    DISTRO="unknown"
-    DISTRO_NAME="Unknown"
+    HYPRX_DETECT_DISTRO="unknown"
+    HYPRX_DETECT_DISTRO_NAME="Unknown"
 fi
 
 # -----------------------------
 # Package Manager
 # -----------------------------
 
-PACKAGE_MANAGER="unknown"
+HYPRX_DETECT_PACKAGE_MANAGER="unknown"
 
 if command -v yay >/dev/null 2>&1; then
-    PACKAGE_MANAGER="yay"
+    HYPRX_DETECT_PACKAGE_MANAGER="yay"
 elif command -v paru >/dev/null 2>&1; then
-    PACKAGE_MANAGER="paru"
+    HYPRX_DETECT_PACKAGE_MANAGER="paru"
 elif command -v pacman >/dev/null 2>&1; then
-    PACKAGE_MANAGER="pacman"
+    HYPRX_DETECT_PACKAGE_MANAGER="pacman"
 fi
 
 # -----------------------------
 # CPU
 # -----------------------------
 
-CPU_VENDOR=$(lscpu | awk -F: '/Vendor ID/ {gsub(/^[ \t]+/, "", $2); print $2}')
+# Every probe here is `|| true`-guarded. These run at source time, and
+# detect.sh is sourced by bootstrap.sh inside callers running under
+# `set -e -o pipefail`. Without the guard a single missing probe tool
+# (lscpu/lspci/ip on a minimal container) failed the whole pipeline with a
+# bare exit 127 and no output at all.
+HYPRX_DETECT_CPU_VENDOR=$(lscpu 2>/dev/null | awk -F: '/Vendor ID/ {gsub(/^[ \t]+/, "", $2); print $2}' || true)
+[[ -n "$HYPRX_DETECT_CPU_VENDOR" ]] || HYPRX_DETECT_CPU_VENDOR="unknown"
 
 # -----------------------------
 # GPU
 # -----------------------------
 
-GPU_VENDOR="unknown"
+HYPRX_DETECT_GPU_VENDOR="unknown"
 
-if lspci | grep -qi nvidia; then
-    GPU_VENDOR="nvidia"
-elif lspci | grep -Eqi "amd|advanced micro devices"; then
-    GPU_VENDOR="amd"
-elif lspci | grep -qi intel; then
-    GPU_VENDOR="intel"
+HYPRX_DETECT_LSPCI=$(lspci 2>/dev/null || true)
+
+if grep -qi nvidia <<<"$HYPRX_DETECT_LSPCI"; then
+    HYPRX_DETECT_GPU_VENDOR="nvidia"
+elif grep -Eqi "amd|advanced micro devices" <<<"$HYPRX_DETECT_LSPCI"; then
+    HYPRX_DETECT_GPU_VENDOR="amd"
+elif grep -qi intel <<<"$HYPRX_DETECT_LSPCI"; then
+    HYPRX_DETECT_GPU_VENDOR="intel"
 fi
 
 # -----------------------------
 # Battery
 # -----------------------------
 
-BATTERY_NAME=$(ls /sys/class/power_supply 2>/dev/null | grep '^BAT' | head -n1 || true)
+HYPRX_DETECT_BATTERY_NAME=$(ls /sys/class/power_supply 2>/dev/null | grep '^BAT' | head -n1 || true)
 
-HAS_BATTERY=false
-[[ -n "$BATTERY_NAME" ]] && HAS_BATTERY=true || true
+HYPRX_DETECT_HAS_BATTERY=false
+[[ -n "$HYPRX_DETECT_BATTERY_NAME" ]] && HYPRX_DETECT_HAS_BATTERY=true || true
 
 # -----------------------------
 # Network
 # -----------------------------
 
-NETWORK_INTERFACE=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}' || true)
+HYPRX_DETECT_NETWORK_INTERFACE=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}' || true)
 
 # -----------------------------
 # Bluetooth
 # -----------------------------
 
-HAS_BLUETOOTH=false
-command -v bluetoothctl >/dev/null 2>&1 && HAS_BLUETOOTH=true || true
+HYPRX_DETECT_HAS_BLUETOOTH=false
+command -v bluetoothctl >/dev/null 2>&1 && HYPRX_DETECT_HAS_BLUETOOTH=true || true
 
 # -----------------------------
 # PipeWire
 # -----------------------------
 
-HAS_PIPEWIRE=false
-pgrep pipewire >/dev/null 2>&1 && HAS_PIPEWIRE=true || true
+HYPRX_DETECT_HAS_PIPEWIRE=false
+pgrep pipewire >/dev/null 2>&1 && HYPRX_DETECT_HAS_PIPEWIRE=true || true
 
 # -----------------------------
 # Waybar
 # -----------------------------
 
-HAS_WAYBAR=false
-command -v waybar >/dev/null 2>&1 && HAS_WAYBAR=true || true
+HYPRX_DETECT_HAS_WAYBAR=false
+command -v waybar >/dev/null 2>&1 && HYPRX_DETECT_HAS_WAYBAR=true || true
 
 # -----------------------------
 # Rofi
 # -----------------------------
 
-HAS_ROFI=false
-command -v rofi >/dev/null 2>&1 && HAS_ROFI=true || true
+HYPRX_DETECT_HAS_ROFI=false
+command -v rofi >/dev/null 2>&1 && HYPRX_DETECT_HAS_ROFI=true || true
 
 # -----------------------------
 # Kitty
 # -----------------------------
 
-HAS_KITTY=false
-command -v kitty >/dev/null 2>&1 && HAS_KITTY=true || true
+HYPRX_DETECT_HAS_KITTY=false
+command -v kitty >/dev/null 2>&1 && HYPRX_DETECT_HAS_KITTY=true || true
 
 # -----------------------------
 # VS Code
 # -----------------------------
 
-HAS_CODE=false
-command -v code >/dev/null 2>&1 && HAS_CODE=true || true
+HYPRX_DETECT_HAS_CODE=false
+command -v code >/dev/null 2>&1 && HYPRX_DETECT_HAS_CODE=true || true
 
 # -----------------------------
 # Neovim
 # -----------------------------
 
-HAS_NVIM=false
-command -v nvim >/dev/null 2>&1 && HAS_NVIM=true || true
+HYPRX_DETECT_HAS_NVIM=false
+command -v nvim >/dev/null 2>&1 && HYPRX_DETECT_HAS_NVIM=true || true
 
 # -----------------------------
 # Git
 # -----------------------------
 
-HAS_GIT=false
-command -v git >/dev/null 2>&1 && HAS_GIT=true || true
+HYPRX_DETECT_HAS_GIT=false
+command -v git >/dev/null 2>&1 && HYPRX_DETECT_HAS_GIT=true || true
 
 # -----------------------------
 # SwayNC
 # -----------------------------
 
-HAS_SWAYNC=false
-command -v swaync >/dev/null 2>&1 && HAS_SWAYNC=true || true
+HYPRX_DETECT_HAS_SWAYNC=false
+command -v swaync >/dev/null 2>&1 && HYPRX_DETECT_HAS_SWAYNC=true || true
 
 # -----------------------------
 # Hyprland
 # -----------------------------
 
-HAS_HYPRLAND=false
-[[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] && HAS_HYPRLAND=true || true
+HYPRX_DETECT_HAS_HYPRLAND=false
+[[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] && HYPRX_DETECT_HAS_HYPRLAND=true || true
 
 # -----------------------------
 # Power Profiles
 # -----------------------------
 
-HAS_POWER_PROFILE=false
-command -v powerprofilesctl >/dev/null 2>&1 && HAS_POWER_PROFILE=true || true
+HYPRX_DETECT_HAS_POWER_PROFILE=false
+command -v powerprofilesctl >/dev/null 2>&1 && HYPRX_DETECT_HAS_POWER_PROFILE=true || true
 
 # -----------------------------
 # ZRAM
 # -----------------------------
 
-HAS_ZRAM=false
-(grep -q zram /proc/swaps 2>/dev/null && HAS_ZRAM=true) || true
+HYPRX_DETECT_HAS_ZRAM=false
+(grep -q zram /proc/swaps 2>/dev/null && HYPRX_DETECT_HAS_ZRAM=true) || true

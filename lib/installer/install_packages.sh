@@ -1,45 +1,45 @@
 #!/usr/bin/env bash
 
-install_packages() {
+hyprx_install_packages_run() {
 
-    header
-    info "Installing packages..."
+    hyprx_ui_header
+    hyprx_ui_info "Installing packages..."
 
-    INSTALLED_PACKAGES=()
-    SKIPPED_PACKAGES=()
-    FAILED_PACKAGES=()
+    HYPRX_INSTALL_INSTALLED=()
+    HYPRX_INSTALL_SKIPPED=()
+    HYPRX_INSTALL_FAILED=()
 
-    INSTALL_START_TIME=$(date +%s)
+    HYPRX_INSTALL_START_TIME=$(date +%s)
 
-    save_install_state
+    hyprx_recovery_save_state
 
-    for pkg in "${PACKAGE_QUEUE[@]}"; do
+    for pkg in "${HYPRX_INSTALL_QUEUE[@]}"; do
 
-        info "Installing $pkg"
+        hyprx_ui_info "Installing $pkg"
 
         set +e
-        install_package "$pkg"
+        hyprx_pkg_install "$pkg"
         status=$?
         set -e
 
         case "$status" in
 
     0)
-        success "$pkg"
-        INSTALLED_PACKAGES+=("$pkg")
-        mark_package_complete "$pkg"
+        hyprx_ui_success "$pkg"
+        HYPRX_INSTALL_INSTALLED+=("$pkg")
+        hyprx_recovery_mark_complete "$pkg"
         ;;
 
     10)
-        info "$pkg already installed."
-        SKIPPED_PACKAGES+=("$pkg")
-        mark_package_complete "$pkg"
+        hyprx_ui_info "$pkg already installed."
+        HYPRX_INSTALL_SKIPPED+=("$pkg")
+        hyprx_recovery_mark_complete "$pkg"
         ;;
 
     *)
-        error "$pkg"
-        FAILED_PACKAGES+=("$pkg")
-        log_failed_package "$pkg" "Installation failed"
+        hyprx_ui_error "$pkg"
+        HYPRX_INSTALL_FAILED+=("$pkg")
+        hyprx_failure_logger_log "$pkg" "Installation failed"
         ;;
 esac
 
@@ -49,13 +49,13 @@ esac
     # Retry
     ####################################################
 
-    if (( ${#FAILED_PACKAGES[@]} > 0 )); then
+    if (( ${#HYPRX_INSTALL_FAILED[@]} > 0 )); then
 
-        divider
+        hyprx_ui_divider
 
-        warn "Retrying failed packages..."
+        hyprx_ui_warn "Retrying failed packages..."
 
-        retry_failed_packages
+        hyprx_retry_failed_packages
 
     fi
 
@@ -63,23 +63,23 @@ esac
     # Summary
     ####################################################
 
-    INSTALL_END_TIME=$(date +%s)
-    INSTALL_DURATION=$((INSTALL_END_TIME-INSTALL_START_TIME))
+    HYPRX_INSTALL_END_TIME=$(date +%s)
+    HYPRX_INSTALL_DURATION=$((HYPRX_INSTALL_END_TIME-HYPRX_INSTALL_START_TIME))
 
-    divider
+    hyprx_ui_divider
 
-    success "Installation Summary"
+    hyprx_ui_success "Installation Summary"
 
     echo
 
-    printf "%-12s : %d\n" "Installed" "${#INSTALLED_PACKAGES[@]}"
-    printf "%-12s : %d\n" "Skipped"   "${#SKIPPED_PACKAGES[@]}"
-    printf "%-12s : %d\n" "Failed"    "${#FAILED_PACKAGES[@]}"
+    printf "%-12s : %d\n" "Installed" "${#HYPRX_INSTALL_INSTALLED[@]}"
+    printf "%-12s : %d\n" "Skipped"   "${#HYPRX_INSTALL_SKIPPED[@]}"
+    printf "%-12s : %d\n" "Failed"    "${#HYPRX_INSTALL_FAILED[@]}"
 
     printf "%-12s : %02d:%02d\n" \
         "Duration" \
-        "$((INSTALL_DURATION/60))" \
-        "$((INSTALL_DURATION%60))"
+        "$((HYPRX_INSTALL_DURATION/60))" \
+        "$((HYPRX_INSTALL_DURATION%60))"
 
     echo
 
@@ -87,25 +87,25 @@ esac
     # Failed Packages
     ####################################################
 
-    if (( ${#FAILED_PACKAGES[@]} > 0 )); then
+    if (( ${#HYPRX_INSTALL_FAILED[@]} > 0 )); then
 
-        warn "Packages still failing"
+        hyprx_ui_warn "Packages still failing"
 
         echo
 
-        for pkg in "${FAILED_PACKAGES[@]}"; do
+        for pkg in "${HYPRX_INSTALL_FAILED[@]}"; do
             echo " • $pkg"
         done
 
         echo
 
-        warn "Failure log"
+        hyprx_ui_warn "Failure log"
 
-        echo " $FAILURE_LOG"
+        echo " $HYPRX_FAILURE_LOG"
 
     else
 
-        success "All packages installed successfully."
+        hyprx_ui_success "All packages installed successfully."
 
     fi
 
@@ -113,10 +113,10 @@ esac
     # Cleanup
     ####################################################
 
-    if (( ${#FAILED_PACKAGES[@]} > 0 )); then
-        log_failure_summary
+    if (( ${#HYPRX_INSTALL_FAILED[@]} > 0 )); then
+        hyprx_failure_logger_summary
     fi
 
-    clear_install_state
+    hyprx_recovery_clear_state
 
 }

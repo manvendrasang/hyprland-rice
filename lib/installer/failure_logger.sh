@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-FAILURE_LOG="${HYPRX_FAILURE_LOG:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/hyprx-install.log}"
+HYPRX_FAILURE_LOG="${HYPRX_FAILURE_LOG:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/hyprx-install.log}"
 
-mkdir -p "$(dirname "$FAILURE_LOG")"
-touch "$FAILURE_LOG"
+mkdir -p "$(dirname "$HYPRX_FAILURE_LOG")"
+touch "$HYPRX_FAILURE_LOG"
 
-log_failed_package() {
+hyprx_failure_logger_log() {
 
     local pkg="$1"
     local reason="${2:-Unknown}"
@@ -15,16 +15,16 @@ log_failed_package() {
         echo "Timestamp : $(date)"
         echo "Package   : $pkg"
         echo "Reason    : $reason"
-        echo "Manager   : ${PACKAGE_MANAGER:-Unknown}"
+        echo "Manager   : ${HYPRX_DETECT_PACKAGE_MANAGER:-Unknown}"
         echo "Session   : ${XDG_SESSION_TYPE:-Unknown}"
         echo "Host      : $(hostname)"
         echo "Kernel    : $(uname -r)"
         echo
-    } >>"$FAILURE_LOG"
+    } >>"$HYPRX_FAILURE_LOG"
 
 }
 
-log_failure_summary() {
+hyprx_failure_logger_summary() {
 
     {
         echo
@@ -33,16 +33,16 @@ log_failure_summary() {
         echo "=========================================================="
         echo
 
-        printf "Failed Packages : %d\n" "${#FAILED_PACKAGES[@]}"
-        printf "Installed       : %d\n" "${#INSTALLED_PACKAGES[@]}"
-        printf "Skipped         : %d\n" "${#SKIPPED_PACKAGES[@]}"
+        printf "Failed Packages : %d\n" "${#HYPRX_INSTALL_FAILED[@]}"
+        printf "Installed       : %d\n" "${#HYPRX_INSTALL_INSTALLED[@]}"
+        printf "Skipped         : %d\n" "${#HYPRX_INSTALL_SKIPPED[@]}"
 
         echo
 
-        if (( ${#FAILED_PACKAGES[@]} > 0 )); then
+        if (( ${#HYPRX_INSTALL_FAILED[@]} > 0 )); then
             echo "Packages"
 
-            for pkg in "${FAILED_PACKAGES[@]}"; do
+            for pkg in "${HYPRX_INSTALL_FAILED[@]}"; do
                 echo "  • $pkg"
             done
         else
@@ -50,8 +50,9 @@ log_failure_summary() {
         fi
 
         echo
+
         echo "=========================================================="
 
-    } >>"$FAILURE_LOG"
+    } >>"$HYPRX_FAILURE_LOG"
 
 }

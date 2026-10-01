@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 
-preflight() {
+hyprx_preflight_check() {
 
-    header
+    hyprx_ui_header
 
-    success "Running Preflight Checks"
+    hyprx_ui_success "Running Preflight Checks"
 
-    divider
+    hyprx_ui_divider
 
     local fail=0
     local free
@@ -17,9 +17,14 @@ preflight() {
     ####################################
 
     if ping -c1 -W2 archlinux.org >/dev/null 2>&1; then
-        success "Internet"
+        hyprx_ui_success "Internet"
+    elif hyprx_util_dry_run; then
+        # A dry run downloads nothing, so an unreachable network is worth
+        # reporting but must not abort the preview. The real run will fail
+        # here, which is exactly what should happen.
+        hyprx_ui_warn "Internet (unreachable - a real install would need this)"
     else
-        error "Internet"
+        hyprx_ui_error "Internet"
         fail=1
     fi
 
@@ -30,9 +35,9 @@ preflight() {
     free=$(df --output=avail / | tail -1)
 
     if (( free > 5242880 )); then
-        success "Disk Space"
+        hyprx_ui_success "Disk Space"
     else
-        error "Disk Space (<5GB)"
+        hyprx_ui_error "Disk Space (<5GB)"
         fail=1
     fi
 
@@ -40,10 +45,10 @@ preflight() {
     # Package Manager
     ####################################
 
-    if [[ "$PACKAGE_MANAGER" != "unknown" ]]; then
-        success "$PACKAGE_MANAGER detected"
+    if [[ "$HYPRX_DETECT_PACKAGE_MANAGER" != "unknown" ]]; then
+        hyprx_ui_success "$HYPRX_DETECT_PACKAGE_MANAGER detected"
     else
-        error "No package manager"
+        hyprx_ui_error "No package manager"
         fail=1
     fi
 
@@ -51,10 +56,10 @@ preflight() {
     # Hyprland
     ####################################
 
-    if [[ "${HAS_HYPRLAND:-false}" == true ]]; then
-        success "Hyprland"
+    if [[ "${HYPRX_DETECT_HAS_HYPRLAND:-false}" == true ]]; then
+        hyprx_ui_success "Hyprland"
     else
-        warn "Hyprland not running"
+        hyprx_ui_warn "Hyprland not running"
     fi
 
     ####################################
@@ -62,9 +67,9 @@ preflight() {
     ####################################
 
     if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
-        success "Wayland"
+        hyprx_ui_success "Wayland"
     else
-        warn "Not Wayland"
+        hyprx_ui_warn "Not Wayland"
     fi
 
     ####################################
@@ -74,9 +79,9 @@ preflight() {
     ram=$(awk '/MemTotal/{print int($2/1024/1024)}' /proc/meminfo)
 
     if (( ram >= 8 )); then
-        success "${ram}GB RAM"
+        hyprx_ui_success "${ram}GB RAM"
     else
-        warn "${ram}GB RAM"
+        hyprx_ui_warn "${ram}GB RAM"
     fi
 
     ####################################
@@ -84,13 +89,18 @@ preflight() {
     ####################################
 
     if sudo -v >/dev/null 2>&1; then
-        success "sudo"
+        hyprx_ui_success "sudo"
+    elif hyprx_util_dry_run; then
+        # `sudo -v` needs a TTY to prompt. A dry run invoked
+        # non-interactively (test suite, CI) has no way to authenticate and
+        # never escalates anyway, so this is informational.
+        hyprx_ui_warn "sudo (unvalidated - a real install would need it)"
     else
-        error "sudo"
+        hyprx_ui_error "sudo"
         fail=1
     fi
 
-    divider
+    hyprx_ui_divider
 
     return "$fail"
 

@@ -4,29 +4,29 @@
 # Colors
 ########################################
 
-RED="\033[1;31m"
-GREEN="\033[1;32m"
-YELLOW="\033[1;33m"
-BLUE="\033[1;34m"
-CYAN="\033[1;36m"
-MAGENTA="\033[1;35m"
-RESET="\033[0m"
+HYPRX_UI_RED="\033[1;31m"
+HYPRX_UI_GREEN="\033[1;32m"
+HYPRX_UI_YELLOW="\033[1;33m"
+HYPRX_UI_BLUE="\033[1;34m"
+HYPRX_UI_CYAN="\033[1;36m"
+HYPRX_UI_MAGENTA="\033[1;35m"
+HYPRX_UI_RESET="\033[0m"
 
 ########################################
 # Header
 ########################################
 
-header() {
+hyprx_ui_header() {
 
   if [[ -n "${TERM:-}" ]] && [[ -t 1 ]]; then
         clear
   fi
 
-  echo -e "${BLUE}"
+  echo -e "${HYPRX_UI_BLUE}"
   echo "╔════════════════════════════════════════════╗"
   echo "║                  HyprX                     ║"
   echo "╚════════════════════════════════════════════╝"
-  echo -e "${RESET}"
+  echo -e "${HYPRX_UI_RESET}"
 
 }
 
@@ -34,7 +34,7 @@ header() {
 # Divider
 ########################################
 
-divider() {
+hyprx_ui_divider() {
 
   printf '%*s\n' 80 '' | tr ' ' '='
 
@@ -45,9 +45,9 @@ divider() {
 ########################################
 
 # shellcheck disable=SC2317,SC2329  # called indirectly via commands/*.sh, dynamically sourced by bin/hyprx
-section() {
+hyprx_ui_section() {
   echo
-  echo -e "${CYAN}== $1 ==${RESET}"
+  echo -e "${HYPRX_UI_CYAN}== $1 ==${HYPRX_UI_RESET}"
 
 }
 
@@ -55,11 +55,11 @@ section() {
 # Banner
 ########################################
 
-banner() {
+hyprx_ui_banner() {
 
-  divider
+  hyprx_ui_divider
   echo "$1"
-  divider
+  hyprx_ui_divider
 
 }
 
@@ -67,31 +67,31 @@ banner() {
 # Logging helpers
 ########################################
 
-success() {
+hyprx_ui_success() {
 
-  echo -e "${GREEN}✓${RESET} $1"
-  success_log "$1"
-
-}
-
-error() {
-
-  echo -e "${RED}✗${RESET} $1"
-  error_log "$1"
+  echo -e "${HYPRX_UI_GREEN}✓${HYPRX_UI_RESET} $1"
+  hyprx_logger_success "$1"
 
 }
 
-warn() {
+hyprx_ui_error() {
 
-  echo -e "${YELLOW}!${RESET} $1"
-  warn_log "$1"
+  echo -e "${HYPRX_UI_RED}✗${HYPRX_UI_RESET} $1"
+  hyprx_logger_error "$1"
 
 }
 
-info() {
+hyprx_ui_warn() {
 
-  echo -e "${CYAN}>${RESET} $1"
-  info_log "$1"
+  echo -e "${HYPRX_UI_YELLOW}!${HYPRX_UI_RESET} $1"
+  hyprx_logger_warn "$1"
+
+}
+
+hyprx_ui_info() {
+
+  echo -e "${HYPRX_UI_CYAN}>${HYPRX_UI_RESET} $1"
+  hyprx_logger_info "$1"
 
 }
 
@@ -99,9 +99,9 @@ info() {
 # User Input
 ########################################
 
-question() {
+hyprx_ui_question() {
 
-  read -rp "$(echo -e "${MAGENTA}?${RESET} $1 ")"
+  read -rp "$(echo -e "${HYPRX_UI_MAGENTA}?${HYPRX_UI_RESET} $1 ")"
 
 }
 
@@ -109,7 +109,7 @@ question() {
 # Progress
 ########################################
 
-progress_message() {
+hyprx_ui_progress_message() {
 
   local current="$1"
   local total="$2"

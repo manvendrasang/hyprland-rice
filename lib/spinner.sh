@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-spinner() {
+hyprx_spinner_run() {
 
   local pid=$1
   local delay=0.08

@@ -4,43 +4,43 @@
 # Package Manager Detection
 ########################################
 
-detect_package_manager() {
+hyprx_pkg_detect_manager() {
 
     if command -v yay >/dev/null 2>&1; then
-        PACKAGE_MANAGER="yay"
+        HYPRX_DETECT_PACKAGE_MANAGER="yay"
 
     elif command -v paru >/dev/null 2>&1; then
-        PACKAGE_MANAGER="paru"
+        HYPRX_DETECT_PACKAGE_MANAGER="paru"
 
     elif command -v pacman >/dev/null 2>&1; then
-        PACKAGE_MANAGER="pacman"
+        HYPRX_DETECT_PACKAGE_MANAGER="pacman"
 
     else
-        PACKAGE_MANAGER="unknown"
+        HYPRX_DETECT_PACKAGE_MANAGER="unknown"
     fi
 
-    export PACKAGE_MANAGER
+    export HYPRX_DETECT_PACKAGE_MANAGER
 }
 
 ########################################
 # Queries
 ########################################
 
-package_installed() {
+hyprx_pkg_installed() {
 
     pacman -Q "$1" >/dev/null 2>&1
 
 }
 
-package_exists_official() {
+hyprx_pkg_exists_official() {
 
     pacman -Si "$1" >/dev/null 2>&1
 
 }
 
-package_exists_aur() {
+hyprx_pkg_exists_aur() {
 
-    case "$PACKAGE_MANAGER" in
+    case "$HYPRX_DETECT_PACKAGE_MANAGER" in
 
         yay)
 
@@ -65,7 +65,12 @@ package_exists_aur() {
 # Installation
 ########################################
 
-install_official() {
+hyprx_pkg_install_official() {
+
+    if hyprx_util_dry_run; then
+        hyprx_util_would "install (official repo) $1"
+        return 0
+    fi
 
     sudo pacman -S \
         --needed \
@@ -74,9 +79,14 @@ install_official() {
 
 }
 
-install_aur() {
+hyprx_pkg_install_aur() {
 
-    case "$PACKAGE_MANAGER" in
+    if hyprx_util_dry_run; then
+        hyprx_util_would "install (AUR via $HYPRX_DETECT_PACKAGE_MANAGER) $1"
+        return 0
+    fi
+
+    case "$HYPRX_DETECT_PACKAGE_MANAGER" in
 
         yay)
 
@@ -107,7 +117,7 @@ install_aur() {
 # Main installer
 ########################################
 
-install_package() {
+hyprx_pkg_install() {
 
     local pkg="$1"
 
@@ -117,11 +127,11 @@ install_package() {
 
     local replacement
 
-    replacement="$(get_replacement "$pkg")"
+    replacement="$(hyprx_replacements_get "$pkg")"
 
     if [[ -n "$replacement" ]]; then
 
-        info "$pkg -> $replacement"
+        hyprx_ui_info "$pkg -> $replacement"
 
         pkg="$replacement"
 
@@ -131,7 +141,7 @@ install_package() {
     # Already installed
     ####################################
 
-    if package_installed "$pkg"; then
+    if hyprx_pkg_installed "$pkg"; then
         return 10
     fi
 
@@ -139,9 +149,9 @@ install_package() {
     # Official
     ####################################
 
-    if package_exists_official "$pkg"; then
+    if hyprx_pkg_exists_official "$pkg"; then
 
-        install_official "$pkg"
+        hyprx_pkg_install_official "$pkg"
 
         return $?
 
@@ -151,9 +161,9 @@ install_package() {
     # AUR
     ####################################
 
-    if package_exists_aur "$pkg"; then
+    if hyprx_pkg_exists_aur "$pkg"; then
 
-        install_aur "$pkg"
+        hyprx_pkg_install_aur "$pkg"
 
         return $?
 
@@ -171,11 +181,11 @@ install_package() {
 # Removal
 ########################################
 
-remove_package() {
+hyprx_pkg_remove() {
 
     local pkg="$1"
 
-    package_installed "$pkg" || return 0
+    hyprx_pkg_installed "$pkg" || return 0
 
     sudo pacman -Rns \
         --noconfirm \
@@ -187,9 +197,9 @@ remove_package() {
 # System Update
 ########################################
 
-update_system() {
+hyprx_pkg_update_system() {
 
-    case "$PACKAGE_MANAGER" in
+    case "$HYPRX_DETECT_PACKAGE_MANAGER" in
 
         yay)
 
@@ -219,10 +229,10 @@ update_system() {
 # Cache
 ########################################
 
-clean_package_cache() {
+hyprx_pkg_clean_cache() {
 
     if ! command -v pacman >/dev/null 2>&1; then
-        warn "pacman not found - skipping package cache clean"
+        hyprx_ui_warn "pacman not found - skipping package cache clean"
         return 0
     fi
 
@@ -237,22 +247,26 @@ clean_package_cache() {
         sudo find /var/cache/pacman/pkg -maxdepth 1 -name 'download-*' -delete 2>/dev/null
     fi
 
-    case "$PACKAGE_MANAGER" in
+    case "$HYPRX_DETECT_PACKAGE_MANAGER" in
 
         yay)
+
             yay -Sc --noconfirm
             ;;
 
         paru)
+
             paru -Sc --noconfirm
             ;;
 
         pacman)
+
             sudo pacman -Sc --noconfirm
             ;;
 
         *)
-            warn "Unknown package manager - skipping cache clean"
+
+            hyprx_ui_warn "Unknown package manager - skipping cache clean"
             return 0
             ;;
 
@@ -264,7 +278,7 @@ clean_package_cache() {
 # Orphans
 ########################################
 
-list_orphan_packages() {
+hyprx_pkg_list_orphans() {
 
     command -v pacman >/dev/null 2>&1 || return 0
 
@@ -272,57 +286,29 @@ list_orphan_packages() {
 
 }
 
-remove_orphan_packages() {
+hyprx_pkg_remove_orphans() {
 
     if ! command -v pacman >/dev/null 2>&1; then
-        warn "pacman not found - skipping orphan package check"
+        hyprx_ui_warn "pacman not found - skipping orphan package check"
         return 0
     fi
 
     local orphans
-    mapfile -t orphans < <(list_orphan_packages)
+    mapfile -t orphans < <(hyprx_pkg_list_orphans)
 
     if ((${#orphans[@]} == 0)); then
-        success "No orphan packages found."
+        hyprx_ui_success "No orphan packages found."
         return 0
     fi
 
     printf "%s\n\n" "${orphans[@]}"
 
-    if confirm "Remove orphan packages?"; then
+    if hyprx_util_confirm "Remove orphan packages?"; then
         command -v sudo >/dev/null 2>&1 && sudo pacman -Rns --noconfirm "${orphans[@]}"
     fi
 
 }
 
 ########################################
-# Information
-########################################
 
-list_installed_packages() {
-
-    pacman -Q
-
-}
-
-search_package() {
-
-    pacman -Ss "$1"
-
-}
-
-package_info() {
-
-    pacman -Si "$1"
-
-}
-
-count_installed_packages() {
-
-    pacman -Q | wc -l
-
-}
-
-########################################
-
-detect_package_manager
+hyprx_pkg_detect_manager

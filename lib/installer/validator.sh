@@ -1,29 +1,39 @@
 #!/usr/bin/env bash
 
-validate_packages() {
+hyprx_validator_validate() {
 
-    header
-    info "Validating packages..."
+    hyprx_ui_header
+    hyprx_ui_info "Validating packages..."
 
-    VALIDATED_QUEUE=()
-    INVALID_PACKAGES=()
-    REPLACED_PACKAGES=()
+    HYPRX_VALIDATED_QUEUE=()
+    HYPRX_INVALID_PACKAGES=()
+    HYPRX_REPLACED_PACKAGES=()
 
     declare -A seen
 
-    for pkg in "${PACKAGE_QUEUE[@]}"; do
+    for pkg in "${HYPRX_INSTALL_QUEUE[@]}"; do
+
+        ########################################
+        # Validate package name format
+        ########################################
+
+        if ! hyprx_util_validate_package_name "$pkg"; then
+            hyprx_ui_error "Invalid package name: $pkg"
+            HYPRX_INVALID_PACKAGES+=("$pkg")
+            continue
+        fi
 
         ########################################
         # Forced replacements
         ########################################
 
-        replacement="$(get_replacement "$pkg")"
+        replacement="$(hyprx_replacements_get "$pkg")"
 
         if [[ -n "$replacement" ]]; then
 
-            warn "$pkg → $replacement"
+            hyprx_ui_warn "$pkg → $replacement"
 
-            REPLACED_PACKAGES+=("$pkg -> $replacement")
+            HYPRX_REPLACED_PACKAGES+=("$pkg -> $replacement")
 
             pkg="$replacement"
 
@@ -41,9 +51,9 @@ validate_packages() {
         # Official repository
         ########################################
 
-        if package_exists_official "$pkg"; then
+        if hyprx_pkg_exists_official "$pkg"; then
 
-            VALIDATED_QUEUE+=("$pkg")
+            HYPRX_VALIDATED_QUEUE+=("$pkg")
 
             continue
 
@@ -53,9 +63,9 @@ validate_packages() {
         # AUR
         ########################################
 
-        if package_exists_aur "$pkg"; then
+        if hyprx_pkg_exists_aur "$pkg"; then
 
-            VALIDATED_QUEUE+=("$pkg")
+            HYPRX_VALIDATED_QUEUE+=("$pkg")
 
             continue
 
@@ -65,36 +75,36 @@ validate_packages() {
         # Invalid package
         ########################################
 
-        error "Package not found: $pkg"
+        hyprx_ui_error "Package not found: $pkg"
 
         local hint
-        hint="$(get_requirement_hint "$pkg")"
+        hint="$(hyprx_requirements_get_hint "$pkg")"
 
-        [[ -n "$hint" ]] && warn "  → $hint"
+        [[ -n "$hint" ]] && hyprx_ui_warn "  → $hint"
 
-        INVALID_PACKAGES+=("$pkg")
+        HYPRX_INVALID_PACKAGES+=("$pkg")
 
     done
 
-    PACKAGE_QUEUE=("${VALIDATED_QUEUE[@]}")
+    HYPRX_INSTALL_QUEUE=("${HYPRX_VALIDATED_QUEUE[@]}")
 
-    divider
+    hyprx_ui_divider
 
-    success "Validation complete."
-
-    echo
-
-    printf "%-20s %d\n" "Valid" "${#PACKAGE_QUEUE[@]}"
-    printf "%-20s %d\n" "Replaced" "${#REPLACED_PACKAGES[@]}"
-    printf "%-20s %d\n" "Invalid" "${#INVALID_PACKAGES[@]}"
+    hyprx_ui_success "Validation complete."
 
     echo
 
-    if (( ${#INVALID_PACKAGES[@]} > 0 )); then
+    printf "%-20s %d\n" "Valid" "${#HYPRX_INSTALL_QUEUE[@]}"
+    printf "%-20s %d\n" "Replaced" "${#HYPRX_REPLACED_PACKAGES[@]}"
+    printf "%-20s %d\n" "Invalid" "${#HYPRX_INVALID_PACKAGES[@]}"
 
-        warn "Invalid packages"
+    echo
 
-        for pkg in "${INVALID_PACKAGES[@]}"; do
+    if (( ${#HYPRX_INVALID_PACKAGES[@]} > 0 )); then
+
+        hyprx_ui_warn "Invalid packages"
+
+        for pkg in "${HYPRX_INVALID_PACKAGES[@]}"; do
             echo " • $pkg"
         done
 

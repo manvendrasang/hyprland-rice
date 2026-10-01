@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 
-declare -gA PACKAGE_REQUIREMENTS
+declare -gA HYPRX_REQUIREMENTS
 
-load_requirements() {
+hyprx_requirements_load() {
 
-    PACKAGE_REQUIREMENTS=()
+    HYPRX_REQUIREMENTS=()
 
-    local db="$ROOT_DIR/database/package-requirements.conf"
+    local db="$HYPRX_ROOT/database/package-requirements.conf"
 
     [[ -f "$db" ]] || return 0
 
@@ -26,18 +26,18 @@ load_requirements() {
         [[ -z "$pkg" ]] && continue
         [[ -z "$hint" ]] && continue
 
-        PACKAGE_REQUIREMENTS["$pkg"]="$hint"
+        HYPRX_REQUIREMENTS["$pkg"]="$hint"
 
     done < "$db"
 
 }
 
-get_requirement_hint() {
+hyprx_requirements_get_hint() {
 
     local pkg="$1"
 
-    echo "${PACKAGE_REQUIREMENTS[$pkg]:-}"
+    echo "${HYPRX_REQUIREMENTS[$pkg]:-}"
 
 }
 
-load_requirements
+hyprx_requirements_load

@@ -1,28 +1,37 @@
 #!/usr/bin/env bash
 
-STATE_DIR="$HOME/.local/state/hyprx"
-STATE_FILE="$STATE_DIR/install.state"
+# Overridable for test isolation - see the note in lib/logger.sh. Without
+# this, a run that exercises the recovery path rewrites the real
+# ~/.local/state/hyprx/install.state, which the next real install would then
+# try to "resume" from.
+HYPRX_RECOVERY_STATE_DIR="${HYPRX_RECOVERY_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx}"
+HYPRX_RECOVERY_STATE_FILE="$HYPRX_RECOVERY_STATE_DIR/install.state"
 
-mkdir -p "$STATE_DIR"
+mkdir -p "$HYPRX_RECOVERY_STATE_DIR"
 
 ########################################
 # Save current installation state
 ########################################
 
-save_install_state() {
+hyprx_recovery_save_state() {
+
+    # A dry run never installs anything, so it must not leave a pending
+    # queue behind - the next real run would try to "resume" a phantom
+    # interrupted install.
+    hyprx_util_dry_run && return 0
 
     {
-        echo "PACKAGE_MANAGER=$PACKAGE_MANAGER"
+        echo "PACKAGE_MANAGER=$HYPRX_DETECT_PACKAGE_MANAGER"
 
         echo
 
         echo "[PENDING]"
 
-        for pkg in "${PACKAGE_QUEUE[@]}"; do
+        for pkg in "${HYPRX_INSTALL_QUEUE[@]}"; do
             echo "$pkg"
         done
 
-    } > "$STATE_FILE"
+    } > "$HYPRX_RECOVERY_STATE_FILE"
 
 }
 
@@ -30,11 +39,11 @@ save_install_state() {
 # Resume installation
 ########################################
 
-resume_install() {
+hyprx_recovery_resume() {
 
-    [[ -f "$STATE_FILE" ]] || return 1
+    [[ -f "$HYPRX_RECOVERY_STATE_FILE" ]] || return 1
 
-    PACKAGE_QUEUE=()
+    HYPRX_INSTALL_QUEUE=()
 
     local section=""
 
@@ -46,7 +55,7 @@ resume_install() {
 
             PACKAGE_MANAGER=*)
 
-                PACKAGE_MANAGER="${line#*=}"
+                HYPRX_DETECT_PACKAGE_MANAGER="${line#*=}"
                 ;;
 
             "[PENDING]")
@@ -60,7 +69,7 @@ resume_install() {
 
                     packages)
 
-                        PACKAGE_QUEUE+=("$line")
+                        HYPRX_INSTALL_QUEUE+=("$line")
                         ;;
 
                 esac
@@ -68,15 +77,15 @@ resume_install() {
 
         esac
 
-    done < "$STATE_FILE"
+    done < "$HYPRX_RECOVERY_STATE_FILE"
 
-    if (( ${#PACKAGE_QUEUE[@]} == 0 )); then
+    if (( ${#HYPRX_INSTALL_QUEUE[@]} == 0 )); then
         return 1
     fi
 
-    success "Recovered interrupted installation."
+    hyprx_ui_success "Recovered interrupted installation."
 
-    info "Remaining packages: ${#PACKAGE_QUEUE[@]}"
+    hyprx_ui_info "Remaining packages: ${#HYPRX_INSTALL_QUEUE[@]}"
 
     return 0
 
@@ -86,19 +95,19 @@ resume_install() {
 # Remove completed package
 ########################################
 
-mark_package_complete() {
+hyprx_recovery_mark_complete() {
 
     local pkg="$1"
 
-    [[ -f "$STATE_FILE" ]] || return 0
+    [[ -f "$HYPRX_RECOVERY_STATE_FILE" ]] || return 0
 
-    PACKAGE_QUEUE=()
+    HYPRX_INSTALL_QUEUE=()
 
-    resume_install >/dev/null 2>&1 || return 0
+    hyprx_recovery_resume >/dev/null 2>&1 || return 0
 
     local remaining=()
 
-    for item in "${PACKAGE_QUEUE[@]}"; do
+    for item in "${HYPRX_INSTALL_QUEUE[@]}"; do
 
         [[ "$item" == "$pkg" ]] && continue
 
@@ -106,9 +115,9 @@ mark_package_complete() {
 
     done
 
-    PACKAGE_QUEUE=("${remaining[@]}")
+    HYPRX_INSTALL_QUEUE=("${remaining[@]}")
 
-    save_install_state
+    hyprx_recovery_save_state
 
 }
 
@@ -116,23 +125,11 @@ mark_package_complete() {
 # Delete state
 ########################################
 
-clear_install_state() {
+hyprx_recovery_clear_state() {
 
-    rm -f "$STATE_FILE"
+    hyprx_util_dry_run && return 0
 
-}
-
-########################################
-# Show pending packages
-########################################
-
-show_pending_packages() {
-
-    [[ -f "$STATE_FILE" ]] || return 1
-
-    resume_install >/dev/null 2>&1 || return 1
-
-    printf "%s\n" "${PACKAGE_QUEUE[@]}"
+    rm -f "$HYPRX_RECOVERY_STATE_FILE"
 
 }
 
@@ -140,8 +137,8 @@ show_pending_packages() {
 # Installation interrupted?
 ########################################
 
-has_install_state() {
+hyprx_recovery_has_state() {
 
-    [[ -f "$STATE_FILE" ]]
+    [[ -f "$HYPRX_RECOVERY_STATE_FILE" ]]
 
 }

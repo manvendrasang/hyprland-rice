@@ -2,16 +2,14 @@
 
 # shellcheck disable=SC1090
 
-BOOTSTRAP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(dirname "$BOOTSTRAP_DIR")"
+HYPRX_BOOTSTRAP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HYPRX_ROOT="$(dirname "$HYPRX_BOOTSTRAP_DIR")"
 
-export ROOT_DIR
-export HYPRX_ROOT="$ROOT_DIR"
-
-export HYPRX_LIB="$ROOT_DIR/lib"
-export HYPRX_COMMANDS="$ROOT_DIR/commands"
-export HYPRX_DATABASE="$ROOT_DIR/database"
-export HYPRX_CONFIG="${HYPRX_CONFIG:-$ROOT_DIR/config}"
+export HYPRX_ROOT
+export HYPRX_LIB="$HYPRX_ROOT/lib"
+export HYPRX_COMMANDS="$HYPRX_ROOT/commands"
+export HYPRX_DATABASE="$HYPRX_ROOT/database"
+export HYPRX_CONFIG="${HYPRX_CONFIG:-$HYPRX_ROOT/config}"
 
 
 #

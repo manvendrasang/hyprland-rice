@@ -4,24 +4,16 @@
 # SUPER+F5: power profile cycle
 ########################################
 #
-# asusctl's own CLI has no flag to query
-# the current profile in a scriptable way
-# beyond "profile get" (confirmed - there
-# is no -p/-n flag; the real subcommands
-# are next/list/get/set/tuning). Rather
-# than guess at "set", this only ever uses
-# the confirmed-working "next" and "get"
-# subcommands: advance to the next profile
-# in the normal 3-way cycle, then on
-# battery, skip straight past Performance
-# if that's where it landed - restricting
-# battery to Quiet <-> Balanced while AC
-# keeps the full Quiet -> Balanced ->
-# Performance cycle.
+# Cycles through ASUS fan/power profiles:
+#   AC:     Quiet -> Balanced -> Performance
+#   Battery: Quiet -> Balanced (skips Performance)
 #
-# rog-control-center already auto-switches
-# AC/Battery profile on its own - this is
-# just the manual override cycle.
+# Uses `asusctl profile set` to directly set the next
+# profile in the cycle, confirmed working on this
+# machine (SUPER+F6).
+#
+# rog-control-center already auto-switches AC/Battery
+# profile on its own - this is just the manual override.
 #
 
 get_active_profile() {
@@ -40,12 +32,46 @@ is_on_ac() {
     return 1
 }
 
-asusctl profile next
+get_next_profile() {
+    local current="$1"
+    local on_ac="$2"
 
-if ! is_on_ac; then
-    if [[ "$(get_active_profile)" == "Performance" ]]; then
-        asusctl profile next
+    case "$current" in
+        Quiet)
+            echo "Balanced"
+            ;;
+        Balanced)
+            if [[ "$on_ac" == "true" ]]; then
+                echo "Performance"
+            else
+                echo "Quiet"
+            fi
+            ;;
+        Performance)
+            echo "Quiet"
+            ;;
+        *)
+            echo "Balanced"
+            ;;
+    esac
+}
+
+main() {
+    local current
+    current="$(get_active_profile)"
+
+    local on_ac="false"
+    if is_on_ac; then
+        on_ac="true"
     fi
-fi
 
-notify-send "Power Profile" "$(get_active_profile)"
+    local next
+    next="$(get_next_profile "$current" "$on_ac")"
+
+    printf "Power Profile: %s -> %s\n" "$current" "$next"
+    asusctl profile set "$next"
+
+    notify-send "Power Profile" "$(get_active_profile)"
+}
+
+main

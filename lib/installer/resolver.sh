@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 
-resolve_packages() {
+hyprx_resolver_resolve() {
 
-    PACKAGE_QUEUE=()
+    HYPRX_INSTALL_QUEUE=()
 
-    local file="$ROOT_DIR/packages.list"
+    local file="$HYPRX_ROOT/packages.list"
     local pkg
 
     if [[ -f "$file" ]]; then
 
         while IFS= read -r pkg; do
             [[ -z "$pkg" || "$pkg" =~ ^# ]] && continue
-            PACKAGE_QUEUE+=("$pkg")
+            HYPRX_INSTALL_QUEUE+=("$pkg")
         done <"$file"
 
     fi
 
-    mapfile -t PACKAGE_QUEUE < <(
-        printf "%s\n" "${PACKAGE_QUEUE[@]}" | sort -u
+    mapfile -t HYPRX_INSTALL_QUEUE < <(
+        printf "%s\n" "${HYPRX_INSTALL_QUEUE[@]}" | sort -u
     )
 
 }

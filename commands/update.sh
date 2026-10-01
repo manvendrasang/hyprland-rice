@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
-header
-info_log "Starting system update"
+hyprx_ui_header
+hyprx_logger_info "Starting system update"
 
 start_time=$(date +%s)
 
-info "Synchronizing package databases..."
+hyprx_ui_info "Synchronizing package databases..."
 
-case "$PACKAGE_MANAGER" in
+case "$HYPRX_DETECT_PACKAGE_MANAGER" in
     yay)
         yay -Syu
         ;;
@@ -18,16 +18,16 @@ case "$PACKAGE_MANAGER" in
         sudo pacman -Syu
         ;;
     *)
-        error "Unsupported package manager: $PACKAGE_MANAGER"
+        hyprx_ui_error "Unsupported package manager: $HYPRX_DETECT_PACKAGE_MANAGER"
         exit 1
         ;;
 esac
 
 echo
 
-info "Refreshing package database..."
+hyprx_ui_info "Refreshing package database..."
 
-case "$PACKAGE_MANAGER" in
+case "$HYPRX_DETECT_PACKAGE_MANAGER" in
     yay)
         yay -Sy >/dev/null
         ;;
@@ -41,25 +41,25 @@ esac
 
 echo
 
-info "Checking for orphan packages..."
+hyprx_ui_info "Checking for orphan packages..."
 
-remove_orphan_packages
-
-echo
-
-info "Updating package cache..."
-
-clean_package_cache
+hyprx_pkg_remove_orphans
 
 echo
 
-divider
+hyprx_ui_info "Updating package cache..."
+
+hyprx_pkg_clean_cache
+
+echo
+
+hyprx_ui_divider
 
 end_time=$(date +%s)
 elapsed=$((end_time - start_time))
 
-success "System update completed."
-success_log "System update completed successfully."
+hyprx_ui_success "System update completed."
+hyprx_logger_success "System update completed successfully."
 
 echo
 printf "%-20s %ss\n" "Elapsed" "$elapsed"

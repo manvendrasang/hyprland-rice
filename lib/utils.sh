@@ -4,39 +4,40 @@
 # Generic Helpers
 ########################################
 
-command_exists() {
+hyprx_util_command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-is_root() {
+hyprx_util_is_root() {
     [[ $EUID -eq 0 ]]
 }
 
-timestamp() {
+hyprx_util_timestamp() {
     date +"%Y-%m-%d %H:%M:%S"
 }
 
 ########################################
-# Files
+# Dry run
 ########################################
 
-file_exists() {
-    [[ -f "$1" ]]
+# True when the current run must not mutate the system. Set by
+# `hyprx install --dry-run` / `hyprx clean --dry-run`; every mutating
+# helper checks this before touching anything.
+hyprx_util_dry_run() {
+    [[ "${HYPRX_DRY_RUN:-0}" == "1" ]]
 }
 
-dir_exists() {
-    [[ -d "$1" ]]
-}
-
-create_dir() {
-    mkdir -p "$1"
+# Print the standard "[dry-run] would ..." prefix, so output reads the
+# same regardless of which command emitted it.
+hyprx_util_would() {
+    hyprx_ui_info "[dry-run] Would $*"
 }
 
 ########################################
 # Size
 ########################################
 
-bytes_to_human() {
+hyprx_util_bytes_to_human() {
 
     local bytes=$1
 
@@ -56,7 +57,7 @@ bytes_to_human() {
 # Confirmation
 ########################################
 
-confirm() {
+hyprx_util_confirm() {
 
     local answer
 
@@ -70,20 +71,24 @@ confirm() {
 }
 
 ########################################
-# Temp
+# Input validation
 ########################################
 
-make_temp() {
+hyprx_util_validate_package_name() {
+    local pkg="$1"
+    [[ "$pkg" =~ ^[a-zA-Z0-9][a-zA-Z0-9._+-]*$ ]]
+}
 
-    mktemp -d
-
+hyprx_util_validate_snapshot_id() {
+    local id="$1"
+    [[ "$id" =~ ^[0-9]{8}-[0-9]{6}$ ]]
 }
 
 ########################################
 # Disk Usage
 ########################################
 
-directory_size() {
+hyprx_util_directory_size() {
 
     du -sb "$1" 2>/dev/null | awk '{print $1}'
 
