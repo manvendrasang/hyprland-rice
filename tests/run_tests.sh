@@ -333,9 +333,22 @@ log "Testing report generation..."
 HYPRX_INSTALL_FAILED=()
 HYPRX_INSTALL_INSTALLED=()
 HYPRX_INSTALL_SKIPPED=()
-export HYPRX_REPORT_FILE="/tmp/hyprx-test-report.txt"
+
+# Assert on HYPRX_STATE_REPORT_FILE, which is what report.sh writes to.
+# Setting HYPRX_REPORT_FILE here does nothing: lib/state.sh resolves the state
+# path once at source time, so overriding the input afterwards has no effect.
+# The suite pointed at a fixed /tmp path instead, which meant it was really
+# asserting on whatever a previous run had left there - a leftover file from
+# before the refactor made it pass locally while a fresh container correctly
+# failed it.
+rm -f "$HYPRX_STATE_REPORT_FILE"
 hyprx_report_generate >/dev/null
-assert_file_exists "$HYPRX_REPORT_FILE"
+assert_file_exists "$HYPRX_STATE_REPORT_FILE"
+if [[ "$HYPRX_STATE_REPORT_FILE" == "$TEST_ROOT"/* ]]; then
+    pass "report stays inside the sandbox"
+else
+    fail "report escapes the sandbox: $HYPRX_STATE_REPORT_FILE"
+fi
 pass "Report generation OK"
 
 # Test: Dry run
@@ -373,8 +386,9 @@ assert_false hyprx_recovery_has_state
 hyprx_recovery_clear_state
 
 # The report must be stamped so nobody mistakes it for a real install.
+rm -f "$HYPRX_STATE_REPORT_FILE"
 hyprx_report_generate >/dev/null
-if grep -q "DRY RUN" "$HYPRX_REPORT_FILE"; then
+if [[ -f "$HYPRX_STATE_REPORT_FILE" ]] && grep -q "DRY RUN" "$HYPRX_STATE_REPORT_FILE"; then
     pass "dry-run report is stamped"
 else
     fail "dry-run report missing its DRY RUN banner"
