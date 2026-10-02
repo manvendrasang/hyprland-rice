@@ -41,6 +41,7 @@ CLI="$ROOT_DIR/bin/hyprx"
 
 PASSED=0
 FAILED=0
+FAILED_ASSERTIONS=()
 
 # Log both to stdout and to the log file
 log() {
@@ -48,7 +49,14 @@ log() {
 }
 
 pass() { log "  [PASS] $1"; PASSED=$((PASSED + 1)); }
-fail() { log "  [FAIL] $1"; FAILED=$((FAILED + 1)); }
+
+# Failures are also collected so the summary can repeat them. A CI log viewer
+# collapses the middle of a long run, and a failure buried there is invisible.
+fail() {
+    log "  [FAIL] $1"
+    FAILED=$((FAILED + 1))
+    FAILED_ASSERTIONS+=("$1")
+}
 
 assert_equals() {
     if [[ "$1" == "$2" ]]; then pass "$2"; else fail "Expected '$1' got '$2'"; fi
@@ -1205,10 +1213,34 @@ assert_exit_in "doctor --only diskusage" "0,1,2" "$CLI" doctor --only diskusage 
 # Every name in the usage text must be a name doctor_wants accepts. Any of
 # 0/1/2 is a valid doctor result - a section run in isolation can legitimately
 # report warnings or errors.
-while read -r section; do
-    [[ -z "$section" ]] && continue
+#
+# Stop at the first blank line. Without that bound the scrape swallows the prose
+# after the list and starts asserting that "An", "unknown", "section" are valid
+# section names - which passes, so the bug is invisible except as an inflated
+# total.
+mapfile -t HELP_SECTIONS < <(
+    printf '%s\n' "$usage" \
+        | sed -n '/^Sections:/,/^$/p' \
+        | tail -n +2 \
+        | tr -s ' \t\n' '\n' \
+        | grep -v '^$'
+)
+
+for section in "${HELP_SECTIONS[@]}"; do
     assert_exit_in "doctor --only $section" "0,1,2" "$CLI" doctor --only "$section" --no-report
-done < <(printf '%s\n' "$usage" | sed -n '/^Sections:/,$p' | tail -n +2 | tr -s ' \t\n' '\n' | grep -v '^$')
+done
+
+# The list in --help must match the list doctor actually validates against, or
+# the two can drift and a typo'd section becomes unroutable.
+source_sections="$(sed -n 's/^DOCTOR_SECTIONS="\(.*\)"$/\1/p' "$ROOT_DIR/commands/doctor.sh")"
+assert_equals "${#HELP_SECTIONS[@]}" "$(wc -w <<<"$source_sections")"
+for section in $source_sections; do
+    if printf '%s\n' "${HELP_SECTIONS[@]}" | grep -qxF "$section"; then
+        pass "--help lists $section"
+    else
+        fail "--help omits $section"
+    fi
+done
 
 # An unknown section name must be rejected. Silently running nothing would look
 # exactly like a clean bill of health.
@@ -1254,6 +1286,17 @@ fi
 # ============================================
 log ""
 log "========================================="
+
+# Repeated here on purpose: this is the one part of the output a CI log viewer
+# will not collapse, so a failure cannot hide in the middle of a long run.
+if (( FAILED > 0 )); then
+    log "Failed assertions:"
+    for failed_assertion in "${FAILED_ASSERTIONS[@]}"; do
+        log "  - $failed_assertion"
+    done
+    log ""
+fi
+
 log "Passed : $PASSED"
 log "Failed : $FAILED"
 log "Finished: $(date)"
