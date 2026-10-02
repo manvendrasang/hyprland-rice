@@ -8,9 +8,9 @@
 set -uo pipefail
 
 WALLPAPER_DIR="${HYPRX_WALLPAPER_DIR:-$HOME/Pictures/Wallpapers}"
-STATE_FILE="${HYPRX_WALLPAPER_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/last-wallpaper}"
+STATE_FILE="${HYPRX_WALLPAPER_STATE:-${HYPRX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx}/last-wallpaper}"
 WAYPAPER_CONFIG="${HYPRX_TARGET_HOME:-$HOME}/.config/waypaper/config.ini"
-LOG_FILE="${HYPRX_LOGGER_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx}/hyprx.log"
+LOG_FILE="${HYPRX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx}/hyprx.log"
 
 log() {
     printf '[wallpaper-restore] %s\n' "$*" >&2

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-HYPRX_SNAPSHOT_DIR="${HYPRX_SNAPSHOT_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/snapshots}"
-HYPRX_DEPLOYED_TARGETS_FILE="${HYPRX_DEPLOYED_TARGETS_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/deployed-targets}"
+HYPRX_SNAPSHOT_DIR="$HYPRX_STATE_SNAPSHOT_DIR"
+HYPRX_DEPLOYED_TARGETS_FILE="$HYPRX_STATE_DEPLOYED_FILE"
 
 HYPRX_SNAPSHOT_CONFIG_BACKUPS=()
 HYPRX_SNAPSHOT_CURRENT_ID=""
@@ -20,7 +20,7 @@ hyprx_snapshot_current_id() {
 }
 
 hyprx_snapshot_backup_root() {
-    echo "${HYPRX_CONFIG_BACKUP_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/config-backups}"
+    echo "$HYPRX_STATE_BACKUP_DIR"
 }
 
 hyprx_snapshot_backup_dir_for() {

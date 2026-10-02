@@ -11,10 +11,11 @@ export HYPRX_COMMANDS="$HYPRX_ROOT/commands"
 export HYPRX_DATABASE="$HYPRX_ROOT/database"
 export HYPRX_CONFIG="${HYPRX_CONFIG:-$HYPRX_ROOT/config}"
 
-# Order matters: config.sh populates HYPRX_CONFIG_*, which logger.sh and
-# packages.sh read.
+# Order matters: state.sh defines the paths everything else writes to, and
+# config.sh populates HYPRX_CONFIG_*, which logger.sh and packages.sh read.
 
 for file in \
+    state.sh \
     ui.sh \
     utils.sh \
     logger.sh \

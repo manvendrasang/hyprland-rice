@@ -15,16 +15,20 @@ TEST_ROOT="$(mktemp -d)"
 cp -r "$ROOT_DIR/config" "$TEST_ROOT/"
 
 export HYPRX_CONFIG="$TEST_ROOT/config"
-export HYPRX_SNAPSHOT_DIR="$TEST_ROOT/state/snapshots"
-export HYPRX_FAILURE_LOG="$TEST_ROOT/state/hyprx-install.log"
-export HYPRX_REPORT_FILE="$TEST_ROOT/state/HyprX-Install-Report.txt"
 export HYPRX_TARGET_HOME="$TEST_ROOT/home"
-export HYPRX_CONFIG_BACKUP_ROOT="$TEST_ROOT/state/config-backups"
-export HYPRX_DEPLOYED_TARGETS_FILE="$TEST_ROOT/state/deployed-targets"
-# These two were previously hardcoded to the real ~/.local/state/hyprx, so
-# the suite used to write to (and read from) the user's actual state dir.
-export HYPRX_LOGGER_DIR="$TEST_ROOT/state/log"
-export HYPRX_RECOVERY_STATE_DIR="$TEST_ROOT/state/recovery"
+
+# One master override. lib/state.sh derives every log, report, snapshot and
+# backup path from this, so a single assignment isolates the whole suite.
+export HYPRX_STATE_DIR="$TEST_ROOT/state"
+
+# Per-path overrides, still honoured by lib/state.sh, for the few tests that
+# need a path outside the state dir.
+export HYPRX_REPORT_FILE="$TEST_ROOT/state/HyprX-Install-Report.txt"
+
+# Previously these two were hardcoded to the real ~/.local/state/hyprx, so the
+# suite used to write to (and read from) the user's actual state dir.
+export HYPRX_LOGGER_DIR=""
+export HYPRX_RECOVERY_STATE_DIR=""
 
 mkdir -p "$HYPRX_TARGET_HOME/.config"
 
@@ -879,6 +883,363 @@ while IFS= read -r file; do
     fi
 done < <(find "$ROOT_DIR/lib" -name '*.sh' -type f | sort)
 [[ $missing -eq 0 ]] && pass "Coverage OK"
+
+# ============================================
+# State path resolution
+# ============================================
+log "Testing state path resolution..."
+
+# state.sh must be sourced before logger.sh, which reads the paths it defines.
+first_lib="$(sed -n '/^for file in \\/,/do$/p' "$ROOT_DIR/lib/bootstrap.sh" | sed -n '2,$p' | head -1)"
+first_lib="${first_lib// /}"
+first_lib="${first_lib%\\}"
+assert_equals "$first_lib" "state.sh"
+
+# Every path must resolve inside the state dir, not the user's real one.
+for var in HYPRX_STATE_LOG_FILE HYPRX_STATE_REPORT_DIR HYPRX_STATE_SNAPSHOT_DIR \
+           HYPRX_STATE_BACKUP_DIR HYPRX_STATE_DEPLOYED_FILE HYPRX_STATE_FAILURE_LOG; do
+    val="${!var}"
+    if [[ "$val" == "$TEST_ROOT/state"* ]]; then
+        pass "$var resolves inside the sandbox"
+    else
+        fail "$var escapes the sandbox: $val"
+    fi
+done
+
+# doctor.sh used to hardcode the reports path, which ignored XDG_STATE_HOME
+# and the override above.
+if grep -qF "\$HOME/.local/state/hyprx/reports" "$ROOT_DIR/commands/doctor.sh"; then
+    fail "doctor.sh still hardcodes the reports path"
+else
+    pass "doctor.sh uses the resolved reports path"
+fi
+
+# Size and formatting helpers.
+mkdir -p "$TEST_ROOT/sizedir"
+dd if=/dev/zero of="$TEST_ROOT/sizedir/blob" bs=1024 count=64 2>/dev/null
+SZ="$(hyprx_state_size "$TEST_ROOT/sizedir")"
+if [[ "$SZ" -gt 60000 && "$SZ" -lt 70000 ]]; then
+    pass "hyprx_state_size returns bytes ($SZ)"
+else
+    fail "hyprx_state_size returned $SZ, expected ~65536"
+fi
+assert_equals "$(hyprx_state_human 0)"        "0B"
+assert_equals "$(hyprx_state_human 2048)"     "2.0K"
+assert_equals "$(hyprx_state_human 3145728)"  "3.0M"
+assert_equals "$(hyprx_state_human 3221225472)" "3.0G"
+assert_equals "$(hyprx_state_size /nonexistent/path)" ""
+pass "hyprx_state_size on a missing path is empty"
+
+# ============================================
+# Log rotation
+# ============================================
+log "Testing log rotation..."
+
+ROT="$TEST_ROOT/rot"
+rm -rf "$ROT"; mkdir -p "$ROT"
+OLD_FILE="$HYPRX_LOGGER_FILE"
+OLD_MAX="$HYPRX_LOG_MAX_BYTES"
+# Point the logger at the scratch dir and shrink the threshold so a rotation
+# happens within a few hundred lines rather than 2 MiB of them.
+HYPRX_LOGGER_FILE="$ROT/hyprx.log"
+export HYPRX_LOG_MAX_BYTES=2048 HYPRX_LOG_KEEP=2
+
+hyprx_logger_log INFO "first message"
+if [[ -f "$ROT/hyprx.log" ]]; then pass "log file created"; else fail "no log file"; fi
+
+# Push past the threshold and confirm it rolls over rather than growing.
+for i in $(seq 1 200); do
+    hyprx_logger_log INFO "padding message number $i with enough text to exceed the limit"
+done
+if [[ -f "$ROT/hyprx.log.1" ]]; then
+    pass "log rotated to .1"
+else
+    fail "log never rotated"
+fi
+SIZE_NOW="$(hyprx_state_size "$ROT/hyprx.log")"
+if [[ "$SIZE_NOW" -lt 2048 ]]; then
+    pass "active log stays under the threshold ($SIZE_NOW)"
+else
+    fail "active log grew to $SIZE_NOW past the 2048 threshold"
+fi
+
+# Keep-count must be respected: no generation above .2.
+for i in $(seq 1 600); do
+    hyprx_logger_log INFO "more padding to force several rotations $i"
+done
+if [[ -f "$ROT/hyprx.log.3" ]]; then
+    fail "rotation kept more than the 2 requested generations"
+else
+    pass "rotation respects HYPRX_LOG_KEEP"
+fi
+
+unset HYPRX_LOG_MAX_BYTES HYPRX_LOG_KEEP
+export HYPRX_LOG_MAX_BYTES="$OLD_MAX"
+HYPRX_LOGGER_FILE="$OLD_FILE"
+
+# ============================================
+# clean: new flags and reporting
+# ============================================
+log "Testing hyprx clean flags..."
+
+SB="$TEST_ROOT/cleanbox"
+mkdir -p "$SB/.cache/mesa_shader_cache" "$SB/.cache/yay/pkg" "$SB/Pictures/Screenshots"
+dd if=/dev/zero of="$SB/.cache/mesa_shader_cache/blob" bs=1024 count=64 2>/dev/null
+dd if=/dev/zero of="$SB/.cache/yay/pkg/blob" bs=1024 count=64 2>/dev/null
+touch -d '30 days ago' "$SB/Pictures/Screenshots/old.png"
+touch "$SB/Pictures/Screenshots/fresh.png"
+
+assert_exit_in "clean --dry-run" "0" "$CLI" clean --dry-run
+assert_exit_in "clean --help"    "0" "$CLI" clean --help
+assert_exit_in "clean rejects an unknown flag" "1" "$CLI" clean --bogus
+
+# --dry-run must not remove anything.
+if [[ -f "$SB/.cache/mesa_shader_cache/blob" ]]; then
+    pass "dry-run leaves caches in place"
+else
+    fail "dry-run deleted cache contents"
+fi
+if [[ -f "$SB/Pictures/Screenshots/old.png" ]]; then
+    pass "dry-run leaves old screenshots in place"
+else
+    fail "dry-run deleted an old screenshot"
+fi
+
+# --deep must be opt-in: without it the large caches are left alone.
+# Checked before any real run, while the fixtures are still in place.
+out="$(HYPRX_CLEAN_ROOT="$SB" "$CLI" clean --dry-run 2>&1)"
+if printf '%s' "$out" | grep -q 'cache/yay'; then
+    fail "--deep steps ran without --deep"
+else
+    pass "--deep steps are gated behind --deep"
+fi
+
+out="$(HYPRX_CLEAN_ROOT="$SB" "$CLI" clean --deep --dry-run 2>&1)"
+if printf '%s' "$out" | grep -q 'cache/yay'; then
+    pass "--deep includes the large caches"
+else
+    fail "--deep did not include the large caches"
+fi
+
+# A real sandboxed run must reclaim the bytes and report them. HYPRX_CLEAN_ROOT
+# aims the home-relative steps at the sandbox; a sandboxed run does remove its
+# own targets, so it must not claim otherwise.
+out="$(HYPRX_CLEAN_ROOT="$SB" "$CLI" clean --yes 2>&1 || true)"
+if printf '%s' "$out" | grep -q 'Sandboxed cleanup removed'; then
+    pass "clean reports sandbox mode"
+else
+    fail "clean did not report sandbox mode"
+fi
+if printf '%s' "$out" | grep -q 'System-wide steps were reported'; then
+    pass "clean says system-wide steps were skipped"
+else
+    fail "clean did not flag the skipped system-wide steps"
+fi
+if printf '%s' "$out" | grep -q 'Nothing was removed'; then
+    fail "sandboxed run claimed nothing was removed"
+else
+    pass "sandboxed run does not claim it removed nothing"
+fi
+if [[ ! -f "$SB/.cache/mesa_shader_cache/blob" ]]; then
+    pass "sandboxed clean removed the cache contents"
+else
+    fail "sandboxed clean left the cache contents"
+fi
+if [[ ! -f "$SB/Pictures/Screenshots/old.png" ]]; then
+    pass "sandboxed clean removed the aged screenshot"
+else
+    fail "sandboxed clean left the aged screenshot"
+fi
+if [[ -f "$SB/Pictures/Screenshots/fresh.png" ]]; then
+    pass "sandboxed clean kept the fresh screenshot"
+else
+    fail "sandboxed clean deleted a fresh screenshot"
+fi
+if printf '%s' "$out" | grep -qE 'removed [0-9]'; then
+    pass "clean reports the bytes it reclaimed"
+else
+    fail "clean did not report reclaimed bytes"
+fi
+# A second pass has nothing left, and must say exactly that rather than
+# claiming a saving.
+out2="$(HYPRX_CLEAN_ROOT="$SB" "$CLI" clean --yes 2>&1 || true)"
+if printf '%s' "$out2" | grep -q 'removed nothing'; then
+    pass "clean says so when nothing needed removing"
+else
+    fail "clean did not report a zero-byte run"
+fi
+# The pacman cache size is an upper bound, not a measured saving, so it must
+# never inflate the total.
+if printf '%s' "$out" | grep -qE 'could free up to [0-9]'; then
+    pass "package cache is reported as an upper bound"
+else
+    fail "package cache estimate not reported as a bound"
+fi
+
+# Retention knobs are honoured.
+mkdir -p "$TEST_ROOT/state/snapshots"
+for i in 1 2 3 4 5 6 7; do
+    printf 'x\n' >"$TEST_ROOT/state/snapshots/snap$i.snapshot"
+done
+HYPRX_CLEAN_ROOT="$SB" SNAPSHOT_KEEP=3 "$CLI" clean >/dev/null 2>&1 || true
+n="$(find "$TEST_ROOT/state/snapshots" -name '*.snapshot' | wc -l | tr -d ' ')"
+assert_equals "$n" "3"
+
+# Retention defaults are documented in the usage text.
+usage="$("$CLI" clean --help 2>&1)"
+for knob in SCREENSHOT_AGE_DAYS TMP_AGE_DAYS JOURNAL_RETENTION_DAYS SNAPSHOT_KEEP REPORT_KEEP LOG_KEEP HYPRX_CLEAN_ROOT; do
+    if printf '%s' "$usage" | grep -qF "$knob"; then
+        pass "clean --help documents $knob"
+    else
+        fail "clean --help omits $knob"
+    fi
+done
+
+# ============================================
+# doctor: new flags
+# ============================================
+log "Testing hyprx doctor flags..."
+
+assert_exit_in "doctor --help" "0" "$CLI" doctor --help
+assert_exit_in "doctor rejects an unknown flag" "1" "$CLI" doctor --bogus
+assert_exit_in "doctor --no-report" "0,1,2" "$CLI" doctor --no-report
+assert_exit_in "doctor --skip storage" "0,1,2" "$CLI" doctor --skip storage --no-report
+assert_exit_in "doctor --only storage" "0,1,2" "$CLI" doctor --only storage --no-report
+
+# --json plus --only would emit a document that looks complete but is not.
+assert_exit_in "doctor rejects --json with --only" "1" "$CLI" doctor --json --only storage
+
+# --only must actually restrict the sections that run.
+out="$("$CLI" doctor --only diskusage --no-report 2>&1 | sed 's/\x1b\[[0-9;]*m//g' || true)"
+if printf '%s' "$out" | grep -q 'Disk Usage'; then
+    pass "--only ran the requested section"
+else
+    fail "--only did not run diskusage"
+fi
+if printf '%s' "$out" | grep -q '^== Configuration =='; then
+    fail "--only ran a section it was not asked for"
+else
+    pass "--only suppressed the other sections"
+fi
+
+out="$("$CLI" doctor --skip storage --no-report 2>&1 | sed 's/\x1b\[[0-9;]*m//g' || true)"
+if printf '%s' "$out" | grep -q '^== Storage =='; then
+    fail "--skip ran a skipped section"
+else
+    pass "--skip suppressed the named section"
+fi
+
+# --json must emit parseable JSON with the expected shape.
+if command -v python3 >/dev/null 2>&1; then
+    json_out="$("$CLI" doctor --json 2>/dev/null || true)"
+    if printf '%s' "$json_out" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+for key in ("host", "distro", "kernel", "summary", "findings", "suggestions"):
+    assert key in d, "missing key: " + key
+assert isinstance(d["findings"], list), "findings is not a list"
+assert "errors" in d["summary"] and "warnings" in d["summary"], "bad summary"
+for f in d["findings"]:
+    assert f["status"] in ("ok", "warn", "error"), f"bad status: {f}"
+' 2>/dev/null; then
+        pass "doctor --json emits valid JSON with the expected shape"
+    else
+        fail "doctor --json output is not valid/complete JSON"
+    fi
+
+    # Nothing but the document may reach stdout.
+    if printf '%s' "$json_out" | head -1 | grep -q '^{'; then
+        pass "doctor --json starts the document on line 1"
+    else
+        fail "doctor --json leaked text before the document"
+    fi
+else
+    log "  [SKIP] python3 unavailable - doctor --json shape not verified"
+fi
+
+# A timestamped report is written unless --no-report is passed.
+before="$(find "$TEST_ROOT/state/reports" -name 'doctor-*.log' 2>/dev/null | wc -l | tr -d ' ')"
+"$CLI" doctor --skip storage >/dev/null 2>&1 || true
+after="$(find "$TEST_ROOT/state/reports" -name 'doctor-*.log' 2>/dev/null | wc -l | tr -d ' ')"
+if [[ "$after" -gt "$before" ]]; then
+    pass "doctor writes a timestamped report"
+else
+    fail "doctor did not write a report ($before -> $after)"
+fi
+# Reports must not contain raw escape codes.
+latest="$(find "$TEST_ROOT/state/reports" -name 'doctor-*.log' 2>/dev/null | sort | tail -1)"
+if [[ -n "$latest" ]] && ! grep -qP '\x1b\[' "$latest" 2>/dev/null; then
+    pass "doctor report has escapes stripped"
+else
+    fail "doctor report contains ANSI escapes"
+fi
+
+before="$(find "$TEST_ROOT/state/reports" -name 'doctor-*.log' 2>/dev/null | wc -l | tr -d ' ')"
+"$CLI" doctor --skip storage --no-report >/dev/null 2>&1 || true
+after="$(find "$TEST_ROOT/state/reports" -name 'doctor-*.log' 2>/dev/null | wc -l | tr -d ' ')"
+assert_equals "$after" "$before"
+
+# New sections are reachable by name and listed in the usage text.
+usage="$("$CLI" doctor --help 2>&1)"
+for section in configuration applications system validation drift storage memory \
+               swap systemd services session network pacman daemons battery diskusage; do
+    if printf '%s' "$usage" | grep -qF "$section"; then
+        pass "doctor --help lists $section"
+    else
+        fail "doctor --help omits $section"
+    fi
+done
+
+assert_exit_in "doctor --only daemons" "0,1,2" "$CLI" doctor --only daemons --no-report
+assert_exit_in "doctor --only battery"  "0,1,2" "$CLI" doctor --only battery --no-report
+assert_exit_in "doctor --only diskusage" "0,1,2" "$CLI" doctor --only diskusage --no-report
+
+# Every name in the usage text must be a name doctor_wants accepts. Any of
+# 0/1/2 is a valid doctor result - a section run in isolation can legitimately
+# report warnings or errors.
+while read -r section; do
+    [[ -z "$section" ]] && continue
+    assert_exit_in "doctor --only $section" "0,1,2" "$CLI" doctor --only "$section" --no-report
+done < <(printf '%s\n' "$usage" | sed -n '/^Sections:/,$p' | tail -n +2 | tr -s ' \t\n' '\n' | grep -v '^$')
+
+# An unknown section name must be rejected. Silently running nothing would look
+# exactly like a clean bill of health.
+assert_exit_in "doctor rejects an unknown --only name" "1" "$CLI" doctor --only nosuchsection --no-report
+assert_exit_in "doctor rejects an unknown --skip name" "1" "$CLI" doctor --skip nosuchsection --no-report
+out="$("$CLI" doctor --only nosuchsection --no-report 2>&1 | sed 's/\x1b\[[0-9;]*m//g' || true)"
+if printf '%s' "$out" | grep -q 'Valid sections:'; then
+    pass "doctor lists the valid sections when rejecting a name"
+else
+    fail "doctor did not list the valid sections"
+fi
+# A valid name inside a list must still work.
+assert_exit_in "doctor accepts a name within a list" "0,1,2" "$CLI" doctor --only gpu,storage --no-report
+# gpu must be independently selectable and must still run under session.
+out="$("$CLI" doctor --only gpu --no-report 2>&1 | sed 's/\x1b\[[0-9;]*m//g' || true)"
+if printf '%s' "$out" | grep -q 'Hybrid GPU'; then
+    pass "--only gpu selects the Hybrid GPU section"
+else
+    fail "--only gpu did not run Hybrid GPU"
+fi
+
+# A full run, kept for the duplicate-section check below.
+full_out="$("$CLI" doctor --no-report 2>&1 | sed 's/\x1b\[[0-9;]*m//g' || true)"
+# gpu is a top-level section of its own, not nested in session. A full run
+# must therefore show it exactly once.
+n="$(grep -c '^== Hybrid GPU ==$' <<<"$full_out" || true)"
+assert_equals "$n" "1"
+out="$("$CLI" doctor --only session --no-report 2>&1 | sed 's/\x1b\[[0-9;]*m//g' || true)"
+if printf '%s' "$out" | grep -q 'Hybrid GPU'; then
+    fail "--only session still ran the Hybrid GPU section"
+else
+    pass "--only session excludes Hybrid GPU"
+fi
+out="$("$CLI" doctor --skip gpu --no-report 2>&1 | sed 's/\x1b\[[0-9;]*m//g' || true)"
+if printf '%s' "$out" | grep -q 'Hybrid GPU'; then
+    fail "--skip gpu still ran the Hybrid GPU section"
+else
+    pass "--skip gpu excludes Hybrid GPU"
+fi
 
 # ============================================
 # Summary

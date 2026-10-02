@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 hyprx_report_generate() {
-    local report="${HYPRX_REPORT_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/HyprX-Install-Report.txt}"
+    local report="$HYPRX_STATE_REPORT_FILE"
     local now duration_minutes duration_seconds
 
     mkdir -p "$(dirname "$report")"

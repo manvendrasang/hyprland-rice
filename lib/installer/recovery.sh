@@ -3,7 +3,7 @@
 # Overridable for test isolation - see lib/logger.sh. Otherwise exercising the
 # recovery path rewrites the real install.state, which the next real install
 # would then try to resume from.
-HYPRX_RECOVERY_STATE_DIR="${HYPRX_RECOVERY_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx}"
+HYPRX_RECOVERY_STATE_DIR="$HYPRX_STATE_RECOVERY_DIR"
 HYPRX_RECOVERY_STATE_FILE="$HYPRX_RECOVERY_STATE_DIR/install.state"
 
 mkdir -p "$HYPRX_RECOVERY_STATE_DIR"

@@ -1,41 +1,69 @@
 #!/usr/bin/env bash
 
-# hyprx clean [--dry-run]
+# hyprx clean [--dry-run] [--deep] [--yes]
 #
-# Conservative: removes only what regenerates itself or is explicitly
-# time-boxed (screenshots over 2 days old). Never touches user data.
+# Conservative by default: removes only what regenerates itself or is
+# explicitly time-boxed (screenshots over N days old). Never touches user data
+# unless --deep is given, and even then never a browser profile.
 #
 #   --dry-run / HYPRX_DRY_RUN=1   report everything, remove nothing
-#   HYPRX_CLEAN_ROOT=<dir>         aim the home-relative paths at <dir> and
-#                                  report the steps that cannot be redirected
-#                                  - this is how the suite tests real deletions
+#   --deep                        also clear the large regenerable caches,
+#                                 empty the trash, and drop coredumps
+#   --yes                         do not prompt
+#   HYPRX_CLEAN_ROOT=<dir>        aim the home-relative paths at <dir> and
+#                                 report the steps that cannot be redirected
+#                                 - this is how the suite tests real deletions
+#
+# Every step reports the bytes it actually reclaimed, so a run that freed
+# nothing says so instead of claiming success.
 
 DRY_RUN=false
+DEEP=false
+ASSUME_YES=false
 FAILURES=0
+FREED=0
+
+SCREENSHOT_AGE_DAYS="${SCREENSHOT_AGE_DAYS:-2}"
+TMP_AGE_DAYS="${TMP_AGE_DAYS:-1}"
+JOURNAL_RETENTION_DAYS="${JOURNAL_RETENTION_DAYS:-7}"
+SNAPSHOT_KEEP="${SNAPSHOT_KEEP:-5}"
+REPORT_KEEP="${REPORT_KEEP:-10}"
+LOG_KEEP="${LOG_KEEP:-3}"
+
+usage() {
+    cat <<'EOF'
+Usage:
+    hyprx clean [--dry-run] [--deep] [--yes]
+
+Options:
+    --dry-run   Report every step and the bytes it would free. Removes nothing.
+    --deep      Also clear the large regenerable caches (AUR build cache,
+                nvidia shaders, fontconfig, pip), empty the trash, and delete
+                coredumps. Off by default because the trash is recoverable data.
+    --yes       Do not prompt before removing orphaned packages.
+
+Environment:
+    HYPRX_CLEAN_ROOT   Redirect the home-relative cleanup targets at this
+                       directory. System-wide steps are reported, not performed.
+    HYPRX_DRY_RUN=1    Same as --dry-run.
+    SCREENSHOT_AGE_DAYS  Age at which a screenshot is removed. Default 2.
+    TMP_AGE_DAYS         Age at which your /tmp files are removed. Default 1.
+    JOURNAL_RETENTION_DAYS  Journal entries kept. Default 7.
+    SNAPSHOT_KEEP       Rollback snapshots to keep. Default 5.
+    REPORT_KEEP         hyprx doctor reports to keep. Default 10.
+    LOG_KEEP            Rotated log generations to keep. Default 3.
+EOF
+}
 
 for arg in "$@"; do
     case "$arg" in
         --dry-run) DRY_RUN=true ;;
-        -h|--help)
-            hyprx_ui_section "hyprx clean"
-            cat <<'EOF'
-Usage:
-    hyprx clean [--dry-run]
-
-Options:
-    --dry-run   Report every step without removing anything.
-
-Environment:
-    HYPRX_CLEAN_ROOT   Redirect the home-relative cleanup targets
-                       (screenshots, ~/.cache) at this directory.
-                       System-wide steps are then reported, not performed.
-    HYPRX_DRY_RUN=1    Same as --dry-run.
-EOF
-            exit 0
-            ;;
+        --deep)    DEEP=true ;;
+        --yes|-y)  ASSUME_YES=true ;;
+        -h|--help) usage; exit 0 ;;
         *)
             hyprx_ui_error "Unknown option: $arg"
-            hyprx_ui_info "Run 'hyprx clean --help' for usage."
+            usage
             exit 1
             ;;
     esac
@@ -47,36 +75,92 @@ CLEAN_ROOT="${HYPRX_CLEAN_ROOT:-${HYPRX_TARGET_HOME:-$HOME}}"
 SANDBOX=false
 [[ -n "${HYPRX_CLEAN_ROOT:-}" ]] && SANDBOX=true
 
-# Steps outside CLEAN_ROOT cannot be sandboxed, so they are reported, not performed.
-REPORT_ONLY=false
-$DRY_RUN && REPORT_ONLY=true
-$SANDBOX && REPORT_ONLY=true
+# Dry run removes nothing at all. Sandbox removes the CLEAN_ROOT-relative items
+# for real - the test suite needs real deletions - but cannot redirect anything
+# outside CLEAN_ROOT, so those steps are reported instead. Conflating the two
+# made a sandboxed run claim it had removed nothing.
+SKIP_SYSTEM=false
+$DRY_RUN && SKIP_SYSTEM=true
+$SANDBOX && SKIP_SYSTEM=true
 
-# Escalate only if sudo works without a password prompt; otherwise say so
-# rather than dying or silently doing nothing.
+if $DRY_RUN; then
+    HYPRX_REPORT_PREFIX="dry-run"
+elif $SANDBOX; then
+    HYPRX_REPORT_PREFIX="sandboxed"
+fi
+
 CLEAN_CAN_SUDO=false
 if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
     CLEAN_CAN_SUDO=true
 fi
 
+# Bytes a path occupies right now, empty if absent.
+size_of() {
+    hyprx_state_size "$1"
+}
+
+# Accumulate into the run total. Deliberately prints nothing: the caller
+# formats its own line, so this must not emit a second size token.
+add_freed() {
+    local bytes="${1:-0}"
+    (( bytes > 0 )) && FREED=$((FREED + bytes))
+    return 0
+}
+
+# "(2.6M)" or "" for zero, for appending to a success line.
+freed_note() {
+    local bytes="${1:-0}"
+    (( bytes > 0 )) && printf ' (%s)' "$(hyprx_state_human "$bytes")"
+    return 0
+}
+
+# A cache dir cleared for real, or reported under dry-run.
+clear_cache_dir() {
+    local dir="$1" label="${2:-$1}" before after
+
+    [[ -d "$dir" ]] || return 0
+
+    before="$(size_of "$dir")"
+    [[ -z "$before" ]] && before=0
+
+    if $DRY_RUN; then
+        hyprx_util_would "clear $label - frees $(hyprx_state_human "$before")"
+        add_freed "$before"
+        return 0
+    fi
+
+    find "$dir" -mindepth 1 -delete 2>/dev/null
+    after="$(size_of "$dir")"
+    [[ -z "$after" ]] && after=0
+
+    local delta=$((before - after))
+    add_freed "$delta"
+    hyprx_ui_success "Cleared $label$(freed_note "$delta")"
+}
+
 hyprx_ui_header
 hyprx_logger_info "Running cleanup"
 
 if $SANDBOX; then
-    hyprx_ui_warn "SANDBOX - home-relative targets redirected to $CLEAN_ROOT;"
-    hyprx_ui_warn "system-wide steps (package cache, orphans, journal, /tmp) will be reported, not performed."
+    hyprx_ui_warn "SANDBOX - home-relative targets redirected to $CLEAN_ROOT."
+    hyprx_ui_warn "System-wide steps will be reported, not performed."
     echo
 fi
 
 echo
 
+########################################
 # Package manager cache
+########################################
 
 hyprx_ui_section "Package cache"
 
-if $REPORT_ONLY; then
+if $SKIP_SYSTEM; then
+    before="$(size_of /var/cache/pacman/pkg)"
     hyprx_util_would "remove stale pacman cache download-* temp files"
-    hyprx_util_would "run the $HYPRX_DETECT_PACKAGE_MANAGER cache clean"
+    # An upper bound on what the clean could reclaim, not a measured saving, so
+    # it is deliberately kept out of the run total.
+    hyprx_util_would "run the $HYPRX_DETECT_PACKAGE_MANAGER cache clean - could free up to $(hyprx_state_human "${before:-0}")"
 elif ! $CLEAN_CAN_SUDO; then
     hyprx_ui_warn "sudo unavailable or unauthenticated - skipping package cache clean"
     FAILURES=$((FAILURES + 1))
@@ -86,7 +170,9 @@ fi
 
 echo
 
+########################################
 # Orphaned packages
+########################################
 
 hyprx_ui_section "Orphaned packages"
 
@@ -94,89 +180,185 @@ mapfile -t ORPHANS < <(hyprx_pkg_list_orphans)
 
 if ((${#ORPHANS[@]} == 0)); then
     hyprx_ui_success "No orphan packages found."
-elif $REPORT_ONLY; then
+elif $SKIP_SYSTEM; then
     printf "%s\n" "${ORPHANS[@]}"
-    hyprx_util_would "prompt to remove the above with: sudo pacman -Rns"
+    hyprx_util_would "remove ${#ORPHANS[@]} orphan package(s) with: sudo pacman -Rns"
 elif ! $CLEAN_CAN_SUDO; then
     hyprx_ui_warn "sudo unavailable or unauthenticated - leaving ${#ORPHANS[@]} orphan(s) installed"
     FAILURES=$((FAILURES + 1))
+elif $ASSUME_YES; then
+    sudo pacman -Rns --noconfirm "${ORPHANS[@]}"
+    hyprx_ui_success "Removed ${#ORPHANS[@]} orphan package(s)."
 else
     hyprx_pkg_remove_orphans || FAILURES=$((FAILURES + 1))
 fi
 
 echo
 
-# Screenshots older than 2 days
-# Redirectable: runs for real under a sandbox, which is the point.
+########################################
+# Screenshots older than N days
+########################################
 
 hyprx_ui_section "Old screenshots"
 
 SCREENSHOT_DIR="$CLEAN_ROOT/Pictures/Screenshots"
-SCREENSHOT_AGE_DAYS=2
 
 if [[ -d "$SCREENSHOT_DIR" ]]; then
-
     mapfile -t OLD_SHOTS < <(find "$SCREENSHOT_DIR" -maxdepth 1 -type f -mtime "+$SCREENSHOT_AGE_DAYS")
 
     if ((${#OLD_SHOTS[@]})); then
+        before=0
+        for f in "${OLD_SHOTS[@]}"; do
+            s="$(size_of "$f")"; before=$((before + ${s:-0}))
+        done
 
         if $DRY_RUN; then
             printf "%s\n" "${OLD_SHOTS[@]}"
-            hyprx_util_would "delete ${#OLD_SHOTS[@]} screenshot(s) older than $SCREENSHOT_AGE_DAYS days"
+            hyprx_util_would "delete ${#OLD_SHOTS[@]} screenshot(s) older than $SCREENSHOT_AGE_DAYS days - frees $(hyprx_state_human "$before")"
+            add_freed "$before"
         else
             rm -f "${OLD_SHOTS[@]}"
-            hyprx_ui_success "Removed ${#OLD_SHOTS[@]} screenshot(s) older than $SCREENSHOT_AGE_DAYS days."
+            add_freed "$before"
+            hyprx_ui_success "Removed ${#OLD_SHOTS[@]} screenshot(s) older than $SCREENSHOT_AGE_DAYS days.$(freed_note "$before")"
         fi
-
     else
         hyprx_ui_success "No screenshots older than $SCREENSHOT_AGE_DAYS days."
     fi
-
 else
     hyprx_ui_info "No screenshots directory found ($SCREENSHOT_DIR)."
 fi
 
 echo
 
+########################################
 # Regenerable caches
-# Redirectable: runs for real under a sandbox.
+########################################
 
 hyprx_ui_section "Regenerable caches"
 
-CACHE_TARGETS=(
-    "$CLEAN_ROOT/.cache/thumbnails"
-    "$CLEAN_ROOT/.cache/mesa_shader_cache"
-)
-
 CACHES_CLEARED=0
-
-for dir in "${CACHE_TARGETS[@]}"; do
-
+for dir in \
+    "$CLEAN_ROOT/.cache/thumbnails" \
+    "$CLEAN_ROOT/.cache/mesa_shader_cache"
+do
     [[ -d "$dir" ]] || continue
-
     CACHES_CLEARED=$((CACHES_CLEARED + 1))
-
-    if $DRY_RUN; then
-        hyprx_util_would "clear: $dir"
-    else
-        find "$dir" -mindepth 1 -delete 2>/dev/null
-        hyprx_ui_success "Cleared $dir"
-    fi
-
+    clear_cache_dir "$dir"
 done
 
 (( CACHES_CLEARED == 0 )) && hyprx_ui_info "No regenerable caches present."
 
 echo
 
+########################################
+# Large caches - --deep only
+########################################
+
+if $DEEP; then
+
+    hyprx_ui_section "Large caches (--deep)"
+
+    # All fully regenerable. The browser profile is deliberately excluded: it is
+    # regenerable but costs a long re-download and a cold start.
+    for dir in \
+        "$CLEAN_ROOT/.cache/yay" \
+        "$CLEAN_ROOT/.cache/paru" \
+        "$CLEAN_ROOT/.cache/nvidia" \
+        "$CLEAN_ROOT/.cache/fontconfig" \
+        "$CLEAN_ROOT/.cache/pip"
+    do
+        [[ -d "$dir" ]] || continue
+        clear_cache_dir "$dir" "${dir#"$CLEAN_ROOT"/}"
+    done
+
+    echo
+
+    ########################################
+    # Trash
+    ########################################
+
+    hyprx_ui_section "Trash"
+
+    TRASH_DIR="$CLEAN_ROOT/.local/share/Trash"
+    TRASH_SIZE="$(size_of "$TRASH_DIR")"
+
+    if [[ -z "$TRASH_SIZE" || "$TRASH_SIZE" == 0 ]]; then
+        hyprx_ui_success "Trash is already empty."
+    elif $SKIP_SYSTEM; then
+        hyprx_util_would "empty the trash - frees $(hyprx_state_human "$TRASH_SIZE") (recoverable data, so --deep only)"
+        add_freed "$TRASH_SIZE"
+    elif ! command -v gio >/dev/null 2>&1; then
+        hyprx_ui_warn "gio not available - cannot empty the trash non-destructively"
+    else
+        gio trash --empty >/dev/null 2>&1
+        add_freed "$TRASH_SIZE"
+        hyprx_ui_success "Emptied the trash.$(freed_note "$TRASH_SIZE")"
+    fi
+
+    echo
+
+    ########################################
+    # Coredumps
+    ########################################
+
+    hyprx_ui_section "Coredumps"
+
+    # Grouped by program, because "5x hyprpaper" tells you something a list of
+    # PIDs does not. Column 10 is the executable. The per-dump size column
+    # carries a unit suffix ("10.4M") so it cannot be summed - the total is
+    # taken from the coredump directory instead.
+    coredump_summary() {
+        coredumpctl list --no-pager 2>/dev/null | tail -n +2 \
+            | awk 'NF >= 10 { name = $10; sub(/^.*\//, "", name); count[name]++ }
+                   END { for (n in count) printf "%s|%d\n", n, count[n] }' \
+            | sort
+    }
+
+    if ! command -v coredumpctl >/dev/null 2>&1; then
+        hyprx_ui_info "coredumpctl not available - skipping"
+    elif $SKIP_SYSTEM; then
+        summary="$(coredump_summary)"
+        if [[ -n "$summary" ]]; then
+            n="$(printf '%s\n' "$summary" | awk -F'|' '{t += $2} END {print t + 0}')"
+            hyprx_util_would "delete $n coredump(s)"
+            printf '%s\n' "$summary" | while IFS='|' read -r name count; do
+                printf '      %s x%s\n' "$name" "$count"
+            done
+        else
+            hyprx_ui_success "No coredumps."
+        fi
+    elif ! $CLEAN_CAN_SUDO; then
+        hyprx_ui_warn "sudo unavailable or unauthenticated - skipping coredump removal"
+        FAILURES=$((FAILURES + 1))
+    else
+        summary="$(coredump_summary)"
+        if [[ -n "$summary" ]]; then
+            n="$(printf '%s\n' "$summary" | awk -F'|' '{t += $2} END {print t + 0}')"
+            printf '%s\n' "$summary" | while IFS='|' read -r name count; do
+                printf '      dropping %s x%s\n' "$name" "$count"
+            done
+            before="$(size_of /var/lib/systemd/coredump)"
+            sudo coredumpctl delete >/dev/null 2>&1
+            after="$(size_of /var/lib/systemd/coredump)"
+            d=$(( ${before:-0} - ${after:-0} ))
+            add_freed "$d"
+            hyprx_ui_success "Deleted $n coredump(s).$(freed_note "$d")"
+        else
+            hyprx_ui_success "No coredumps."
+        fi
+    fi
+
+    echo
+
+fi
+
+########################################
 # System journal
-# System-wide: report only under --dry-run or a sandbox.
+########################################
 
 hyprx_ui_section "System Logs"
 
-JOURNAL_RETENTION_DAYS=7
-
-if $REPORT_ONLY; then
+if $SKIP_SYSTEM; then
     hyprx_util_would "vacuum journal entries older than $JOURNAL_RETENTION_DAYS days"
 elif ! command -v journalctl >/dev/null 2>&1; then
     hyprx_ui_info "journalctl not available - skipping"
@@ -190,15 +372,15 @@ fi
 
 echo
 
+########################################
 # Temporary files
-# System-wide: report only under --dry-run or a sandbox.
+########################################
 
 hyprx_ui_section "Temporary Files"
 
-TMP_AGE_DAYS=1
 CURRENT_USER="$(id -un)"
 
-if $REPORT_ONLY; then
+if $SKIP_SYSTEM; then
     mapfile -t OLD_TMP < <(find /tmp -mindepth 1 -user "$CURRENT_USER" -mtime "+$TMP_AGE_DAYS" 2>/dev/null)
     if ((${#OLD_TMP[@]})); then
         hyprx_util_would "delete ${#OLD_TMP[@]} item(s) in /tmp older than $TMP_AGE_DAYS day(s), owned by $CURRENT_USER"
@@ -206,35 +388,146 @@ if $REPORT_ONLY; then
         hyprx_ui_info "No stale temp files owned by $CURRENT_USER."
     fi
 elif [[ -d /tmp ]]; then
-
     mapfile -t OLD_TMP < <(find /tmp -mindepth 1 -user "$CURRENT_USER" -mtime "+$TMP_AGE_DAYS" 2>/dev/null)
-
     if ((${#OLD_TMP[@]})); then
         rm -rf "${OLD_TMP[@]}" 2>/dev/null
         hyprx_ui_success "Removed ${#OLD_TMP[@]} item(s) in /tmp older than $TMP_AGE_DAYS day(s)"
     else
         hyprx_ui_success "No stale temp files owned by $CURRENT_USER."
     fi
-
 fi
 
 echo
 
+########################################
+# HyprX's own state
+########################################
+
+hyprx_ui_section "HyprX state"
+
+STATE_DIR="${HYPRX_STATE_DIR:-$HOME/.local/state/hyprx}"
+
+# Old snapshots. Their config-backups go with them - a snapshot whose backup
+# dir is deleted can no longer restore anything, so keeping it is pointless.
+if [[ -d "$HYPRX_STATE_SNAPSHOT_DIR" ]]; then
+    mapfile -t OLD_SNAPS < <(find "$HYPRX_STATE_SNAPSHOT_DIR" -maxdepth 1 -name '*.snapshot' -printf '%f\n' | sort | head -n "-$SNAPSHOT_KEEP")
+    if ((${#OLD_SNAPS[@]})); then
+        for s in "${OLD_SNAPS[@]}"; do
+            id="${s%.snapshot}"
+            b="$(size_of "$(hyprx_snapshot_backup_dir_for "$id")")"
+
+            extra=""
+            [[ -n "$b" ]] && extra=" + its config backup ($(hyprx_state_human "$b"))"
+
+            if $DRY_RUN; then
+                hyprx_util_would "drop snapshot $id$extra"
+            else
+                hyprx_snapshot_remove "$id"
+                hyprx_ui_info "Dropped snapshot $id (kept last $SNAPSHOT_KEEP)"
+            fi
+        done
+    else
+        hyprx_ui_success "No snapshots beyond the last $SNAPSHOT_KEEP."
+    fi
+else
+    hyprx_ui_info "No snapshot directory."
+fi
+
+# Orphaned config backups - a snapshot id that no longer has a .snapshot file
+# can never be rolled back to.
+if [[ -d "$HYPRX_STATE_BACKUP_DIR" ]]; then
+    mapfile -t STALE_BACKUPS < <(
+        for d in "$HYPRX_STATE_BACKUP_DIR"/*/; do
+            [[ -d "$d" ]] || continue
+            [[ -f "$HYPRX_STATE_SNAPSHOT_DIR/$(basename "$d").snapshot" ]] || basename "$d"
+        done
+    )
+    if ((${#STALE_BACKUPS[@]})); then
+        for id in "${STALE_BACKUPS[@]}"; do
+            b="$(size_of "$HYPRX_STATE_BACKUP_DIR/$id")"
+            if $DRY_RUN; then
+                hyprx_util_would "drop orphaned config backup $id - frees $(hyprx_state_human "${b:-0}")"
+                add_freed "${b:-0}"
+            else
+                rm -rf "${HYPRX_STATE_BACKUP_DIR:?}/$id"
+                add_freed "${b:-0}"
+                hyprx_ui_info "Dropped orphaned config backup $id.$(freed_note "${b:-0}")"
+            fi
+        done
+    else
+        hyprx_ui_success "No orphaned config backups."
+    fi
+fi
+
+# Old doctor reports.
+if [[ -d "$HYPRX_STATE_REPORT_DIR" ]]; then
+    mapfile -t OLD_REPORTS < <(find "$HYPRX_STATE_REPORT_DIR" -maxdepth 1 -name 'doctor-*.log' -printf '%f\n' | sort | head -n "-$REPORT_KEEP")
+    if ((${#OLD_REPORTS[@]})); then
+        for r in "${OLD_REPORTS[@]}"; do
+            b="$(size_of "$HYPRX_STATE_REPORT_DIR/$r")"
+            if $DRY_RUN; then
+                hyprx_util_would "drop old report $r"
+            else
+                rm -f "$HYPRX_STATE_REPORT_DIR/$r"
+            fi
+        done
+        (( DRY_RUN )) || hyprx_ui_info "Kept the last $REPORT_KEEP doctor reports."
+    else
+        hyprx_ui_success "No reports beyond the last $REPORT_KEEP."
+    fi
+fi
+
+# Rotated log generations past the keep count.
+for f in "$HYPRX_LOGGER_FILE".*; do
+    [[ -f "$f" ]] || continue
+    gen="${f##*.}"
+    if [[ "$gen" =~ ^[0-9]+$ ]] && (( gen > LOG_KEEP )); then
+        if $DRY_RUN; then
+            hyprx_util_would "drop rotated log $f"
+        else
+            rm -f "$f"
+            hyprx_ui_info "Dropped rotated log generation $gen (kept $LOG_KEEP)."
+        fi
+    fi
+done
+
+echo
+
+########################################
+# Summary
+########################################
+
 hyprx_ui_divider
 
-if $REPORT_ONLY; then
-    if $SANDBOX; then
-        hyprx_ui_info "Sandbox run complete - see above for what was and was not touched."
+if $DRY_RUN; then
+    hyprx_ui_info "Dry run complete. Nothing was removed."
+    hyprx_ui_info "Would free approximately $(hyprx_state_human "$FREED")."
+    $DEEP || hyprx_ui_info "Add --deep to also clear large caches, the trash, and coredumps."
+    exit 0
+fi
+
+if $SANDBOX; then
+    # The CLEAN_ROOT-relative steps did run; the system-wide ones were reported.
+    if (( FREED > 0 )); then
+        hyprx_ui_success "Sandboxed cleanup removed $(hyprx_state_human "$FREED") from $CLEAN_ROOT."
     else
-        hyprx_ui_info "Dry run complete - nothing was removed."
+        hyprx_ui_success "Sandboxed cleanup removed nothing."
     fi
-elif (( FAILURES > 0 )); then
-    hyprx_ui_warn "Cleanup finished with $FAILURES step(s) skipped or failed - see above."
+    hyprx_ui_info "System-wide steps were reported above, not performed."
+    exit 0
+fi
+
+if (( FAILURES > 0 )); then
+    hyprx_ui_warn "Cleanup finished with $FAILURES step(s) skipped or failed. Freed $(hyprx_state_human "$FREED")."
     hyprx_logger_warn "Cleanup finished with $FAILURES skipped/failed step(s)"
     exit 1
-else
-    hyprx_ui_success "Cleanup completed."
-    hyprx_logger_success "Cleanup completed successfully."
 fi
+
+if (( FREED > 0 )); then
+    hyprx_ui_success "Cleanup completed. Freed $(hyprx_state_human "$FREED")."
+else
+    hyprx_ui_success "Cleanup completed. Nothing needed removing."
+fi
+hyprx_logger_success "Cleanup completed. Freed $(hyprx_state_human "$FREED")"
 
 exit 0

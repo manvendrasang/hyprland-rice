@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 
-# HYPRX_LOGGER_DIR is overridable so tests and sandboxes stay out of the real
-# ~/.local/state/hyprx.
-HYPRX_LOGGER_DIR="${HYPRX_LOGGER_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx}"
-HYPRX_LOGGER_FILE="$HYPRX_LOGGER_DIR/hyprx.log"
+# Paths come from lib/state.sh.
 
-mkdir -p "$HYPRX_LOGGER_DIR" 2>/dev/null || true
+HYPRX_LOGGER_DIR="$HYPRX_STATE_DIR"
+HYPRX_LOGGER_FILE="$HYPRX_STATE_LOG_FILE"
+
+# Rotate before the file crosses this size, keeping one previous generation.
+# Without this the log grew without bound - there was no rotation anywhere.
+HYPRX_LOG_MAX_BYTES="${HYPRX_LOG_MAX_BYTES:-2097152}"   # 2 MiB
+HYPRX_LOG_KEEP="${HYPRX_LOG_KEEP:-1}"
 
 hyprx_logger_rank() {
   case "$1" in
@@ -40,11 +43,32 @@ hyprx_logger_enabled() {
   (( $(hyprx_logger_rank "$level") >= threshold ))
 }
 
+hyprx_logger_rotate_if_needed() {
+  local size
+  size="$(hyprx_state_size "$HYPRX_LOGGER_FILE")"
+  [[ -z "$size" ]] && return 0
+  (( size < HYPRX_LOG_MAX_BYTES )) && return 0
+
+    local i
+    # Shift .N -> .N+1, dropping anything past the keep count.
+    for ((i = HYPRX_LOG_KEEP - 1; i >= 1; i--)); do
+        if [[ -f "$HYPRX_LOGGER_FILE.$i" ]]; then
+            mv -f "$HYPRX_LOGGER_FILE.$i" "$HYPRX_LOGGER_FILE.$((i + 1))" 2>/dev/null || true
+        fi
+    done
+    mv -f "$HYPRX_LOGGER_FILE" "$HYPRX_LOGGER_FILE.1" 2>/dev/null || true
+    : >"$HYPRX_LOGGER_FILE" 2>/dev/null || true
+}
+
 hyprx_logger_log() {
   local level="$1"
   shift
 
+  # Unknown levels are always recorded - see hyprx_logger_enabled - so a typo
+  # here can never cause a message to be silently dropped.
   hyprx_logger_enabled "$level" || return 0
+
+  hyprx_logger_rotate_if_needed
 
   printf "[%s] [%s] %s\n" \
     "$(date '+%Y-%m-%d %H:%M:%S')" \

@@ -11,7 +11,7 @@ hyprx_util_dry_run() {
 }
 
 hyprx_util_would() {
-    hyprx_ui_info "[dry-run] Would $*"
+    hyprx_ui_info "[${HYPRX_REPORT_PREFIX:-dry-run}] Would $*"
 }
 
 hyprx_util_bytes_to_human() {

@@ -2,21 +2,102 @@
 
 # Tallies feed the summary and the exit code. Only real health signals are
 # tallied; the Applications section is a presence report and uses plain printers.
+#
+# Every tally is also recorded for --json, so the two output modes cannot drift
+# apart: both read the same three note functions.
 DOCTOR_WARNINGS=0
 DOCTOR_ERRORS=0
+DOCTOR_SUGGESTIONS=()
+DOCTOR_JSON_FINDINGS=()
+DOCTOR_JSON=false
+
+doctor_json_add() {
+    DOCTOR_JSON_FINDINGS+=("$1"$'\t'"$2")
+}
 
 hyprx_doctor_note_ok() {
+    doctor_json_add ok "$1"
     hyprx_ui_success "$1"
 }
 
 hyprx_doctor_note_warn() {
+    doctor_json_add warn "$1"
     hyprx_ui_warn "$1"
     DOCTOR_WARNINGS=$((DOCTOR_WARNINGS + 1))
 }
 
 hyprx_doctor_note_err() {
+    doctor_json_add error "$1"
     hyprx_ui_error "$1"
     DOCTOR_ERRORS=$((DOCTOR_ERRORS + 1))
+}
+
+hyprx_doctor_suggest() {
+    local s
+    for s in "${DOCTOR_SUGGESTIONS[@]}"; do
+        [[ "$s" == "$1" ]] && return 0
+    done
+    DOCTOR_SUGGESTIONS+=("$1")
+}
+
+# 0 clean, 1 warnings, 2 errors. Shared by the human report and --json so the
+# two modes always agree on the exit status.
+doctor_exit_code() {
+    if (( DOCTOR_ERRORS > 0 )); then
+        hyprx_ui_error "$DOCTOR_ERRORS error(s), $DOCTOR_WARNINGS warning(s) found - see above"
+        hyprx_logger_error "Doctor finished: $DOCTOR_ERRORS errors, $DOCTOR_WARNINGS warnings"
+        exit 2
+    elif (( DOCTOR_WARNINGS > 0 )); then
+        hyprx_ui_warn "$DOCTOR_WARNINGS warning(s) found, no errors"
+        hyprx_logger_warn "Doctor finished: 0 errors, $DOCTOR_WARNINGS warnings"
+        exit 1
+    fi
+    hyprx_ui_success "All checks passed"
+    hyprx_logger_success "Doctor finished clean"
+    exit 0
+}
+
+doctor_json_escape() {
+    local s="${1//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\t'/ }"
+    s="${s//$'\n'/ }"
+    printf '%s' "$s"
+}
+
+doctor_json_emit() {
+    local uptime
+    uptime="$(awk '{print int($1)}' /proc/uptime 2>/dev/null)"
+
+    printf '{\n'
+    printf '  "host": "%s",\n'   "$(doctor_json_escape "$(uname -n)")"
+    printf '  "distro": "%s",\n' "$(doctor_json_escape "$HYPRX_DETECT_DISTRO_NAME")"
+    printf '  "kernel": "%s",\n' "$(doctor_json_escape "$(uname -r)")"
+    printf '  "session": "%s",\n' "$(doctor_json_escape "${XDG_SESSION_TYPE:-unknown}")"
+    printf '  "uptime_seconds": %s,\n' "${uptime:-0}"
+    printf '  "summary": { "errors": %d, "warnings": %d },\n' "$DOCTOR_ERRORS" "$DOCTOR_WARNINGS"
+
+    printf '  "suggestions": ['
+    local i
+    for i in "${!DOCTOR_SUGGESTIONS[@]}"; do
+        [[ "$i" -gt 0 ]] && printf ','
+        printf '\n    "%s"' "$(doctor_json_escape "${DOCTOR_SUGGESTIONS[$i]}")"
+    done
+    (( ${#DOCTOR_SUGGESTIONS[@]} )) && printf '\n  ' || printf ']'
+    printf '],\n'
+
+    printf '  "findings": ['
+    local last=$((${#DOCTOR_JSON_FINDINGS[@]} - 1))
+    for i in "${!DOCTOR_JSON_FINDINGS[@]}"; do
+        local status detail
+        IFS=$'\t' read -r status detail <<<"${DOCTOR_JSON_FINDINGS[$i]}"
+        printf '\n    { "status": "%s", "detail": "%s" }' \
+            "$status" "$(doctor_json_escape "$detail")"
+        [[ "$i" -lt "$last" ]] && printf ','
+    done
+    (( ${#DOCTOR_JSON_FINDINGS[@]} )) && printf '\n  ' || printf ']'
+    printf ']\n'
+    printf '}\n'
 }
 
 # Returns 0 valid, 1 invalid, 2 no such validator.
@@ -42,11 +123,15 @@ json.loads(text)
     esac
 }
 
-check_failed_units() {
+# Units HyprX installs but deliberately never enables. swaync is launched from
+# the compositor's exec-once chain instead, so its unit is always "failed" and
+# flagging it every run is noise that trains you to ignore this section.
+DOCTOR_EXPECTED_FAILED_UNITS="swaync.service"
 
+check_failed_units() {
     local scope="$1"
     local label="$2"
-    local output
+    local output remaining
     local -a systemctl_args=()
 
     [[ -n "$scope" ]] && systemctl_args+=("$scope")
@@ -56,13 +141,59 @@ check_failed_units() {
         return
     fi
 
-    if [[ -n "$(echo "$output" | tr -d '[:space:]')" ]]; then
+    # Drop the expected units, keeping every other row intact. The unit name is
+    # not always the first field - systemctl prefixes rows with a status glyph -
+    # so match against every field.
+    remaining="$(
+        printf '%s\n' "$output" | awk -v skip="$DOCTOR_EXPECTED_FAILED_UNITS" '
+            BEGIN { n = split(skip, a, " "); for (i = 1; i <= n; i++) if (a[i] != "") drop[a[i]] = 1 }
+            { hit = 0
+              for (i = 1; i <= NF; i++) if ($i in drop) { hit = 1; break }
+              if (!hit && NF) print }'
+    )"
+
+    if [[ -n "$(printf '%s' "$remaining" | tr -d '[:space:]')" ]]; then
         hyprx_doctor_note_warn "$label: failed units detected"
-        echo "$output"
+        printf '%s\n' "$remaining"
     else
         hyprx_doctor_note_ok "$label: no failed units"
+        printf '%s\n' "$output" | awk -v skip="$DOCTOR_EXPECTED_FAILED_UNITS" '
+            BEGIN { n = split(skip, a, " "); for (i = 1; i <= n; i++) if (a[i] != "") drop[a[i]] = 1 }
+            { hit = 0
+              for (i = 1; i <= NF; i++) if ($i in drop) { hit = 1; name = $i; break }
+              if (hit) printf "  %s: expected - launched from the compositor, not enabled\n", name }'
+    fi
+}
+
+# Called from the session section and from the gpu section.
+gpu_checks() {
+    if systemctl is-active --quiet supergfxd 2>/dev/null; then
+        hyprx_doctor_note_ok "supergfxd active"
+    else
+        hyprx_doctor_note_err "supergfxd installed but not running - dGPU cannot power-manage or PRIME offload correctly"
     fi
 
+    hyprx_ui_info "Graphics mode: $(supergfxctl -g 2>/dev/null || echo unknown)"
+
+    local modeset_file modeset_val
+    modeset_file="/sys/module/nvidia_drm/parameters/modeset"
+    if [[ -f "$modeset_file" ]]; then
+        modeset_val="$(cat "$modeset_file" 2>/dev/null || echo "?")"
+        if [[ "$modeset_val" == "Y" ]]; then
+            hyprx_doctor_note_ok "nvidia_drm.modeset enabled"
+        else
+            hyprx_doctor_note_warn "nvidia_drm.modeset is not enabled (currently: $modeset_val) - PRIME render offload will not work"
+        fi
+    else
+        hyprx_ui_info "nvidia_drm module not loaded"
+    fi
+
+    local nvidia_pci runtime_status_file
+    nvidia_pci="$(lspci -d 10de: -D 2>/dev/null | awk '{print $1; exit}' || true)"
+    if [[ -n "$nvidia_pci" && -f "/sys/bus/pci/devices/$nvidia_pci/power/runtime_status" ]]; then
+        runtime_status_file="/sys/bus/pci/devices/$nvidia_pci/power/runtime_status"
+        hyprx_ui_info "dGPU runtime PM status: $(cat "$runtime_status_file" 2>/dev/null || echo unknown)"
+    fi
 }
 
 run_doctor_checks() {
@@ -70,6 +201,7 @@ run_doctor_checks() {
     hyprx_logger_info "Running doctor"
     echo
 
+    if doctor_wants configuration; then
     # Configuration
     hyprx_ui_section "Configuration"
     hyprx_table_header
@@ -81,6 +213,9 @@ run_doctor_checks() {
     hyprx_table_row "Launcher"       "${LAUNCHER:-Unknown}"
     echo
 
+    fi
+
+    if doctor_wants applications; then
     # Applications
     hyprx_ui_section "Applications"
     check() {
@@ -104,6 +239,9 @@ run_doctor_checks() {
     check "Bluetooth Installed" "$HYPRX_DETECT_HAS_BLUETOOTH"
     echo
 
+    fi
+
+    if doctor_wants system; then
     # System Information
     hyprx_ui_section "System Information"
     hyprx_table_header
@@ -117,6 +255,9 @@ run_doctor_checks() {
     hyprx_table_row "Power Profiles"     "$HYPRX_DETECT_HAS_POWER_PROFILE"
     echo
 
+    fi
+
+    if doctor_wants validation; then
     # Config Validation
     hyprx_ui_section "Config Validation"
     json_validator=""
@@ -183,6 +324,9 @@ run_doctor_checks() {
     fi
     echo
 
+    fi
+
+    if doctor_wants drift; then
     # Config Deployment Drift
     hyprx_ui_section "Config Deployment Drift"
     for cfgdir in $HYPRX_CONFIG_TARGETS; do
@@ -206,6 +350,9 @@ run_doctor_checks() {
     done
     echo
 
+    fi
+
+    if doctor_wants storage; then
     # Storage
     hyprx_ui_section "Storage"
     root_usage="$(df -h / | awk 'NR==2 {print $5}')"
@@ -213,6 +360,9 @@ run_doctor_checks() {
     hyprx_table_row "Root Usage" "$root_usage"
     echo
 
+    fi
+
+    if doctor_wants memory; then
     # Memory
     hyprx_ui_section "Memory"
     free -h
@@ -229,6 +379,9 @@ run_doctor_checks() {
     fi
     echo
 
+    fi
+
+    if doctor_wants swap; then
     # Swap
     hyprx_ui_section "Swap"
     swapon --show || true
@@ -248,6 +401,9 @@ run_doctor_checks() {
     fi
     echo
 
+    fi
+
+    if doctor_wants systemd; then
     # Systemd - System & User Services
     hyprx_ui_section "Systemd"
     check_failed_units "" "System services"
@@ -255,6 +411,9 @@ run_doctor_checks() {
     check_failed_units "--user" "User services"
     echo
 
+    fi
+
+    if doctor_wants services; then
     # HyprX Managed Services
     hyprx_ui_section "HyprX Managed Services"
     services_file="$HYPRX_ROOT/services.list"
@@ -282,6 +441,9 @@ run_doctor_checks() {
     fi
     echo
 
+    fi
+
+    if doctor_wants session; then
     # Session Health
     hyprx_ui_section "Session Health"
     if hyprx_util_command_exists hyprctl && pgrep -x Hyprland >/dev/null 2>&1; then
@@ -318,37 +480,17 @@ run_doctor_checks() {
     fi
     echo
 
-    # Hybrid GPU
-    if hyprx_util_command_exists supergfxctl; then
-        hyprx_ui_section "Hybrid GPU"
-        if systemctl is-active --quiet supergfxd 2>/dev/null; then
-            hyprx_doctor_note_ok "supergfxd active"
-        else
-            hyprx_doctor_note_err "supergfxd installed but not running - dGPU cannot power-manage or PRIME offload correctly"
-        fi
-        gfx_mode=$(supergfxctl -g 2>/dev/null || echo "unknown")
-        hyprx_ui_info "Graphics mode: $gfx_mode"
-        modeset_file="/sys/module/nvidia_drm/parameters/modeset"
-        if [[ -f "$modeset_file" ]]; then
-            modeset_val=$(cat "$modeset_file" 2>/dev/null || echo "?")
-            if [[ "$modeset_val" == "Y" ]]; then
-                hyprx_doctor_note_ok "nvidia_drm.modeset enabled"
-            else
-                hyprx_doctor_note_warn "nvidia_drm.modeset is not enabled (currently: $modeset_val) - PRIME render offload will not work"
-            fi
-        else
-            hyprx_ui_info "nvidia_drm module not loaded"
-        fi
-        nvidia_pci=$(lspci -d 10de: -D 2>/dev/null | awk '{print $1; exit}' || true)
-        if [[ -n "$nvidia_pci" ]]; then
-            runtime_status_file="/sys/bus/pci/devices/$nvidia_pci/power/runtime_status"
-            if [[ -f "$runtime_status_file" ]]; then
-                hyprx_ui_info "dGPU runtime PM status: $(cat "$runtime_status_file" 2>/dev/null || echo unknown)"
-            fi
-        fi
-        echo
     fi
 
+    if doctor_wants gpu; then
+        if hyprx_util_command_exists supergfxctl; then
+            hyprx_ui_section "Hybrid GPU"
+            gpu_checks
+            echo
+        fi
+    fi
+
+    if doctor_wants network; then
     # Network & Radios
     hyprx_ui_section "Network & Radios"
     if hyprx_util_command_exists rfkill; then
@@ -376,6 +518,9 @@ run_doctor_checks() {
     fi
     echo
 
+    fi
+
+    if doctor_wants pacman; then
     # Pacman
     hyprx_ui_section "Pacman"
     if hyprx_util_command_exists pacman; then
@@ -401,26 +546,262 @@ run_doctor_checks() {
     fi
     echo
 
-    # Summary
-    hyprx_ui_section "Summary"
-    if (( DOCTOR_ERRORS > 0 )); then
-        hyprx_ui_error "$DOCTOR_ERRORS error(s), $DOCTOR_WARNINGS warning(s) found - see above"
-        hyprx_logger_error "Doctor finished: $DOCTOR_ERRORS errors, $DOCTOR_WARNINGS warnings"
-        exit 2
-    elif (( DOCTOR_WARNINGS > 0 )); then
-        hyprx_ui_warn "$DOCTOR_WARNINGS warning(s) found, no errors"
-        hyprx_logger_warn "Doctor finished: 0 errors, $DOCTOR_WARNINGS warnings"
-        exit 1
-    else
-        hyprx_ui_success "All checks passed"
-        hyprx_logger_success "Doctor finished clean"
     fi
+
+    # Session daemons
+    # Everything hyprland.lua autostarts. Doctor previously verified only
+    # waybar and hyprpaper - the other four failed silently at some point
+    # during development, which is the whole class of bug worth catching.
+    if doctor_wants daemons; then
+        hyprx_ui_section "Session Daemons"
+
+        # label | process pattern | fix hint
+        # Only waybar is a layer-shell surface, so only waybar gets a surface
+        # check - the others are ordinary processes with no surface to verify.
+        while IFS='|' read -r label pattern hint; do
+            [[ -z "$label" ]] && continue
+            if pgrep -f "$pattern" >/dev/null 2>&1; then
+                hyprx_doctor_note_ok "$label: running"
+            else
+                hyprx_doctor_note_warn "$label: not running"
+                [[ -n "$hint" ]] && hyprx_doctor_suggest "$hint"
+            fi
+        done <<'EOF'
+waybar|waybar|hyprctl hypr exec '~/.config/waybar/scripts/ensure-waybar.sh --restart'
+swaync|swaync|
+hypridle|hypridle|
+nm-aplet|nm-aplet --indicator|
+wallust theming|wallust-hyprpaper-sync|
+music daemon|music-daemon.sh|
+bluetooth daemon|bluetooth-daemon.sh|
+EOF
+
+        # A waybar that is running as a process but has no registered layer is
+        # the exact failure that cost a session earlier, so check it directly.
+        if pgrep -x waybar >/dev/null 2>&1; then
+            if hyprctl layers 2>/dev/null | grep -q "namespace: waybar"; then
+                hyprx_doctor_note_ok "waybar: registered layer present"
+            else
+                hyprx_doctor_note_err "waybar is running but has no registered layer"
+                hyprx_doctor_suggest "hyprctl hypr exec '~/.config/waybar/scripts/ensure-waybar.sh --restart'"
+            fi
+        fi
+
+        # hyprpaper is checked in Session Health (it also verifies the surface).
+        if pgrep -x hyprpaper >/dev/null 2>&1; then
+            hyprx_doctor_note_ok "hyprpaper: running"
+        else
+            hyprx_doctor_note_warn "hyprpaper: not running"
+            hyprx_doctor_suggest "${HOME}/.local/share/hyprx/scripts/wallpaper-restore.sh"
+        fi
+
+        echo
+    fi
+
+    # Battery and thermals
+    # Nothing here existed before. This is a hybrid-GPU laptop where battery
+    # health and thermals are the numbers that actually matter.
+    if doctor_wants battery; then
+        hyprx_ui_section "Battery & Thermals"
+
+        local bat
+        bat="$(ls /sys/class/power_supply 2>/dev/null | grep '^BAT' | head -n1)"
+
+        if [[ -n "$bat" ]]; then
+            local cap status health charge_now charge_full
+            cap="$(cat "/sys/class/power_supply/$bat/capacity" 2>/dev/null || echo "?")"
+            status="$(cat "/sys/class/power_supply/$bat/status" 2>/dev/null || echo "?")"
+
+            if [[ "$cap" =~ ^[0-9]+$ ]]; then
+                if (( cap <= 15 )) && [[ "$status" != "Charging" ]]; then
+                    hyprx_doctor_note_warn "Battery at $cap% and not charging"
+                else
+                    hyprx_doctor_note_ok "Battery $cap% ($status)"
+                fi
+            else
+                hyprx_doctor_note_ok "Battery present ($status)"
+            fi
+
+            charge_now="$(cat "/sys/class/power_supply/$bat/charge_now" 2>/dev/null || echo 0)"
+            charge_full="$(cat "/sys/class/power_supply/$bat/charge_full" 2>/dev/null || echo 0)"
+
+            if [[ "$charge_now" =~ ^[0-9]+$ ]] && [[ "$charge_full" =~ ^[0-9]+$ ]] && (( charge_full > 0 )); then
+                health=$(( charge_now * 100 / charge_full ))
+                if (( health < 60 )); then
+                    hyprx_doctor_note_warn "Battery health about $health% of design capacity"
+                else
+                    hyprx_doctor_note_ok "Battery health about $health% of design capacity"
+                fi
+            fi
+        else
+            hyprx_ui_info "No battery detected"
+        fi
+
+        # Thermals, when a readable sensor exists.
+        if command -v sensors >/dev/null 2>&1; then
+            local temps
+            temps="$(sensors -u 2>/dev/null | awk '/temp[0-9]_input/ { printf "%s %s\n", $1, $2 }')"
+            if [[ -n "$temps" ]]; then
+                printf '%s\n' "$temps" | while read -r chip val; do
+                    [[ "$val" =~ ^[0-9.]+$ ]] || continue
+                    printf "  %-28s %5.1f C\n" "$chip" "$val"
+                done
+            else
+                hyprx_ui_info "lm-sensors returned no temperatures"
+            fi
+        else
+            hyprx_ui_info "lm-sensors not installed - skipping temperatures (pacman -S lm_sensors)"
+        fi
+
+        echo
+    fi
+
+    # Disk usage where it actually accumulates
+    # Root usage alone hid 7G in ~/.cache and 4G in the pacman cache.
+    if doctor_wants diskusage; then
+        hyprx_ui_section "Disk Usage"
+
+        hyprx_table_header
+        hyprx_table_row "Root" "$(df -h / | awk 'NR==2 {print $5 " used of " $2}')"
+        hyprx_table_row "Home" "$(df -h "$HOME" | awk 'NR==2 {print $5 " used of " $2}')"
+
+        echo
+
+        local d sz
+        for d in "$HOME/.cache" "$HOME/.local/share" "$HOME/.local/state" /var/cache/pacman/pkg; do
+            [[ -d "$d" ]] || continue
+            sz="$(hyprx_state_size "$d")"
+            hyprx_table_row "${d/#$HOME/\~}" "$(hyprx_state_human "${sz:-0}")"
+        done
+
+        # Only nag when it is actually worth acting on.
+        local cache_sz
+        cache_sz="$(hyprx_state_size "$HOME/.cache")"
+        if [[ -n "$cache_sz" ]] && (( cache_sz > 1073741824 )); then
+            hyprx_doctor_note_warn "${HOME}/.cache is $(hyprx_state_human "$cache_sz")"
+            hyprx_doctor_suggest "hyprx clean --deep --dry-run    # then without --dry-run to reclaim it"
+        fi
+
+        echo
+    fi
+
+    # --json emits from the collected findings, so the human summary and its
+    # exit are skipped; the caller turns the tallies into the exit code.
+    $DOCTOR_JSON && return 0
+
+    hyprx_ui_section "Summary"
+    if (( ${#DOCTOR_SUGGESTIONS[@]} > 0 )); then
+        echo
+        echo "Suggested next steps:"
+        local s
+        for s in "${DOCTOR_SUGGESTIONS[@]}"; do
+            echo "  $s"
+        done
+        echo
+    fi
+    doctor_exit_code
 }
 
 
-# Run + save a report
+########################################
+# Arguments
+########################################
 
-REPORT_DIR="$HOME/.local/state/hyprx/reports"
+DOCTOR_ONLY=""
+DOCTOR_SKIP=""
+DOCTOR_NO_REPORT=false
+
+doctor_usage() {
+    cat <<'EOF'
+Usage:
+    hyprx doctor [options]
+
+Options:
+    --only <list>    Run only these sections (comma separated).
+    --skip <list>    Skip these sections (comma separated).
+    --json           Emit machine-readable JSON instead of the report.
+    --no-report      Do not write a timestamped report file.
+    -h, --help       Show this help.
+
+Sections:
+    configuration  applications  system  validation  drift  storage
+    memory  swap  systemd  services  session  gpu  network  pacman
+    daemons  battery  diskusage
+
+An unknown section name is rejected rather than silently running nothing.
+EOF
+}
+
+DOCTOR_SECTIONS="configuration applications system validation drift storage memory swap systemd services session gpu network pacman daemons battery diskusage"
+
+# A section runs when it is neither excluded by --skip nor absent from --only.
+doctor_wants() {
+    local name="$1"
+    if [[ -n "$DOCTOR_ONLY" ]]; then
+        [[ ",$DOCTOR_ONLY," == *",$name,"* ]] || return 1
+    fi
+    [[ ",$DOCTOR_SKIP," == *",$name,"* ]] && return 1
+    return 0
+}
+
+# A mistyped name would otherwise run nothing and look like a clean bill of
+# health, so reject it and print the valid names.
+doctor_validate_sections() {
+    local flag="$1" list="$2" name
+    local -a names
+    IFS=',' read -r -a names <<<"$list"
+
+    for name in "${names[@]}"; do
+        [[ -z "$name" ]] && continue
+        if [[ " $DOCTOR_SECTIONS " != *" $name "* ]]; then
+            hyprx_ui_error "Unknown section for $flag: $name"
+            hyprx_ui_info "Valid sections: $DOCTOR_SECTIONS"
+            return 1
+        fi
+    done
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --only)  DOCTOR_ONLY="${2:-}"; shift 2 ;;
+        --skip)  DOCTOR_SKIP="${2:-}"; shift 2 ;;
+        --json)  DOCTOR_JSON=true; shift ;;
+        --no-report) DOCTOR_NO_REPORT=true; shift ;;
+        -h|--help) doctor_usage; exit 0 ;;
+        *) hyprx_ui_error "Unknown option: $1"; doctor_usage; exit 1 ;;
+    esac
+done
+
+[[ -n "$DOCTOR_ONLY" ]] && { doctor_validate_sections --only  "$DOCTOR_ONLY"  || exit 1; }
+[[ -n "$DOCTOR_SKIP" ]] && { doctor_validate_sections --skip  "$DOCTOR_SKIP"  || exit 1; }
+
+# --json and --only together would emit a partial document that looks complete.
+if $DOCTOR_JSON && [[ -n "$DOCTOR_ONLY" ]]; then
+    hyprx_ui_error "--json cannot be combined with --only (a partial document would look complete)"
+    exit 1
+fi
+
+########################################
+# Run + save a report
+########################################
+
+# stdout of the checks is discarded so the document is the only thing on it;
+# the tallies and findings survive because they live in variables.
+if $DOCTOR_JSON; then
+    run_doctor_checks >/dev/null
+    doctor_json_emit
+    if (( DOCTOR_ERRORS > 0 )); then exit 2; fi
+    (( DOCTOR_WARNINGS > 0 )) && exit 1
+    exit 0
+fi
+
+REPORT_DIR="$HYPRX_STATE_REPORT_DIR"
+
+if $DOCTOR_NO_REPORT; then
+    run_doctor_checks
+    exit $?
+fi
+
 mkdir -p "$REPORT_DIR"
 REPORT_FILE="$REPORT_DIR/doctor-$(date +%Y%m%d-%H%M%S).log"
 

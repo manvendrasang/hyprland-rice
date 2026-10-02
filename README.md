@@ -84,9 +84,56 @@ Deletes screenshots older than 2 days.
 Clears thumbnail and shader caches.
 Vacuums journal entries older than 7 days.
 Removes your own `/tmp` files older than 1 day.
+Prunes old snapshots. Prunes config backups with no matching snapshot.
+Prunes old doctor reports. Prunes rotated log generations.
 
-`--dry-run` previews without deleting.
-Steps that need sudo are skipped with a message when no cached sudo ticket exists.
+Every step reports the bytes it actually reclaimed.
+A run that freed nothing says so rather than claiming success.
+The run total only counts measured savings.
+The pacman cache is printed as an upper bound because a cache clean does not
+free all of it.
+
+```
+hyprx clean                 conservative cleanup
+hyprx clean --deep          also clear the large caches. the trash. and coredumps
+hyprx clean --dry-run       report every step. remove nothing
+hyprx clean --yes           do not prompt before removing orphaned packages
+```
+
+`--deep` covers the AUR build cache. NVIDIA shader cache. Fontconfig. Pip.
+The trash via `gio trash --empty`. And coredumps.
+
+A browser profile is never touched even under `--deep`.
+It regenerates but costs a long re-download and a cold start.
+
+Steps needing sudo are skipped with a message when no cached sudo ticket exists.
+The run still completes and still reports what it did free.
+
+Retention is adjustable through the environment.
+
+`SCREENSHOT_AGE_DAYS`
+Screenshot age. Default 2.
+
+`TMP_AGE_DAYS`
+Your own `/tmp` file age. Default 1.
+
+`JOURNAL_RETENTION_DAYS`
+Journal entries kept. Default 7.
+
+`SNAPSHOT_KEEP`
+Rollback snapshots kept. Default 5.
+
+`REPORT_KEEP`
+Doctor reports kept. Default 10.
+
+`LOG_KEEP`
+Rotated log generations kept. Default 3.
+
+`HYPRX_CLEAN_ROOT`
+Redirects every home-relative target at another directory.
+Home-relative steps then run for real.
+System-wide steps are reported instead because they cannot be redirected.
+This is how the test suite exercises real deletions.
 
 ### hyprx config
 
@@ -132,9 +179,85 @@ Reports storage. Reports memory. Reports swap.
 Reports failed systemd units.
 Reports session health and hybrid GPU state.
 Reports network. Reports radios. Reports pacman state.
+Checks every autostarted daemon rather than only waybar and hyprpaper.
+Reports battery level. Reports battery health against design capacity.
+Reports temperatures when `lm_sensors` is installed.
+Reports where disk space actually goes instead of only filesystem totals.
+Suggests a next step for anything actionable.
 Saves a timestamped report to `~/.local/state/hyprx/reports/`.
 
 Exits `0` when clean. Exits `1` for warnings only. Exits `2` when errors were found.
+
+```
+hyprx doctor                 run everything and save a report
+hyprx doctor --only a,b      run only these sections
+hyprx doctor --skip c,d      run everything except these
+hyprx doctor --no-report     do not write a timestamped report
+hyprx doctor --json          machine-readable output instead of the report
+```
+
+Sections:
+
+```
+configuration  applications  system      validation  drift       storage
+memory         swap          systemd     services    session     gpu
+network        pacman        daemons     battery     diskusage
+```
+
+An unknown section name is rejected and the valid names are printed.
+Silently running nothing would be indistinguishable from a clean bill of
+health.
+
+`gpu` covers hybrid GPU state.
+It is a section of its own rather than part of `session`, so `--skip gpu`
+turns it off.
+
+`--json` emits one object.
+It carries `host`. `distro`. `kernel`. `session`. `uptime_seconds`.
+It carries `summary`. `suggestions`. and a `findings` array.
+Each finding has a `status` of `ok`. `warn`. or `error`.
+`--json` is rejected together with `--only` because a partial document would
+look complete.
+
+`swaync.service` is expected to sit in `failed`.
+HyprX installs it but launches it from the compositor's exec-once chain instead
+of enabling it.
+Doctor reports it and does not count it.
+Any other failed unit is still a warning.
+
+## State directory
+
+Everything HyprX writes lives under one directory.
+
+```
+~/.local/state/hyprx/
+```
+
+`XDG_STATE_HOME` is honoured when it is set.
+
+```
+hyprx.log                  the operation log
+hyprx.log.1                the previous generation
+hyprx-install.log          per package install failures
+HyprX-Install-Report.txt   the most recent install report
+reports/                   timestamped doctor reports
+snapshots/                 rollback data
+config-backups/            pre deploy config copies keyed by snapshot id
+deployed-targets           which config directories were last deployed
+install.state              interrupted install queue
+last-wallpaper             the wallpaper wallpaper-restore.sh last applied
+```
+
+`lib/state.sh` is the single source of truth for those paths.
+Every consumer reads from it so one `HYPRX_STATE_DIR` assignment relocates all
+of them.
+Override it to run the tool against a scratch directory.
+
+Regenerable caches stay under `~/.cache/hyprx` where the XDG spec puts them.
+They are not state.
+
+`hyprx.log` rotates at 2 MiB and keeps one previous generation.
+Neither the log nor the install log had any rotation before.
 
 ## Layout
 
@@ -166,9 +289,10 @@ Shared code. Sourced by every command. Never a CLI entry point.
 
 ```
 bootstrap.sh    sources every lib file and exports the HYPRX_ path variables
+state.sh        every path HyprX writes to resolved from HYPRX_STATE_DIR
 config.sh       loads and validates config/hyprx.conf
 detect.sh       probes the OS plus hardware and installed tools
-logger.sh       writes to the log honouring LOG_LEVEL
+logger.sh       writes to the log honouring LOG_LEVEL. rotates it
 packages.sh     package queries. install. remove. update
 table.sh        the two column tables doctor prints
 ui.sh           terminal colours and section headers

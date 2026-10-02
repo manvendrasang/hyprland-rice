@@ -26,7 +26,7 @@ for arg in "$@"; do
     esac
 done
 
-LOG_FILE="${HYPRX_LOGGER_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx}/hyprx.log"
+LOG_FILE="${HYPRX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx}/hyprx.log"
 
 log() {
     printf '[ensure-waybar] %s\n' "$*" >&2

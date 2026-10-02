@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-HYPRX_FAILURE_LOG="${HYPRX_FAILURE_LOG:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/hyprx-install.log}"
+HYPRX_FAILURE_LOG="$HYPRX_STATE_FAILURE_LOG"
 
 mkdir -p "$(dirname "$HYPRX_FAILURE_LOG")"
 touch "$HYPRX_FAILURE_LOG"
