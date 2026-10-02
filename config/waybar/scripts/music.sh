@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Waybar's custom/music module is now signal-driven - see
-# music-daemon.sh, which is the only thing that ever calls playerctl.
-# This script just prints whatever the daemon last wrote out.
+# Signal-driven: music-daemon.sh is the only thing that calls playerctl, and
+# this just prints whatever the daemon last wrote.
 
 CACHE_FILE="$HOME/.cache/hyprx/waybar-music.json"
 

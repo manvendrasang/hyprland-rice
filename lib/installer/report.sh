@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 
 hyprx_report_generate() {
-
     local report="${HYPRX_REPORT_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx/HyprX-Install-Report.txt}"
-    local now
-    local duration_minutes
-    local duration_seconds
+    local now duration_minutes duration_seconds
 
     mkdir -p "$(dirname "$report")"
 
-    for _arr in HYPRX_INSTALL_INSTALLED HYPRX_INSTALL_SKIPPED HYPRX_INSTALL_FAILED HYPRX_INVALID_PACKAGES HYPRX_REPLACED_PACKAGES; do
+    # The report must render even if a stage never populated its array.
+    local _arr
+    for _arr in HYPRX_INSTALL_INSTALLED HYPRX_INSTALL_SKIPPED HYPRX_INSTALL_FAILED \
+                 HYPRX_INVALID_PACKAGES HYPRX_REPLACED_PACKAGES; do
         declare -p "$_arr" &>/dev/null || eval "$_arr=()"
     done
 
@@ -78,44 +78,52 @@ hyprx_report_generate() {
 
         echo
 
-        for section in \
-            "Installed Packages:✓:${HYPRX_INSTALL_INSTALLED[*]}" \
-            "Skipped Packages:•:${HYPRX_INSTALL_SKIPPED[*]}" \
-            "Failed Packages:✗:${HYPRX_INSTALL_FAILED[*]}" \
-            "Replaced Packages:→:${HYPRX_REPLACED_PACKAGES[*]}" \
-            "Invalid Packages:✗:${HYPRX_INVALID_PACKAGES[*]}"; do
+        local -a titles=(
+            "Installed Packages"
+            "Skipped Packages"
+            "Failed Packages"
+            "Replaced Packages"
+            "Invalid Packages"
+        )
+        local -a symbols=("✓" "•" "✗" "→" "✗")
+        local i title symbol arr_name item hint
 
-            IFS=: read -r title symbol _ <<<"$section"
+        for i in "${!titles[@]}"; do
+            title="${titles[$i]}"
+            symbol="${symbols[$i]}"
+
+            case "$i" in
+                0) arr_name=HYPRX_INSTALL_INSTALLED ;;
+                1) arr_name=HYPRX_INSTALL_SKIPPED ;;
+                2) arr_name=HYPRX_INSTALL_FAILED ;;
+                3) arr_name=HYPRX_REPLACED_PACKAGES ;;
+                4) arr_name=HYPRX_INVALID_PACKAGES ;;
+            esac
 
             echo "$title"
             printf '%*s\n' "${#title}" '' | tr ' ' '-'
 
-            case "$title" in
-                "Installed Packages") arr=("${HYPRX_INSTALL_INSTALLED[@]}") ;;
-                "Skipped Packages") arr=("${HYPRX_INSTALL_SKIPPED[@]}") ;;
-                "Failed Packages") arr=("${HYPRX_INSTALL_FAILED[@]}") ;;
-                "Replaced Packages") arr=("${HYPRX_REPLACED_PACKAGES[@]}") ;;
-                "Invalid Packages") arr=("${HYPRX_INVALID_PACKAGES[@]}") ;;
-            esac
+            # Nameref, not string indirection: ${!arr_name[@]} on a scalar
+            # holding an array name yields nothing useful.
+            local -n arr="$arr_name"
 
-            if (( ${#arr[@]} > 0 )); then
+            if (( ${#arr[@]} == 0 )); then
+                echo "None"
+            else
                 for item in "${arr[@]}"; do
-                    if [[ "$title" == "Invalid Packages" ]]; then
-                        local hint
-                        hint="$(hyprx_requirements_get_hint "$item")"
-                        if [[ -n "$hint" ]]; then
-                            echo "$symbol $item — $hint"
-                        else
-                            echo "$symbol $item"
-                        fi
+                    # Invalid packages get their database hint appended.
+                    hint=""
+                    [[ "$title" == "Invalid Packages" ]] && hint="$(hyprx_requirements_get_hint "$item")"
+
+                    if [[ -n "$hint" ]]; then
+                        echo "$symbol $item — $hint"
                     else
                         echo "$symbol $item"
                     fi
                 done
-            else
-                echo "None"
             fi
 
+            unset -n arr
             echo
         done
 

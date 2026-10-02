@@ -1,17 +1,9 @@
 #!/usr/bin/env bash
 
-# NOTE: deliberately no `set -e` here.
-#
-# `set -e` at the dispatcher level aborts the whole process the moment any
-# command file returns non-zero internally. That is wrong for a dispatcher:
-# several commands legitimately probe things that can fail (does sudo have a
-# cached ticket? is there a tty? did the package manager answer?) and must be
-# able to report and carry on. With `-e`, `hyprx clean` used to die mid-way
-# through its first section and print nothing about it.
-#
-# Each command owns its own error handling and returns an explicit exit code.
-# `set -u` (catch typos in variable names) and `set -o pipefail` (catch failures
-# hidden in a pipeline) are kept - neither causes an early exit.
+# No `set -e` on purpose: it would abort the moment any command file returns
+# non-zero internally, and commands legitimately probe things that can fail
+# (cached sudo ticket? a tty?) and must report and carry on. Each command owns
+# its error handling and returns an explicit exit code.
 set -uo pipefail
 
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"

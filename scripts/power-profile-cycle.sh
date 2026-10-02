@@ -1,20 +1,9 @@
 #!/usr/bin/env bash
 
-########################################
 # SUPER+F5: power profile cycle
-########################################
 #
-# Cycles through ASUS fan/power profiles:
-#   AC:     Quiet -> Balanced -> Performance
-#   Battery: Quiet -> Balanced (skips Performance)
-#
-# Uses `asusctl profile set` to directly set the next
-# profile in the cycle, confirmed working on this
-# machine (SUPER+F6).
-#
-# rog-control-center already auto-switches AC/Battery
-# profile on its own - this is just the manual override.
-#
+# Quiet -> Balanced -> Performance on AC, Quiet <-> Balanced on battery. asusctl
+# exposes no scriptable "current profile" query, and profile set (SUPER+F6) works.
 
 get_active_profile() {
     asusctl profile get | awk -F': ' '/Active profile/ {print $2}'

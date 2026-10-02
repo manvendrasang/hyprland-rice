@@ -12,9 +12,11 @@ on:
 
 jobs:
 
+  # Fast gate: ShellCheck only. This used to run the whole suite, making it a
+  # near-duplicate of the `tests` job on a slower runner.
   lint:
 
-    name: Lint
+    name: ShellCheck
 
     runs-on: ubuntu-latest
 
@@ -28,24 +30,27 @@ jobs:
           sudo apt update
           sudo apt install -y shellcheck
 
-      # tests/run_tests.sh also runs ShellCheck over the whole tree, so this
-      # job is partly redundant with the `tests` job below. That is
-      # intentional: it fails fast on style errors before the slower job.
-      #
-      # The suite skips its pacman/lscpu/lspci assertions when those tools
-      # are absent, so ubuntu is a valid environment for it even though
-      # HyprX itself only supports Arch.
-      - name: Run Tests
+      - name: Lint
 
-        run: bash tests/run_tests.sh
+        run: |
+          # shellcheck source=lib/logger.sh
+          fail=0
+          while IFS= read -r -d '' file; do
+            if ! shellcheck -x -e SC1090,SC1091,SC2010,SC2015,SC2034,SC2086 "$file"; then
+              echo "::error file=$file::ShellCheck findings"
+              fail=1
+            fi
+          done < <(find . -path ./.git -prune -o -name '*.sh' -print0)
+          exit "$fail"
 
+  # Full suite, on the distro HyprX targets. This is the job that can fail on
+  # a broken hyprland.lua, unparseable JSON/JSONC, or unbalanced hyprlock
+  # braces.
   tests:
 
-    name: Unit Tests
+    name: Test Suite
 
     runs-on: ubuntu-latest
-
-    needs: lint
 
     container:
       image: archlinux:base
@@ -55,7 +60,7 @@ jobs:
       - name: Install prerequisites
 
         run: |
-          pacman -Sy --noconfirm git bash sudo shellcheck
+          pacman -Sy --noconfirm git bash sudo shellcheck python
 
       - uses: actions/checkout@v4
 

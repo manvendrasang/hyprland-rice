@@ -1,20 +1,9 @@
 #!/usr/bin/env bash
 
-########################################
-# Install HyprX itself
-########################################
-#
-# This installs the HyprX tool to a stable
-# location, separate from wherever you
-# cloned the repo. Once installed, `hyprx`
-# no longer depends on which git branch
-# happens to be checked out here - it's a
-# real, standalone copy.
-#
-# This is NOT "hyprx install" (which
-# installs packages/configs onto your
-# system). This installs the tool itself.
-#
+# Installs the HyprX tool itself to a stable location, separate from wherever
+# the repo is cloned - so `hyprx` does not depend on which branch is checked
+# out here. This is NOT `hyprx install`, which installs packages and configs
+# onto the system.
 
 set -euo pipefail
 
@@ -43,8 +32,7 @@ echo "Installed: $BIN_DIR/prime-run -> $INSTALL_DIR/scripts/prime-run.sh"
 echo "Installed: $BIN_DIR/hyprx-settings -> $INSTALL_DIR/scripts/settings-menu.sh"
 
 case ":$PATH:" in
-    *":$BIN_DIR:"*)
-        ;;
+    *":$BIN_DIR:"*) ;;
     *)
         echo
         echo "Note: $BIN_DIR is not on your PATH."

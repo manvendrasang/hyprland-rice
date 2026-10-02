@@ -1,15 +1,6 @@
 #!/usr/bin/env bash
-# Triggered by scripts/wallust-hyprpaper-sync.sh whenever it detects
-# hyprpaper's active wallpaper has changed (polling hyprctl directly,
-# not waypaper's post_command - see that script for why). Regenerates
-# every templated color file via wallust (config/wallust/wallust.toml),
-# then reloads only what doesn't already pick up a changed file on
-# its own.
-#
-# Rofi and wlogout are launched fresh every time they're opened, so
-# they need no reload here - the next launch just reads the new
-# colors.rasi / colors.css. Waybar and swaync are long-running
-# daemons, so they do need to be told.
+# Triggered by scripts/wallust-hyprpaper-sync.sh on every wallpaper change: regenerates
+# the templated colors via wallust, then reloads only the long-running daemons.
 
 set -uo pipefail
 
@@ -22,6 +13,13 @@ fi
 command -v wallust >/dev/null 2>&1 || exit 0
 
 wallust run "$WALLPAPER" --quiet --check-contrast
+
+# Keep hyprpaper.conf pointing at the wallpaper that is actually live.
+# Runs on every wallpaper change, not just at login: waypaper never updates
+# hyprpaper.conf, so without this the conf drifts to a stale path and the next
+# hyprpaper restart reverts the wallpaper or comes up with nothing at all.
+HYPRX_SYNC_CONF="${HYPRX_TARGET_HOME:-$HOME}/.local/share/hyprx/scripts/sync-hyprpaper-conf.sh"
+[[ -x "$HYPRX_SYNC_CONF" ]] && "$HYPRX_SYNC_CONF" "$WALLPAPER" || true
 
 # Waybar only reads colors.css at (re)start.
 ~/.local/share/hyprx/scripts/reload-waybar.sh >/dev/null 2>&1 &

@@ -11,10 +11,8 @@ export HYPRX_COMMANDS="$HYPRX_ROOT/commands"
 export HYPRX_DATABASE="$HYPRX_ROOT/database"
 export HYPRX_CONFIG="${HYPRX_CONFIG:-$HYPRX_ROOT/config}"
 
-
-#
-# Core libraries
-#
+# Order matters: config.sh populates HYPRX_CONFIG_*, which logger.sh and
+# packages.sh read.
 
 for file in \
     ui.sh \
@@ -23,16 +21,10 @@ for file in \
     config.sh \
     detect.sh \
     packages.sh \
-    spinner.sh \
-    progress.sh \
     table.sh
 do
     source "$HYPRX_LIB/$file"
 done
-
-#
-# Installer libraries
-#
 
 for file in \
     replacements.sh \

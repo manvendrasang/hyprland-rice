@@ -1,18 +1,8 @@
 #!/usr/bin/env bash
 
-########################################
-# hyprx install [--dry-run]
-########################################
-# --dry-run runs the entire pipeline - preflight, compatibility,
-# resolution, validation, the install loop, config deploy - but every
-# mutating helper checks hyprx_util_dry_run() and reports what it
-# would have done instead of doing it. Nothing is installed, deployed,
-# backed up or snapshotted.
-#
-# This exists so the install path is reachable from the test suite and
-# from a paranoid pre-flight check, rather than only being discovered
-# halfway through a real run.
-#
+# --dry-run runs the whole pipeline but every mutating helper checks
+# hyprx_util_dry_run() and reports instead of acting, so the install path is
+# reachable from the test suite and from a pre-flight check.
 
 for arg in "$@"; do
     case "$arg" in

@@ -1,24 +1,9 @@
 #!/usr/bin/env bash
 
-########################################
 # HyprX settings menu (SUPER+I)
-########################################
 #
-# There is no lightweight app that provides
-# a single Windows-style settings panel and
-# also actually runs under Hyprland -
-# gnome-control-center refuses to start
-# outside a GNOME/Unity session entirely.
-#
-# Instead, this is a rofi hub over the
-# individual, purpose-built tool already
-# installed for each category - each entry
-# opens the single best tool for that job
-# rather than reinventing it. Add or reorder
-# entries by editing LABELS/COMMANDS below,
-# keeping both arrays the same length and in
-# the same order.
-#
+# gnome-control-center will not start outside a GNOME/Unity session, so this is a rofi hub over
+# the tool already installed per category. Edit LABELS/COMMANDS, keeping both arrays aligned.
 
 LABELS=(
     "󰈀  Network"

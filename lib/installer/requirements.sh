@@ -2,23 +2,21 @@
 
 declare -gA HYPRX_REQUIREMENTS
 
+# database/package-requirements.conf maps a package to a hint shown when it
+# cannot be found (e.g. steam -> "requires [multilib]").
 hyprx_requirements_load() {
-
     HYPRX_REQUIREMENTS=()
 
     local db="$HYPRX_ROOT/database/package-requirements.conf"
-
     [[ -f "$db" ]] || return 0
 
-    while IFS= read -r line; do
+    local line pkg hint
 
+    while IFS= read -r line; do
         [[ -z "$line" ]] && continue
         [[ "$line" =~ ^# ]] && continue
 
-        local pkg
-        local hint
-
-        IFS="=" read -r pkg hint <<< "$line"
+        IFS="=" read -r pkg hint <<<"$line"
 
         pkg="$(echo "$pkg" | xargs)"
         hint="$(echo "$hint" | xargs)"
@@ -27,17 +25,11 @@ hyprx_requirements_load() {
         [[ -z "$hint" ]] && continue
 
         HYPRX_REQUIREMENTS["$pkg"]="$hint"
-
-    done < "$db"
-
+    done <"$db"
 }
 
 hyprx_requirements_get_hint() {
-
-    local pkg="$1"
-
-    echo "${HYPRX_REQUIREMENTS[$pkg]:-}"
-
+    echo "${HYPRX_REQUIREMENTS[$1]:-}"
 }
 
 hyprx_requirements_load

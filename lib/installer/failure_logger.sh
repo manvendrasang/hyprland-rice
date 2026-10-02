@@ -6,7 +6,6 @@ mkdir -p "$(dirname "$HYPRX_FAILURE_LOG")"
 touch "$HYPRX_FAILURE_LOG"
 
 hyprx_failure_logger_log() {
-
     local pkg="$1"
     local reason="${2:-Unknown}"
 
@@ -21,10 +20,10 @@ hyprx_failure_logger_log() {
         echo "Kernel    : $(uname -r)"
         echo
     } >>"$HYPRX_FAILURE_LOG"
-
 }
 
 hyprx_failure_logger_summary() {
+    local pkg
 
     {
         echo
@@ -36,12 +35,10 @@ hyprx_failure_logger_summary() {
         printf "Failed Packages : %d\n" "${#HYPRX_INSTALL_FAILED[@]}"
         printf "Installed       : %d\n" "${#HYPRX_INSTALL_INSTALLED[@]}"
         printf "Skipped         : %d\n" "${#HYPRX_INSTALL_SKIPPED[@]}"
-
         echo
 
         if (( ${#HYPRX_INSTALL_FAILED[@]} > 0 )); then
             echo "Packages"
-
             for pkg in "${HYPRX_INSTALL_FAILED[@]}"; do
                 echo "  • $pkg"
             done
@@ -50,9 +47,6 @@ hyprx_failure_logger_summary() {
         fi
 
         echo
-
         echo "=========================================================="
-
     } >>"$HYPRX_FAILURE_LOG"
-
 }

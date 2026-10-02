@@ -1,36 +1,11 @@
 #!/usr/bin/env bash
 
-########################################
 # Automatic dGPU offload for heavy apps
-########################################
 #
-# Linux has no true Windows-style automatic
-# per-app GPU switching - see prime-run.sh
-# for why. The practical equivalent is
-# making sure specific GPU-heavy apps always
-# launch on the dGPU without typing
-# "prime-run" every time. This generates
-# user-level .desktop overrides (which take
-# priority over a system file of the same
-# name) that wrap the app's Exec= line in
-# the PRIME render-offload env vars.
-#
-# Only touches apps actually found on the
-# system - anything not installed is skipped
-# silently, no error. Safe to re-run any
-# time (this runs on every `hyprx install`)
-# - it just regenerates the same overrides,
-# and is a no-op if they're already correct.
-#
-# To offload additional apps, add their
-# .desktop file's base name (without the
-# .desktop extension - check
-# /usr/share/applications/ for the exact
-# name) to GPU_HEAVY_APPS below.
-#
+# Linux has no true automatic per-app GPU switching (see prime-run.sh), so this
+# generates .desktop overrides wrapping each Exec= line in the PRIME env vars.
 
-# GPU-heavy apps list - can be overridden via external config file
-# To add apps, either edit this list or create ~/.config/hyprx/gpu-apps.conf
+# GPU-heavy apps list - edit it here, or create ~/.config/hyprx/gpu-apps.conf
 # with one .desktop base name per line.
 GPU_APPS_FILE="${HYPRX_CONFIG:-$HOME/.config/hyprx}/gpu-apps.conf"
 
@@ -63,7 +38,6 @@ OFFLOAD_ENV="env __NV_PRIME_RENDER_OFFLOAD=1 __NV_PRIME_RENDER_OFFLOAD_PROVIDER=
 mkdir -p "$OVERRIDE_DIR"
 
 for app in "${GPU_HEAVY_APPS[@]}"; do
-
     source_file=""
 
     for dir in "${SYSTEM_APP_DIRS[@]}"; do
@@ -77,9 +51,8 @@ for app in "${GPU_HEAVY_APPS[@]}"; do
 
     target_file="$OVERRIDE_DIR/$app.desktop"
 
-    # Rewrite every Exec= line to run through the offload
-    # env, unless it's already wrapped - makes this
-    # idempotent to re-run against its own prior output.
+    # Rewrite every Exec= line to run through the offload env, unless it's
+    # already wrapped - makes this idempotent to re-run against its own output.
     awk -v prefix="$OFFLOAD_ENV" '
         /^Exec=/ && index($0, prefix) == 0 {
             sub(/^Exec=/, "Exec=" prefix " ")
@@ -88,5 +61,4 @@ for app in "${GPU_HEAVY_APPS[@]}"; do
     ' "$source_file" > "$target_file"
 
     echo "GPU offload enabled: $app"
-
 done

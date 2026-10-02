@@ -1,13 +1,7 @@
 #!/usr/bin/env bash
-# Event-driven replacement for the old music.sh 1s poll loop.
-#
-# One long-lived process, started once at session launch (see
-# hyprland.lua), blocking on playerctl's own --follow stream across
-# all players. It only writes + signals Waybar when a player's state
-# actually changes - no timer, no per-second forks.
-#
-# music.sh (the script Waybar actually execs) just cats whatever
-# this daemon last wrote. It never calls playerctl itself anymore.
+# One long-lived process blocking on playerctl's own --follow stream, so
+# Waybar is only written to and signalled on a real state change. music.sh
+# (what Waybar execs) just cats whatever this daemon last wrote.
 
 set -uo pipefail
 
@@ -17,7 +11,7 @@ mkdir -p "$CACHE_DIR"
 
 command -v playerctl >/dev/null 2>&1 || exit 0
 
-# Same preference order the old music.sh used.
+# Player preference order, highest first.
 PRIORITY=(spotify spotifyd brave firefox mpv vlc)
 
 declare -A STATUS TITLE ARTIST ALBUM

@@ -47,32 +47,21 @@ hl.on("hyprland.start", function()
 	-- hyprpaper needs a moment to bring up its IPC socket before
 	-- it can accept the wallpaper-set call. Without this delay,
 	-- the restore call below can race hyprpaper's own startup and
-	-- get silently dropped, leaving no wallpaper (or the wrong
-	-- one) until manually re-run.
-	-- Also handles waypaper --restore having nothing to restore on
-	-- a completely fresh install (falls back to --random) - see
-	-- scripts/wallpaper-restore.sh for why.
+	-- The restore call can be dropped if hyprpaper's IPC is not up yet,
+	-- and waypaper --restore has nothing to restore on a fresh install.
 	hl.exec_cmd("sleep 1 && ~/.local/share/hyprx/scripts/wallpaper-restore.sh")
-	-- waybar's own layer-shell surface can lose an early-session race
-	-- against Hyprland/the Wayland socket not being fully ready yet,
-	-- with no error logged anywhere - it just silently never
-	-- launches. A fixed sleep wasn't reliable on every boot, so this
-	-- retries until waybar is confirmed actually running - see
-	-- config/waybar/scripts/ensure-waybar.sh.
+	-- Loses an early-session race with the Wayland socket, silently.
+	-- Retries until the surface is registered - see ensure-waybar.sh.
 	hl.exec_cmd("~/.config/waybar/scripts/ensure-waybar.sh &")
 	hl.exec_cmd("swaync")
 	hl.exec_cmd("hypridle")
 	hl.exec_cmd("wl-paste --type text --watch cliphist store")
 	hl.exec_cmd("wl-paste --type image --watch cliphist store")
 	hl.exec_cmd("nm-applet --indicator")
-	-- Event-driven replacements for what used to be 1s/3s Waybar
-	-- polling scripts - see config/waybar/scripts/{music,bluetooth}-daemon.sh.
+	-- Event-driven, replacing 1s/3s polling.
 	hl.exec_cmd("~/.config/waybar/scripts/music-daemon.sh &")
 	hl.exec_cmd("~/.config/waybar/scripts/bluetooth-daemon.sh &")
-	-- Dynamic wallpaper-based theming (item #5) - watches hyprpaper
-	-- directly and re-runs wallust whenever the active wallpaper
-	-- changes, regardless of what changed it. See
-	-- config/waybar/scripts/wallust-hyprpaper-sync.sh.
+	-- Re-runs wallust on any wallpaper change, whoever made it.
 	hl.exec_cmd("~/.config/waybar/scripts/wallust-hyprpaper-sync.sh &")
 end)
 -------------------------------
@@ -332,14 +321,8 @@ hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("hyprlock"))
 hl.bind(secondMod .. " + L", hl.dsp.exec_cmd(
 	"pkill -x wlogout >/dev/null 2>&1 || wlogout --buttons-per-row 5"
 	.. " --margin-top 400 --margin-bottom 260 --margin-left 260 --margin-right 260"
-	-- Restyled around wlogout's own reference theme (config/wlogout/
-	-- style.css) - a large, mostly-filling grid block rather than the
-	-- earlier small floating dock, so no column-spacing/large margins
-	-- this time: buttons sit edge-to-edge with just their own 1px
-	-- borders dividing them, matching the reference's thin-line grid.
-	-- Tuned for this machine's 1920x1080 panel; rendered and
-	-- confirmed with a real screenshot (sway + grim), not guessed.
-	-- On a different resolution, rescale these roughly proportionally.
+	-- Reference-theme grid (config/wlogout/style.css). Tuned for a
+	-- 1920x1080 panel; rescale roughly proportionally elsewhere.
 ))
 hl.bind(mainMod .. " + period", hl.dsp.exec_cmd("rofimoji --action copy"))
 hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())

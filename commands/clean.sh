@@ -1,28 +1,14 @@
 #!/usr/bin/env bash
 
-########################################
 # hyprx clean [--dry-run]
-########################################
-# Deliberately conservative: only removes
-# things that either regenerate themselves
-# automatically (package cache, thumbnail/
-# shader caches) or are explicitly time-
-# boxed (screenshots older than 2 days).
-# Never touches user data or anything not
-# owned by HyprX/the package manager.
 #
-# Two independent switches:
+# Conservative: removes only what regenerates itself or is explicitly
+# time-boxed (screenshots over 2 days old). Never touches user data.
 #
-#   --dry-run / HYPRX_DRY_RUN=1
-#       Report everything, remove nothing.
-#
-#   HYPRX_CLEAN_ROOT=<dir>
-#       Redirect the home-relative paths (screenshots, ~/.cache) at <dir>
-#       instead of $HOME, and report rather than perform the steps that
-#       cannot be redirected (package cache, orphans, journal, /tmp).
-#       This is what lets the test suite exercise the real deletion logic
-#       against a throwaway tree instead of only ever testing --dry-run.
-#
+#   --dry-run / HYPRX_DRY_RUN=1   report everything, remove nothing
+#   HYPRX_CLEAN_ROOT=<dir>         aim the home-relative paths at <dir> and
+#                                  report the steps that cannot be redirected
+#                                  - this is how the suite tests real deletions
 
 DRY_RUN=false
 FAILURES=0
@@ -61,12 +47,17 @@ CLEAN_ROOT="${HYPRX_CLEAN_ROOT:-${HYPRX_TARGET_HOME:-$HOME}}"
 SANDBOX=false
 [[ -n "${HYPRX_CLEAN_ROOT:-}" ]] && SANDBOX=true
 
-# Steps that reach outside CLEAN_ROOT cannot be sandboxed, so when running
-# inside a sandbox they are reported only - performing them would mean
-# cleaning the real system during a test.
+# Steps outside CLEAN_ROOT cannot be sandboxed, so they are reported, not performed.
 REPORT_ONLY=false
-$DRY_RUN  && REPORT_ONLY=true
-$SANDBOX  && REPORT_ONLY=true
+$DRY_RUN && REPORT_ONLY=true
+$SANDBOX && REPORT_ONLY=true
+
+# Escalate only if sudo works without a password prompt; otherwise say so
+# rather than dying or silently doing nothing.
+CLEAN_CAN_SUDO=false
+if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    CLEAN_CAN_SUDO=true
+fi
 
 hyprx_ui_header
 hyprx_logger_info "Running cleanup"
@@ -79,16 +70,7 @@ fi
 
 echo
 
-# Report-only sudo helper: escalate if we can do so without a password
-# prompt, otherwise say so instead of dying (or silently doing nothing).
-CLEAN_CAN_SUDO=false
-if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-    CLEAN_CAN_SUDO=true
-fi
-
-########################################
 # Package manager cache
-########################################
 
 hyprx_ui_section "Package cache"
 
@@ -104,9 +86,7 @@ fi
 
 echo
 
-########################################
 # Orphaned packages
-########################################
 
 hyprx_ui_section "Orphaned packages"
 
@@ -126,9 +106,7 @@ fi
 
 echo
 
-########################################
 # Screenshots older than 2 days
-########################################
 # Redirectable: runs for real under a sandbox, which is the point.
 
 hyprx_ui_section "Old screenshots"
@@ -160,9 +138,7 @@ fi
 
 echo
 
-########################################
 # Regenerable caches
-########################################
 # Redirectable: runs for real under a sandbox.
 
 hyprx_ui_section "Regenerable caches"
@@ -193,9 +169,7 @@ done
 
 echo
 
-########################################
 # System journal
-########################################
 # System-wide: report only under --dry-run or a sandbox.
 
 hyprx_ui_section "System Logs"
@@ -216,9 +190,7 @@ fi
 
 echo
 
-########################################
 # Temporary files
-########################################
 # System-wide: report only under --dry-run or a sandbox.
 
 hyprx_ui_section "Temporary Files"

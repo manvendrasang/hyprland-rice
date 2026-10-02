@@ -4,11 +4,9 @@
 
 HYPRX_CONFIG_FILE="$HYPRX_CONFIG/hyprx.conf"
 
-# Every key is prefixed. The loader `source`s this file straight into the
-# global namespace, so an unprefixed key like `PACKAGE_MANAGER=auto` used to
-# land as a global and shadow/collide with the detected value the package
-# layer actually reads. Prefixing keeps config, detection and runtime state
-# in separate namespaces.
+# Every key is prefixed so config cannot collide with runtime state - an
+# unprefixed `PACKAGE_MANAGER=auto` in hyprx.conf used to land as a global and
+# shadow the value the package layer actually reads.
 HYPRX_CONFIG_THEME="default"
 HYPRX_CONFIG_AUTO_CONFIRM="false"
 HYPRX_CONFIG_ENABLE_GPU_OFFLOAD="true"
@@ -17,8 +15,6 @@ HYPRX_CONFIG_LOG_LEVEL="info"
 HYPRX_CONFIG_LOG_FILE=""
 HYPRX_CONFIG_PACKAGE_MANAGER="auto"
 
-# Config keys that may appear in hyprx.conf. Anything else in that file is
-# reported as unknown rather than silently becoming a global.
 HYPRX_CONFIG_KEYS=(
     HYPRX_CONFIG_THEME
     HYPRX_CONFIG_AUTO_CONFIRM
@@ -29,22 +25,13 @@ HYPRX_CONFIG_KEYS=(
     HYPRX_CONFIG_PACKAGE_MANAGER
 )
 
-########################################
-# Load configuration
-########################################
-
 hyprx_config_load() {
+    local line key value
 
     if [[ -f "$HYPRX_CONFIG_FILE" ]]; then
-
-        # Parse rather than `source`: a config file is data, and sourcing it
-        # lets it run arbitrary code and clobber any variable in scope.
-        local line
-        local key
-        local value
-
+        # Parsed, not sourced: hyprx.conf is data, and sourcing it would let it
+        # run arbitrary code in this scope.
         while IFS= read -r line || [[ -n "$line" ]]; do
-
             line="${line%%#*}"
             line="${line#"${line%%[![:space:]]*}"}"
             line="${line%"${line##*[![:space:]]}"}"
@@ -59,7 +46,7 @@ hyprx_config_load() {
             value="${value%\"}"; value="${value#\"}"
             value="${value%\'}"; value="${value#\'}"
 
-            # Accept both the prefixed and legacy bare spelling.
+            # Accept the prefixed spelling and the legacy bare one.
             case "$key" in
                 HYPRX_CONFIG_*) ;;
                 THEME)                  key=HYPRX_CONFIG_THEME ;;
@@ -76,32 +63,20 @@ hyprx_config_load() {
             esac
 
             printf -v "$key" '%s' "$value"
-
         done <"$HYPRX_CONFIG_FILE"
-
     fi
 
-    # LOG_FILE, when set, is the install failure log. Honoured here (rather
-    # than in lib/installer/failure_logger.sh) because config.sh is sourced
-    # first, so that file's `${HYPRX_FAILURE_LOG:-...}` default picks it up.
+    # Honoured here because config.sh is sourced before
+    # lib/installer/failure_logger.sh, whose default then picks it up.
     if [[ -n "$HYPRX_CONFIG_LOG_FILE" ]]; then
-        local expanded="${HYPRX_CONFIG_LOG_FILE/#\~/$HOME}"
-        export HYPRX_FAILURE_LOG="$expanded"
+        export HYPRX_FAILURE_LOG="${HYPRX_CONFIG_LOG_FILE/#\~/$HOME}"
     fi
 
     return 0
-
 }
 
-########################################
-# Save configuration
-########################################
-
 hyprx_config_save() {
-
-    local dir
-    dir="$(dirname "$HYPRX_CONFIG_FILE")"
-    mkdir -p "$dir"
+    mkdir -p "$(dirname "$HYPRX_CONFIG_FILE")"
 
     {
         echo "# HyprX configuration - written by hyprx_config_save()"
@@ -112,23 +87,19 @@ hyprx_config_save() {
     } >"$HYPRX_CONFIG_FILE"
 
     return 0
-
 }
 
-########################################
-# Get configuration value
-########################################
+# Build the key name via a separate variable: written as "$HYPRX_CONFIG_$1",
+# bash absorbs the trailing underscore into the variable name and never reads
+# $1 at all.
+hyprx_config_key_of() {
+    printf 'HYPRX_CONFIG_%s' "$1"
+}
 
 hyprx_config_get() {
+    local key known
+    key="$(hyprx_config_key_of "$1")"
 
-    # NOTE: build the name via a separate variable. Written as
-    # "$HYPRX_CONFIG_$1" bash would parse `$HYPRX_CONFIG_` as one variable
-    # name - the trailing underscore is a valid identifier character - and
-    # never read $1 at all.
-    local prefix="HYPRX_CONFIG_"
-    local key="${prefix}${1}"
-
-    local known
     for known in "${HYPRX_CONFIG_KEYS[@]}"; do
         if [[ "$known" == "$key" ]]; then
             printf '%s\n' "${!key}"
@@ -137,35 +108,91 @@ hyprx_config_get() {
     done
 
     return 1
-
 }
 
-########################################
-# Set configuration value
-########################################
-
 hyprx_config_set() {
+    local key known
+    key="$(hyprx_config_key_of "$1")"
 
-    # See the note in hyprx_config_get about the trailing underscore.
-    local prefix="HYPRX_CONFIG_"
-    local key="${prefix}${1}"
-    local value="$2"
-
-    local known
     for known in "${HYPRX_CONFIG_KEYS[@]}"; do
         if [[ "$known" == "$key" ]]; then
-            printf -v "$key" '%s' "$value"
+            printf -v "$key" '%s' "$2"
             hyprx_config_save
             return 0
         fi
     done
 
     return 1
-
 }
 
-########################################
-# Automatically load config
-########################################
+hyprx_config_unset() {
+    local key default
+    key="$(hyprx_config_key_of "$1")"
+
+    default="$(hyprx_config_default_value "$1")" || return 1
+
+    printf -v "$key" '%s' "$default"
+    hyprx_config_save
+    return 0
+}
+
+hyprx_config_default_value() {
+    case "$(hyprx_config_key_of "$1")" in
+        HYPRX_CONFIG_THEME)              printf 'default\n' ;;
+        HYPRX_CONFIG_AUTO_CONFIRM)       printf 'false\n' ;;
+        HYPRX_CONFIG_ENABLE_GPU_OFFLOAD) printf 'true\n' ;;
+        HYPRX_CONFIG_BACKUP_ON_DEPLOY)   printf 'true\n' ;;
+        HYPRX_CONFIG_LOG_LEVEL)          printf 'info\n' ;;
+        HYPRX_CONFIG_LOG_FILE)           printf '\n' ;;
+        HYPRX_CONFIG_PACKAGE_MANAGER)    printf 'auto\n' ;;
+        *) return 1 ;;
+    esac
+}
+
+hyprx_config_validate() {
+    local key="$1" value="$2"
+
+    case "$key" in
+        THEME)
+            # Must exist, or it is a typo that silently does nothing.
+            [[ "$value" == "default" || -d "${HYPRX_CONFIG:?}/waybar/themes/$value" ]] || return 1
+            ;;
+        AUTO_CONFIRM|BACKUP_ON_DEPLOY|ENABLE_GPU_OFFLOAD)
+            [[ "$value" == "true" || "$value" == "false" ]] || return 1
+            ;;
+        LOG_LEVEL)
+            case "$value" in
+                off|error|warn|info|debug) ;;
+                *) return 1 ;;
+            esac
+            ;;
+        PACKAGE_MANAGER)
+            case "$value" in
+                auto|pacman|yay|paru) ;;
+                *) return 1 ;;
+            esac
+            ;;
+        LOG_FILE)
+            [[ -z "$value" || "$value" == /* || "$value" == ~/* ]] || return 1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+
+    return 0
+}
+
+hyprx_config_list() {
+    local k
+    for k in "${HYPRX_CONFIG_KEYS[@]}"; do
+        printf '%-32s %s\n' "${k#HYPRX_CONFIG_}" "${!k}"
+    done
+}
+
+# Boolean value of a config key, by variable name.
+hyprx_config_bool() {
+    [[ "${!1}" == "true" ]]
+}
 
 hyprx_config_load

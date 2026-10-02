@@ -1,22 +1,12 @@
-# HyprX dynamic theming.
-#
-# Normally triggered automatically whenever you change your wallpaper
-# (see config/waybar/scripts/wallust-hyprpaper-sync.sh, which polls
-# hyprpaper directly and calls scripts/apply-wallust-theme.sh). To
-# run it by hand:
-#
+# HyprX dynamic theming. Triggered on any wallpaper change by
+# config/waybar/scripts/wallust-hyprpaper-sync.sh; run by hand with:
 #   wallust run /path/to/wallpaper.jpg
 #
-# Every entry below uses wallust's Jinja2-style template syntax
-# ({{variable}}, {{variable | rgb}}, {{variable | strip}}, etc.) -
-# see the templates/ directory for examples.
+# Values below use wallust's Jinja2-style syntax ({{var}}, {{var | rgb}},
+# {{var | strip}}) - see templates/ for examples. check_contrast keeps
+# generated colors readable against the wallpaper.
 #
-# check_contrast ensures wallust picks colors that are readable
-# against the background, so waybar items and other UI elements
-# don't blend into the wallpaper.
-#
-# Color role convention used across every template in templates/ (keep
-# these consistent if you add a new one):
+# Color roles used across every template (keep consistent when adding one):
 #   background   -> main/darkest panel background
 #   color0       -> secondary/"alt" panel background
 #   color8       -> subtle borders and dividers
