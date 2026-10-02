@@ -483,11 +483,15 @@ run_doctor_checks() {
     fi
 
     if doctor_wants gpu; then
+        hyprx_ui_section "Hybrid GPU"
         if hyprx_util_command_exists supergfxctl; then
-            hyprx_ui_section "Hybrid GPU"
             gpu_checks
-            echo
+        else
+            # Always say why there is nothing to report. A selectable section
+            # that silently vanishes reads as a passing check.
+            hyprx_ui_info "supergfxctl not installed - no hybrid GPU to inspect"
         fi
+        echo
     fi
 
     if doctor_wants network; then
@@ -555,6 +559,13 @@ run_doctor_checks() {
     if doctor_wants daemons; then
         hyprx_ui_section "Session Daemons"
 
+        if ! command -v pgrep >/dev/null 2>&1; then
+            # procps is not installed everywhere. Reporting every daemon as down
+            # would be a lie, so say the probe could not run instead.
+            hyprx_ui_info "pgrep not available - cannot inspect running processes (install procps)"
+            hyprx_doctor_suggest "pacman -S procps"
+        else
+
         # label | process pattern | fix hint
         # Only waybar is a layer-shell surface, so only waybar gets a surface
         # check - the others are ordinary processes with no surface to verify.
@@ -593,6 +604,8 @@ EOF
         else
             hyprx_doctor_note_warn "hyprpaper: not running"
             hyprx_doctor_suggest "${HOME}/.local/share/hyprx/scripts/wallpaper-restore.sh"
+        fi
+
         fi
 
         echo

@@ -1100,6 +1100,14 @@ done
 # ============================================
 log "Testing hyprx doctor flags..."
 
+# The JSON shape checks need an interpreter. Arch's `python` package ships
+# `python3`, but not every CI image does, so accept either name rather than
+# silently skipping the check wherever only one of them exists.
+PYTHON=""
+for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1; then PYTHON="$candidate"; break; fi
+done
+
 assert_exit_in "doctor --help" "0" "$CLI" doctor --help
 assert_exit_in "doctor rejects an unknown flag" "1" "$CLI" doctor --bogus
 assert_exit_in "doctor --no-report" "0,1,2" "$CLI" doctor --no-report
@@ -1130,9 +1138,9 @@ else
 fi
 
 # --json must emit parseable JSON with the expected shape.
-if command -v python3 >/dev/null 2>&1; then
+if [[ -n "$PYTHON" ]]; then
     json_out="$("$CLI" doctor --json 2>/dev/null || true)"
-    if printf '%s' "$json_out" | python3 -c '
+    if printf '%s' "$json_out" | "$PYTHON" -c '
 import json, sys
 d = json.load(sys.stdin)
 for key in ("host", "distro", "kernel", "summary", "findings", "suggestions"):
@@ -1154,7 +1162,7 @@ for f in d["findings"]:
         fail "doctor --json leaked text before the document"
     fi
 else
-    log "  [SKIP] python3 unavailable - doctor --json shape not verified"
+    fail "no python interpreter found - doctor --json shape not verified"
 fi
 
 # A timestamped report is written unless --no-report is passed.
