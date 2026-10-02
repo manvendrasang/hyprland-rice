@@ -407,7 +407,6 @@ run_doctor_checks() {
     # Systemd - System & User Services
     hyprx_ui_section "Systemd"
     check_failed_units "" "System services"
-    echo
     check_failed_units "--user" "User services"
     echo
 
@@ -650,15 +649,50 @@ EOF
             hyprx_ui_info "No battery detected"
         fi
 
-        # Thermals, when a readable sensor exists.
+        # Thermals. sensors -u prints the chip name at column 0, an optional
+        # sub-heading ("Package id 0:") indented under it, then the readings.
+        # Reporting bare temp1_input/temp2_input values is unreadable when a
+        # machine has three chips, so each reading is labelled with the chip and
+        # sub-heading it came from and the hottest ones are surfaced first.
         if command -v sensors >/dev/null 2>&1; then
             local temps
-            temps="$(sensors -u 2>/dev/null | awk '/temp[0-9]_input/ { printf "%s %s\n", $1, $2 }')"
+            temps="$(sensors -u 2>/dev/null | awk '
+                # A chip header is a bare token at column 0: coretemp-isa-0000,
+                # mt7921_phy0-pci-2d00. Nothing else looks like this.
+                /^[A-Za-z0-9][A-Za-z0-9_.-]*$/  { chip = $0; label = ""; next }
+                # A feature heading also sits at column 0 and ends in a colon:
+                # "Package id 0:", "Core 0:", "temp1:". "Adapter: PCI adapter"
+                # does not qualify because it has content after the colon.
+                /^[^[:space:]].*:$/            { t = $0
+                                                sub(/:$/, "", t)
+                                                label = t; next }
+                # Readings are the only indented lines that carry a value.
+                /^[[:space:]]+temp[0-9]+_input:/ {
+                                                v = $2
+                                                if (v ~ /^[0-9.]+$/) {
+                                                    t = $1; sub(/:$/, "", t)
+                                                    # A label already identifies the
+                                                    # reading, so the tempN_input
+                                                    # suffix would just be noise.
+                                                    printf "%s %s|%.1f\n", \
+                                                        chip, (label ? label : t), v
+                                                } }')"
+
             if [[ -n "$temps" ]]; then
-                printf '%s\n' "$temps" | while read -r chip val; do
-                    [[ "$val" =~ ^[0-9.]+$ ]] || continue
-                    printf "  %-28s %5.1f C\n" "$chip" "$val"
+                printf '%s\n' "$temps" | sort -t'|' -k2 -gr | head -6 | while IFS='|' read -r where v; do
+                    printf "  %-38s %5.1f C\n" "$where" "$v"
                 done
+
+                local n hottest
+                n="$(printf '%s\n' "$temps" | grep -c . || true)"
+                hottest="$(printf '%s\n' "$temps" | sort -t'|' -k2 -gr | head -1 | cut -d'|' -f2)"
+
+                if (( n > 6 )); then
+                    echo "  (the 6 hottest of $n sensors)"
+                fi
+                if awk -v h="${hottest:-0}" 'BEGIN { exit !(h >= 85) }'; then
+                    hyprx_doctor_note_warn "Hottest sensor is ${hottest} C - thermal throttling likely"
+                fi
             else
                 hyprx_ui_info "lm-sensors returned no temperatures"
             fi
