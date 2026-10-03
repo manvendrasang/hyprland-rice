@@ -12,8 +12,19 @@ on:
 
 jobs:
 
-  # Fast gate: ShellCheck only. This used to run the whole suite, making it a
-  # near-duplicate of the `tests` job on a slower runner.
+  # ShellCheck, as a real gate.
+  #
+  # The old version passed `-e SC1090,SC1091,SC2010,SC2015,SC2034,SC2086`
+  # inline on every invocation, which (a) duplicated the exclusion list instead
+  # of reading .shellcheckrc, so the two could silently drift, and (b) disabled
+  # SC2086 and SC2015 repo-wide. SC2015 is `A && B || C`, which is exactly the
+  # shape that made clean.sh report an unauthenticated-sudo SKIP as a FAILURE.
+  # The list now lives only in .shellcheckrc.
+  #
+  # bin/hyprx is included explicitly. It has no .sh suffix, so
+  # `find -name '*.sh'` never matched it - the single most security-relevant file
+  # in the repo was the one file no linter ever saw. It is where a
+  # path-traversal-to-arbitrary-sourcing bug lived.
   lint:
 
     name: ShellCheck
@@ -33,19 +44,140 @@ jobs:
       - name: Lint
 
         run: |
-          # shellcheck source=lib/logger.sh
+          set -uo pipefail
           fail=0
           while IFS= read -r -d '' file; do
-            if ! shellcheck -x -e SC1090,SC1091,SC2010,SC2015,SC2034,SC2086 "$file"; then
+            if ! shellcheck -x "$file"; then
               echo "::error file=$file::ShellCheck findings"
               fail=1
             fi
-          done < <(find . -path ./.git -prune -o -name '*.sh' -print0)
+          done < <(find . -path ./.git -prune -o \( -name '*.sh' -o -path './bin/hyprx' \) -print0)
           exit "$fail"
 
-  # Full suite, on the distro HyprX targets. This is the job that can fail on
-  # a broken hyprland.lua, unparseable JSON/JSONC, or unbalanced hyprlock
-  # braces.
+  # Config validity. Separate from ShellCheck because these are not shell files
+  # and a broken one crash-loops whatever reads it: waybar on config.jsonc,
+  # Hyprland on a hyprland.lua syntax error, hyprlock on unbalanced braces.
+  config:
+
+    name: Config Validation
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - name: Install validators
+
+        run: |
+          sudo apt update
+          sudo apt install -y jq lua5.4
+
+      - name: Validate
+
+        run: |
+          set -uo pipefail
+          fail=0
+
+          # Every wallust template must define every variable its consumer
+          # stylesheet uses. wallust overwrites the committed colors.css on the
+          # FIRST wallpaper change, so a variable present only in the committed
+          # default disappears at that moment: GTK drops every rule using it and
+          # the bar silently loses its styling, while a fresh clone still looks
+          # right. That is why the bug shipped.
+          for pair in \
+            "waybar-colors.css:config/waybar/styles" \
+            "swaync-colors.css:config/swaync" \
+            "wlogout-colors.css:config/wlogout"
+          do
+            tpl="config/wallust/templates/${pair%%:*}"
+            dir="${pair#*:}"
+            defined=$(grep -oE '^\s*@define-color\s+[a-zA-Z0-9_-]+' "$tpl" | awk '{print "@"$2}' | sort -u)
+            used=$(grep -rohE '@[a-zA-Z0-9_-]+' "$dir" --include='*.css' \
+                   | grep -vE '^@(import|define-color|media|keyframes|supports)$' | sort -u)
+            missing=$(comm -23 <(printf '%s\n' "$used") <(printf '%s\n' "$defined"))
+            if [ -n "$missing" ]; then
+              echo "::error file=$tpl::missing variables: $(echo $missing)"
+              fail=1
+            fi
+          done
+
+          # JSON / JSONC
+          while IFS= read -r -d '' f; do
+            [ -s "$f" ] || continue
+            if ! sed 's#//.*##' "$f" | jq empty >/dev/null 2>&1; then
+              echo "::error file=$f::invalid JSON"
+              fail=1
+            fi
+          done < <(find config -type f \( -name '*.json' -o -name '*.jsonc' \) -print0)
+
+          # Lua
+          while IFS= read -r -d '' f; do
+            if ! luac5.4 -p "$f" 2>/dev/null; then
+              echo "::error file=$f::Lua syntax error"
+              fail=1
+            fi
+          done < <(find config -name '*.lua' -type f -print0)
+
+          # hyprlock brace balance
+          o=$(grep -o '{' config/hypr/hyprlock.conf | wc -l)
+          c=$(grep -o '}' config/hypr/hyprlock.conf | wc -l)
+          if [ "$o" != "$c" ]; then
+            echo "::error file=config/hypr/hyprlock.conf::unbalanced braces ($o open, $c close)"
+            fail=1
+          fi
+
+          exit "$fail"
+
+  # The dependency manifest. Its own job because the failure it catches is
+  # invisible at runtime: a binary referenced by the config and installed by
+  # nothing simply fails to exec, and nothing anywhere reports it.
+  #
+  # Seven of these shipped at once - hyprpaper (the entire wallpaper and dynamic
+  # theming chain), notify-send (the error handler for six scripts), hostname,
+  # nemo, blueman-manager, rsync, fc-cache.
+  manifest:
+
+    name: Dependency Manifest
+
+    runs-on: ubuntu-latest
+
+    container:
+      image: archlinux:base
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - name: Install prerequisites
+
+        run: pacman -Syy --noconfirm --needed git
+
+      - name: Every declared provider must be installable
+
+        run: |
+          set -uo pipefail
+          fail=0
+          while IFS='|' read -r binary provider _rest; do
+            # xargs trims both ends, which matters because the table is
+            # column-aligned: leading-only trimming leaves the padding attached.
+            binary="$(echo "$binary" | xargs)"
+            provider="$(echo "$provider" | xargs)"
+            [ -z "$binary" ] && continue
+            [ "$provider" = "system" ] && continue
+
+            if grep -qx "$provider" packages.list; then
+              continue
+            fi
+            if pacman -Si "$provider" >/dev/null 2>&1; then
+              continue
+            fi
+            echo "::error file=database/binary-providers.conf::'$binary' needs '$provider', which is neither in packages.list nor in the repos"
+            fail=1
+          done < database/binary-providers.conf
+          exit "$fail"
+
+  # Full suite, on the distro HyprX targets.
   tests:
 
     name: Test Suite
@@ -60,7 +192,10 @@ jobs:
       - name: Install prerequisites
 
         run: |
-          pacman -Sy --noconfirm git bash sudo shellcheck python
+          # -Syy, not -Sy: a partial upgrade against stale databases is
+          # unreliable, and this job's value is that it runs the real suite on
+          # the real target distro.
+          pacman -Syy --noconfirm --needed git bash sudo shellcheck python jq
 
       - uses: actions/checkout@v4
 

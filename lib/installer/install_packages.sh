@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
 hyprx_install_packages_run() {
-    hyprx_ui_header
-    hyprx_ui_info "Installing packages..."
+    # No banner - the engine prints one for the whole run. See the note in
+    # validator.sh.
+    hyprx_ui_section "Installing packages"
 
     HYPRX_INSTALL_INSTALLED=()
     HYPRX_INSTALL_SKIPPED=()
@@ -17,12 +18,25 @@ hyprx_install_packages_run() {
     for pkg in "${HYPRX_INSTALL_QUEUE[@]}"; do
         hyprx_ui_info "Installing $pkg"
 
-        # hyprx_pkg_install signals "already installed" with 10, which set -e
-        # would treat as failure.
-        set +e
-        hyprx_pkg_install "$pkg"
-        status=$?
-        set -e
+        # hyprx_pkg_install signals "already installed" with 10, which would
+        # read as a failure.
+        #
+        # This used to be `set +e; hyprx_pkg_install; status=$?; set -e`.
+        # That turned errexit ON for the rest of the process and left it on:
+        # bin/hyprx deliberately runs without -e (see its header), so the very
+        # next unguarded failing command aborted the whole install - which was
+        # hyprx_pkg_install inside the retry loop below. One package failing
+        # twice killed the retry ladder, the summary, the failure-log summary,
+        # deploy, the snapshot and the report, and left install.state behind
+        # for the next run to resume from.
+        #
+        # `if` keeps errexit untouched and is the only construct that preserves
+        # a non-zero status without tripping it.
+        if hyprx_pkg_install "$pkg"; then
+            status=0
+        else
+            status=$?
+        fi
 
         case "$status" in
             0)
@@ -51,6 +65,13 @@ hyprx_install_packages_run() {
 
     HYPRX_INSTALL_END_TIME=$(date +%s)
     HYPRX_INSTALL_DURATION=$((HYPRX_INSTALL_END_TIME - HYPRX_INSTALL_START_TIME))
+
+    # Retry ladder finished: whatever is still in FAILED genuinely failed.
+    # The summary, report and doctor all need to be able to tell "everything
+    # went in" from "some of it did not", which they previously could not.
+    HYPRX_INSTALL_PARTIAL=false
+    (( ${#HYPRX_INSTALL_FAILED[@]} > 0 )) && HYPRX_INSTALL_PARTIAL=true
+    export HYPRX_INSTALL_PARTIAL
 
     hyprx_ui_divider
     hyprx_ui_success "Installation Summary"
@@ -83,4 +104,15 @@ hyprx_install_packages_run() {
     fi
 
     hyprx_recovery_clear_state
+
+    # This used to fall off the end and return the status of
+    # hyprx_recovery_clear_state - always 0. So engine.sh saw a clean install
+    # and printed "Installation completed successfully" directly after listing
+    # twelve failed packages. Return an explicit code instead: 0 only when
+    # nothing is left in FAILED.
+    if (( ${#HYPRX_INSTALL_FAILED[@]} > 0 )); then
+        return 1
+    fi
+
+    return 0
 }

@@ -17,6 +17,24 @@ source "$ROOT_DIR/lib/bootstrap.sh"
 COMMAND="${1:-help}"
 shift || true
 
+# COMMAND is used to build a path that is then sourced, so an unvalidated value
+# turns the dispatcher into an arbitrary-file-inclusion primitive:
+#
+#   $ hyprx ../../../../tmp/evil     ->  sourced /tmp/evil.sh and ran it
+#
+# lib/installer/deploy.sh goes to real trouble to reject `../escape`, `a/b`, `.`
+# and `..` as config directory names; the entry point that runs before any of
+# that validated nothing at all. Both checks stay - the path check here guards
+# dispatch, the one in deploy.sh guards the data.
+#
+# The whitelist is the list of files that actually exist in commands/, so adding
+# a command needs no edit here.
+if [[ ! "$COMMAND" =~ ^[a-z][a-z0-9_-]*$ ]]; then
+    hyprx_ui_error "Invalid command name: $COMMAND"
+    hyprx_ui_info "Command names are lowercase letters, digits, - and _."
+    exit 1
+fi
+
 COMMAND_FILE="$HYPRX_COMMANDS/$COMMAND.sh"
 
 if [[ ! -f "$COMMAND_FILE" ]]; then

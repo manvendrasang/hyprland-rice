@@ -17,7 +17,7 @@
     background-image: none;
     box-shadow: none;
     transition: 150ms ease-in-out;
-    font-family: "Caudex", "JetBrainsMono Nerd Font", sans-serif;
+    font-family: "Caudex", sans-serif;
 }
 
 window {

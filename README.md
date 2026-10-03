@@ -4,6 +4,12 @@ A single opinionated Hyprland desktop installer for Arch Linux.
 It installs one fixed desktop setup. There are no profiles and no optional modules.
 Edit `packages.list` if you want a different set of packages.
 
+**Licence:** proprietary. All rights reserved. See `LICENSE.md`. This is not a
+granting of permission to use, copy or redistribute it.
+
+**If you want to contribute,** `CONTRIBUTING.md` is the short version of the two
+rules this codebase actually runs on.
+
 ## What it does
 
 Installs roughly 50 packages.
@@ -202,6 +208,7 @@ Sections:
 configuration  applications  system      validation  drift       storage
 memory         swap          systemd     services    session     gpu
 network        pacman        daemons     battery     diskusage
+fonts          manifest
 ```
 
 An unknown section name is rejected and the valid names are printed.
@@ -211,6 +218,16 @@ health.
 `gpu` covers hybrid GPU state.
 It is a section of its own rather than part of `session`, so `--skip gpu`
 turns it off.
+
+`fonts` verifies Caudex against its pinned SHA256 list and confirms `fc-match`
+actually resolves it.
+An installed-but-unusable font is otherwise invisible: the bar simply renders in
+a fallback.
+
+`manifest` cross-checks `database/binary-providers.conf` against `packages.list`
+and against the commands `config/` and `scripts/` actually reference.
+This is the section that catches a missing runtime dependency before it becomes
+a silently broken script.
 
 `--json` emits one object.
 It carries `host`. `distro`. `kernel`. `session`. `uptime_seconds`.
@@ -303,18 +320,19 @@ utils.sh        dry run and confirmation and validation helpers
 The install engine.
 
 ```
-compatibility.sh    distro and dependency gate
 deploy.sh           copies config directories to ~/.config
 engine.sh           runs the install stages in order
 failure_logger.sh   records failed packages
+fonts.sh            fetches and verifies Caudex
+gate.sh             every check run before anything is changed
 install_packages.sh the install loop and its summary
-preflight.sh        checks run before anything is changed
 recovery.sh         saves state so a failed install can resume
 replacements.sh     loads database/package-replacements.conf
 report.sh           writes the install report
 requirements.sh     loads database/package-requirements.conf
 resolver.sh         reads packages.list into the install queue
 retry.sh            retry wrapper with backoff
+services.sh         enables the services in services.list
 snapshot.sh         snapshot storage and rollback
 validator.sh        validates the queue and applies replacements
 ```
@@ -329,19 +347,27 @@ HyprX settings. Read by the tool. Never deployed.
 Lookup tables read by the installer.
 
 ```
+binary-providers.conf      binary name to the package that provides it
 deprecated-packages.conf   packages no longer installed
 mirrors.conf               mirror lookups
 package-replacements.conf  package name to package name
 package-requirements.conf  package to a setup hint
 ```
 
+`binary-providers.conf` is the guard against the bug class that cost this rice
+the most: a binary referenced by the config that nothing installs. It shipped
+seven at once — `hyprpaper` (the entire wallpaper and dynamic-theming chain),
+`notify-send` (the error handler for six scripts), `hostname`, `fc-cache`,
+`fc-match` — and every one failed silently. `hyprx doctor --only manifest`
+checks that every declared provider is in `packages.list` and that every command
+referenced by `config/` and `scripts/` is either declared or installed.
+
 `scripts/`
 Standalone utilities. Run directly by a keybind or by hand. Not reachable from the CLI.
 
 ```
 apply-wallust-theme.sh   runs wallust then reloads affected apps
-backup-config.sh        ad hoc snapshot of ~/.config
-dev-sync.sh             dev loop helper
+backup-config.sh        ad hoc snapshot of the deployed configs
 fix-sddm-greeter.sh     syncs the SDDM greeter config
 gpu-offload-setup.sh    sets up PRIME offload env vars
 power-profile-cycle.sh  cycles ASUS power profiles
@@ -358,6 +384,11 @@ wallpaper-restore.sh    sets the wallpaper at login
 Run with `bash tests/run_tests.sh`.
 The transcript of the last run is written to `tests/test-results.log`.
 
+`tests/review-checks.sh`
+The checkable claims from REVIEW.md as an executable script. `--fix` applies the
+safe mechanical ones. It reports the reason for each finding in prose, so unlike
+the suite it is self-explanatory when something breaks.
+
 ## Config files
 
 Nine directories are deployed to `~/.config/`.
@@ -365,7 +396,7 @@ That list lives in `HYPRX_CONFIG_TARGETS` in `lib/installer/deploy.sh`.
 A directory that is not in that list is never deployed.
 
 `config/hypr/` 6 files. Session config plus lock screen plus idle daemon plus hyprpaper.
-`config/waybar/` 28 files. Status bar config and styles and one theme and 18 helper scripts.
+`config/waybar/` 23 files. Status bar config, styles, one theme and 13 helper scripts.
 `config/wlogout/` 3 files. Logout menu.
 `config/swaync/` 3 files. Notification daemon.
 `config/swappy/` 1 file. Screenshot annotation tool.
@@ -434,6 +465,25 @@ Also changed
 System packages installed through pacman or yay or paru.
 Systemd services enabled per `services.list`.
 
+## Fonts
+
+Caudex is the only font, in all four static faces (Regular, Bold, Italic,
+Bold Italic), installed to `~/.local/share/fonts/hyprx/`.
+
+It is fetched directly from the upstream Google Fonts repository and pinned by
+SHA256 rather than installed as a package, because the only Arch option —
+`ttf-google-fonts-git` — depends on 22 further font packages (`noto-*`,
+`adobe-source-*`, `roboto`, `ubuntu`, `fira`, `lato` and more) and installs the
+entire Google catalogue. That is hundreds of megabytes for one serif face.
+Caudex is 4 files, under 2 MB.
+
+`hyprx install` verifies every file against its pin and refuses to install
+anything on a mismatch. `hyprx doctor --only fonts` re-checks the installed
+files and confirms `fc-match` resolves them.
+
+If a checksum ever fails because Google re-cut the fonts, re-pin deliberately in
+`lib/installer/fonts.sh` after confirming the new file is genuinely Caudex.
+
 ## Known gaps
 
 `THEME` does nothing.
@@ -450,3 +500,21 @@ See the special cases above.
 Arch Linux only. Package handling is built around pacman or yay or paru.
 No distro package. `install.sh` gives you a standalone install only.
 One fixed configuration. No profiles. Edit `packages.list` and `services.list` directly.
+
+### Hardware assumptions
+
+This is a single-GPU-in-everything-except-the-GPU rice for an ASUS hybrid-GPU
+laptop, and it says so:
+
+- The GPU, power-profile and hybrid-display packages (`nvidia-utils`,
+  `supergfxctl`, `intel-gpu-tools`, `asusctl`, `rog-control-center`) install
+  unconditionally. On other hardware they are inert but present. Remove that
+  section from `packages.list` and the matching entries from `services.list` if
+  they do not apply to you.
+- `scripts/fix-sddm-greeter.sh` is for SDDM specifically. HyprX does not install
+  a display manager; you need one already configured to reach this login screen.
+- One keybind opens a browser that is not installed by default. Edit `browser`
+  in `config/hypr/hyprland.lua` and add the package to `packages.list`.
+- `doctor` exits 2 on real errors, 1 on warnings, 0 when clean. Run it after any
+  change to a template or package list — it is the only thing that will tell you
+  a template stopped covering its consumer.

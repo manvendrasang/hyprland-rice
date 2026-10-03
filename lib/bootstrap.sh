@@ -35,9 +35,10 @@ for file in \
     recovery.sh \
     resolver.sh \
     validator.sh \
-    compatibility.sh \
-    preflight.sh \
+    gate.sh \
     install_packages.sh \
+    services.sh \
+    fonts.sh \
     snapshot.sh \
     deploy.sh \
     report.sh \

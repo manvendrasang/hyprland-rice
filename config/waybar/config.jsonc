@@ -28,7 +28,9 @@
       "backlight",
       "pulseaudio",
       "battery",
-      "custom/notifications"
+      "custom/music",
+      "custom/notifications",
+      "tray"
     ],
  
     "custom/logo": {
@@ -111,6 +113,15 @@
       "signal": 10,
       "on-click": "blueman-manager",
       "on-click-right": "kitty -e bluetoothctl"
+    },
+
+    "custom/music": {
+      "exec": "$HOME/.config/waybar/scripts/music.sh",
+      "return-type": "json",
+      "interval": 5,
+      "signal": 9,
+      "on-click": "playerctl play-pause",
+      "on-click-right": "playerctl next"
     },
 
     "custom/notifications": {

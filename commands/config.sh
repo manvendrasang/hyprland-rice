@@ -60,22 +60,33 @@ case "$ACTION" in
             usage
             exit 1
         fi
-        if ! hyprx_config_set "$KEY" "$VALUE"; then
-            hyprx_ui_error "Unknown key: $KEY"
-            usage
-            exit 1
-        fi
-        # Validate after confirming the key exists, so an unknown key reports
-        # "unknown key" rather than the misleading "invalid value".
-        if ! hyprx_config_validate "$KEY" "$VALUE"; then
-            hyprx_ui_error "Invalid value for $KEY: '$VALUE'"
-            # Revert so a rejected value never persists.
-            hyprx_config_unset "$KEY" >/dev/null 2>&1 || true
-            hyprx_ui_info "Valid values: see 'hyprx config --help'. Current value left unchanged."
-            exit 1
-        fi
-        hyprx_ui_success "$KEY = $VALUE"
-        hyprx_logger_success "config set $KEY=$VALUE"
+
+        # hyprx_config_set validates before it writes and returns:
+        #   0 written, 1 unknown key, 2 invalid value
+        #
+        # It used to be called with no validation and this block validated
+        # afterwards, then "reverted" the bad write with hyprx_config_unset -
+        # which restores the DEFAULT rather than the previous value. A rejected
+        # set therefore destroyed whatever was there before.
+        hyprx_config_set "$KEY" "$VALUE"
+        case "$?" in
+            0)
+                hyprx_ui_success "$KEY = $VALUE"
+                hyprx_logger_success "config set $KEY=$VALUE"
+                ;;
+            2)
+                hyprx_ui_error "Invalid value for $KEY: '$VALUE'"
+                hyprx_ui_info "Value not written. $(hyprx_config_current_is "$KEY")"
+                hyprx_ui_info "Valid values: hyprx config --help"
+                exit 1
+                ;;
+            *)
+                hyprx_ui_error "Unknown key: $KEY"
+                hyprx_ui_info "Valid keys: $(printf '%s ' "${!HYPRX_CONFIG_KEYS[@]}" | sed 's/HYPRX_CONFIG_//g')"
+                usage
+                exit 1
+                ;;
+        esac
         ;;
 
     unset)

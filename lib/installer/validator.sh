@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 
 hyprx_validator_validate() {
-    hyprx_ui_header
-    hyprx_ui_info "Validating packages..."
+    # No hyprx_ui_header here. The engine opens with one banner for the whole
+    # run; four stages each printing their own meant a single install scrolled
+    # past five copies of the same box. Use hyprx_ui_section to label the stage.
+    hyprx_ui_section "Validating packages"
 
     HYPRX_VALIDATED_QUEUE=()
     HYPRX_INVALID_PACKAGES=()

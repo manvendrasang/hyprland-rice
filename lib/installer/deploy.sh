@@ -104,7 +104,13 @@ hyprx_deploy_remove_orphaned() {
 
     local dir target backup
 
+    # Deliberate word-splitting: both HYPRX_CONFIG_TARGETS and the contents of
+    # deployed-targets are space-separated lists of directory names, not arrays.
+    # Every name has already passed the [a-zA-Z0-9._-] check in
+    # hyprx_deploy_config_dir, so there is nothing here for a glob to match.
+    # shellcheck disable=SC2086
     for dir in $previous; do
+        # shellcheck disable=SC2086
         if printf '%s\n' $HYPRX_CONFIG_TARGETS | grep -qx "$dir"; then
             continue
         fi
@@ -132,6 +138,10 @@ hyprx_deploy_all() {
     hyprx_ui_section "Deploying configuration"
 
     local dir
+    # Deliberate word-splitting: HYPRX_CONFIG_TARGETS is a space-separated list
+    # of directory names, not an array. Each is validated by
+    # hyprx_deploy_config_dir before anything is written.
+    # shellcheck disable=SC2086
     for dir in $HYPRX_CONFIG_TARGETS; do
         hyprx_deploy_config_dir "$dir"
     done
@@ -143,6 +153,8 @@ hyprx_deploy_all() {
     if hyprx_util_dry_run; then
         hyprx_util_would "record deploy targets for the next run"
     else
+        # One argument per target; the function writes them one per line.
+        # shellcheck disable=SC2086
         hyprx_snapshot_write_deployed $HYPRX_CONFIG_TARGETS
     fi
 }

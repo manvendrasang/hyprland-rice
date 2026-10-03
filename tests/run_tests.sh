@@ -74,6 +74,49 @@ run_capture() {
     printf '%s' "$rc"
 }
 
+# Build a local stand-in for the four Caudex faces: real filenames, synthetic
+# contents, and a checksum for each. Emits the "file|sha256 ..." spec that
+# lib/installer/fonts.sh reads, so the fetch -> size -> SHA256 -> move ->
+# fc-cache path is exercised for real with no network and no font binaries in
+# the repository.
+#
+# The four shipped production pins are asserted separately against the upstream
+# files, so redirecting the source here cannot hide a bad pin.
+# Read the SHIPPED pin list out of lib/installer/fonts.sh. Extracted here rather
+# than grepped inline because the trimming matters: the spec is one long
+# space-separated string, so the last entry carries a trailing space that makes
+# a naive `[0-9a-f]{64}` test fail.
+font_shipped_spec() {
+    local raw
+    raw="$(grep -oE 'HYPRX_FONT_SPEC="\$\{HYPRX_FONT_SPEC:-[^}]*\}' \
+        "$ROOT_DIR/lib/installer/fonts.sh")"
+
+    # Strip the `HYPRX_FONT_SPEC="${HYPRX_FONT_SPEC:-` prefix and the trailing
+    # `}"` with parameter expansion rather than sed: the spec itself contains
+    # `|` and the sed alternation kept proving fragile against it.
+    raw="${raw#*HYPRX_FONT_SPEC:-}"
+    raw="${raw%\}}"
+
+    local entry out=""
+    for entry in $raw; do
+        entry="${entry%"${entry##*[![:space:]]}"}"
+        out+="$entry "
+    done
+    printf '%s' "${out% }"
+}
+
+font_fixture_spec() {
+    local dir="$1"
+    mkdir -p "$dir"
+    local f
+    for f in Caudex-Regular.ttf Caudex-Bold.ttf Caudex-Italic.ttf Caudex-BoldItalic.ttf; do
+        printf 'synthetic %s fixture for testing\n' "$f" >"$dir/$f"
+    done
+    ( cd "$dir" && for f in Caudex-Regular.ttf Caudex-Bold.ttf Caudex-Italic.ttf Caudex-BoldItalic.ttf; do
+        printf '%s|%s ' "$f" "$(sha256sum "$f" | awk '{print $1}')"
+    done )
+}
+
 # Assert a command exits with one of the codes listed in $2 (comma separated).
 # Usage: assert_exit_in "<label>" "<0,1,2>" <cmd> [args...]
 assert_exit_in() {
@@ -130,9 +173,12 @@ assert_true test -d "$HYPRX_COMMANDS"
 # Test: Config
 log "Testing config..."
 assert_equals default "$(hyprx_config_get THEME)"
-hyprx_config_set THEME dark
+
+# hyprx_config_set now validates before it writes, so a theme name has to be a
+# real theme. "dark" was never a theme and the old unvalidated setter accepted it.
+hyprx_config_set THEME one-dark
 hyprx_config_load
-assert_equals dark "$HYPRX_CONFIG_THEME"
+assert_equals one-dark "$HYPRX_CONFIG_THEME"
 hyprx_config_set THEME default
 
 # Config keys must not leak into the global namespace - a bare
@@ -237,7 +283,11 @@ if [[ -f "$HYPRX_DATABASE/package-replacements.conf" ]]; then
         [[ -z "$old" ]] && continue
         [[ "$old" =~ ^# ]] && continue
         replacement="$(hyprx_replacements_get "$old")"
-        [[ "$replacement" == "$new" ]] && pass "$old -> $new" || fail "$old -> $new (got: $replacement)"
+        if [[ "$replacement" == "$new" ]]; then
+            pass "$old -> $new"
+        else
+            fail "$old -> $new (got: $replacement)"
+        fi
     done < "$HYPRX_DATABASE/package-replacements.conf"
 fi
 
@@ -839,15 +889,30 @@ pass "CLI OK"
 
 # Test: Permissions
 log "Checking permissions..."
-find "$ROOT_DIR/bin" "$ROOT_DIR/scripts" -type f | while IFS= read -r file; do
+# Process substitution, NOT `find | while`. A pipeline runs the right-hand side
+# in a subshell, so every `fail` here incremented FAILED in a process that then
+# exited - the counter never changed and the check could not fail. Verified: the
+# old form printed the [FAIL] lines and still reported FAILED=0.
+#
+# config/waybar/scripts is included because all 18 of those are invoked by bare
+# path from config.jsonc and hyprland.lua, which needs the executable bit.
+while IFS= read -r file; do
     [[ -x "$file" ]] || fail "$file is not executable"
-done
+done < <(find "$ROOT_DIR/bin" "$ROOT_DIR/scripts" "$ROOT_DIR/config/waybar/scripts" -type f 2>/dev/null)
 pass "Permissions OK"
 
 # Test: Scripts
 log "Checking helper scripts..."
-for script in backup-config.sh dev-sync.sh reload-hypr.sh reload-waybar.sh; do
-    [[ -x "$ROOT_DIR/scripts/$script" ]] && pass "$script executable" || fail "$script not executable"
+# dev-sync.sh is deliberately absent: two copies shipped, both broken. The one
+# in config/waybar/scripts deleted the directory it was executing from and then
+# copied from a path that no longer existed; the one in scripts/ ran
+# `rsync --delete` into ~/.config/hypr, destroying the live hyprpaper.conf.
+for script in backup-config.sh reload-hypr.sh reload-waybar.sh; do
+    if [[ -x "$ROOT_DIR/scripts/$script" ]]; then
+        pass "$script executable"
+    else
+        fail "$script not executable"
+    fi
 done
 pass "Scripts OK"
 
@@ -1293,6 +1358,946 @@ if printf '%s' "$out" | grep -q 'Hybrid GPU'; then
     fail "--skip gpu still ran the Hybrid GPU section"
 else
     pass "--skip gpu excludes Hybrid GPU"
+fi
+
+# ============================================
+# Install pipeline, end to end through the CLI
+# ============================================
+# These are the tests that would have caught the errexit leak: they drive the
+# real `hyprx install` binary with a stubbed package layer, rather than calling
+# the stage functions directly. The suite previously never invoked
+# `hyprx install` through the CLI at all - only `install --help` and
+# `install --bogus` - so no test could observe what the install stage returned
+# or what the pipeline did after it.
+log "Testing hyprx install end to end..."
+
+E2E_ROOT="$TEST_ROOT/e2e"
+mkdir -p "$E2E_ROOT/bin"
+export HYPRX_INSTALL_DIR="$E2E_ROOT/share/hyprx"
+export HYPRX_BIN_DIR="$E2E_ROOT/bin"
+bash "$ROOT_DIR/install.sh" >/dev/null 2>&1
+E2E_CLI="$HYPRX_BIN_DIR/hyprx"
+
+# Stub `pacman` so nothing real is ever touched. Answers:
+#   -Q <pkg>   not installed   (exit 1)
+#   -Si <pkg>  known           (exit 0)  -> passes validation
+#   -S ...     the FAIL_PKGS list decides
+#   -Qtdq      no orphans
+#   -Qdtq      no orphans
+# `sudo` is stubbed too so nothing can escalate.
+cat >"$E2E_ROOT/bin/pacman" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+    -Q|-Qq)  exit 1 ;;
+    -Si)     exit 0 ;;
+    -Qtdq)   exit 0 ;;
+    -Qdtq)   exit 1 ;;
+    -S)
+        for arg in "$@"; do
+            case "$arg" in
+                -*) continue ;;
+                *)
+                    if printf '%s\n' "$E2E_FAIL_PKGS" | grep -qx "$arg"; then
+                        echo "error: failed to prepare transaction ($arg)" >&2
+                        exit 1
+                    fi
+                    ;;
+            esac
+        done
+        exit 0
+        ;;
+esac
+exit 0
+STUB
+# `sudo` is stubbed so the gate passes. The real sudo needs a tty and an
+# authenticated ticket, neither of which a non-interactive test run has, so
+# without this the pipeline stops at the gate and every stage after it is never
+# reached - which is exactly the gap that let a fatal bug in the install loop
+# ship green.
+#
+# The gate prefers `sudo -n true` (never prompts, does not extend the
+# credential timestamp) and only falls back to `sudo -v` on a tty. clean.sh and
+# services.sh also use `sudo -n true`. Everything else execs the stubbed command.
+cat >"$E2E_ROOT/bin/sudo" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+    -v|-n) exit 0 ;;
+esac
+exec "$@"
+STUB
+chmod +x "$E2E_ROOT/bin/pacman" "$E2E_ROOT/bin/sudo"
+
+export PATH="$E2E_ROOT/bin:$PATH"
+export E2E_FAIL_PKGS=""
+export HYPRX_TARGET_HOME="$E2E_ROOT/home"
+export HYPRX_STATE_DIR="$E2E_ROOT/state"
+
+# The font install must not touch the real network during a test run: four TLS
+# fetches per invocation, and a network outage would turn a code regression into
+# a red CI for the wrong reason.
+#
+# Instead the source is redirected to a file:// URL and the pin list to the real
+# checksums of the fixtures, so the fetch -> size -> SHA256 -> move -> fc-cache
+# path is genuinely exercised with no network. The production pin list is
+# asserted separately below, so overriding it here cannot hide a bad pin.
+export HYPRX_FONT_SOURCE="file://$TEST_ROOT/fontsrc"
+FONT_SPEC="$(font_fixture_spec "$TEST_ROOT/fontsrc")"
+export HYPRX_FONT_SPEC="$FONT_SPEC"
+export HYPRX_FONT_DIR="$E2E_ROOT/fonts"
+
+mkdir -p "$HYPRX_TARGET_HOME/.config" "$HYPRX_STATE_DIR"
+
+# --- 1. a clean install reaches the end and says so ------------------------
+# The `&&/||` form, not `out="$(...)"; rc=$?`: this file runs under
+# `set -euo pipefail`, and a bare assignment whose command substitution exits
+# non-zero is itself a failing command - so the suite would abort here on
+# exactly the case this block exists to test, before any assertion ran.
+e2e_out="$(HYPRX_STATE_DIR="$E2E_ROOT/state" "$E2E_CLI" install 2>&1)" && e2e_rc=0 || e2e_rc=$?
+
+if grep -q "Installation completed successfully" <<<"$e2e_out"; then
+    pass "install reports success when nothing fails"
+else
+    fail "install did not report success on a clean run"
+fi
+assert_equals "0" "$e2e_rc"
+
+# One banner, not five. preflight.sh and compatibility.sh each opened with
+# hyprx_ui_header, as did validator.sh and install_packages.sh, so a single
+# install scrolled past five copies of the same box.
+banner_count="$(grep -c 'HyprX  ' <<<"$e2e_out")"
+assert_equals "1" "$banner_count"
+
+# The two gates are now one, and it must appear exactly once.
+gate_count="$(grep -c '== Preflight checks ==' <<<"$e2e_out")"
+assert_equals "1" "$gate_count"
+
+if grep -q 'Checking system compatibility' <<<"$e2e_out"; then
+    fail "the old second gate is still running"
+else
+    pass "there is no second compatibility gate"
+fi
+
+# The gate must probe each fact exactly once, and must never use `sudo -v`.
+#
+# `sudo -v` refreshes the credential timestamp and can prompt for a password;
+# `sudo -n true` only tests for a cached ticket and never prompts. The old pair
+# of gates called `sudo -v` twice per install and `ping` twice as well.
+#
+# Measured by calling hyprx_install_gate directly rather than through the CLI,
+# so the count cannot be polluted by services.sh and clean.sh - which run their
+# own `sudo -n true` later, correctly, as separate stages.
+#
+# The probes are counted with real wrapper scripts on PATH rather than shell
+# functions: the gate runs inside a `bash -c` subshell, which re-sources
+# bootstrap.sh and would discard any function defined in this scope.
+SPY_DIR="$TEST_ROOT/spybin"
+PROBE_LOG="$TEST_ROOT/probe.log"
+mkdir -p "$SPY_DIR"
+
+make_spy() {
+    local name="$1"
+    cat >"$SPY_DIR/$name" <<SPY
+#!/usr/bin/env bash
+echo "$name \$*" >> "$PROBE_LOG"
+exec "$(command -v "$name" 2>/dev/null || echo true)" "\$@"
+SPY
+    chmod +x "$SPY_DIR/$name"
+}
+
+# awk is spied as well as the obvious four, because the RAM read is an awk
+# invocation and that is the probe whose duplication was a real bug.
+for spy in sudo ping df nproc awk; do
+    make_spy "$spy"
+done
+
+# awk is spied too, but only to count the RAM read. It must still behave
+# normally, so it forwards to the real awk.
+: >"$PROBE_LOG"
+
+(
+    PATH="$SPY_DIR:$PATH" \
+    HYPRX_DRY_RUN=1 \
+    bash -c 'source "$1/lib/bootstrap.sh"; hyprx_install_gate' _ "$ROOT_DIR"
+) >/dev/null 2>&1
+
+spy_count() {
+    local pattern="$1" n
+    n="$(grep -cE "$pattern" "$PROBE_LOG" 2>/dev/null || true)"
+    printf '%s' "${n:-0}"
+}
+
+sudo_v="$(spy_count '^sudo -v')"
+if [[ "$sudo_v" == "0" ]]; then
+    pass "the gate never calls 'sudo -v' - no prompt, no timestamp extension"
+else
+    fail "the gate called 'sudo -v' $sudo_v time(s)"
+fi
+
+sudo_n="$(spy_count '^sudo -n')"
+if [[ "$sudo_n" == "1" ]]; then
+    pass "the gate probes the sudo ticket exactly once"
+else
+    fail "the gate made $sudo_n sudo probes, expected exactly 1"
+fi
+
+ping_n="$(spy_count '^ping ')"
+if [[ "$ping_n" == "1" ]]; then
+    pass "the gate probes the network exactly once"
+else
+    fail "the gate probed the network $ping_n times"
+fi
+
+nproc_n="$(spy_count '^nproc')"
+if [[ "$nproc_n" == "1" ]]; then
+    pass "the gate probes the CPU count exactly once"
+else
+    fail "the gate probed the CPU count $nproc_n times"
+fi
+
+# df twice is correct - / and $HOME are different filesystems and both matter -
+# but each must be asked exactly once.
+df_n="$(spy_count '^df ')"
+if [[ "$df_n" == "2" ]]; then
+    pass "the gate measures each of / and \$HOME exactly once"
+else
+    fail "the gate ran df $df_n times, expected 2 (once per filesystem)"
+fi
+
+# The RAM read must be one awk invocation over /proc/meminfo.
+meminfo_n="$(spy_count '^awk .*MemTotal')"
+if [[ "$meminfo_n" == "1" ]]; then
+    pass "the gate reads MemTotal once"
+else
+    fail "the gate read MemTotal $meminfo_n times"
+fi
+
+# Every stage must have run. The service stage did not exist before, so this is
+# also the assertion that README.md:15 ("Enables the systemd services listed in
+# services.list") is now true rather than aspirational.
+for stage in "Preflight checks" "Validating packages" "Installing packages" "Fonts" "Systemd services" "Deploying configuration" "Snapshot saved"; do
+    if grep -q "$stage" <<<"$e2e_out"; then
+        pass "install ran the '$stage' stage"
+    else
+        fail "install never reached the '$stage' stage"
+    fi
+done
+
+# The configs and the state must actually be on disk afterwards.
+assert_true test -d "$HYPRX_TARGET_HOME/.config/hypr"
+assert_true test -f "$HYPRX_TARGET_HOME/.config/waybar/config.jsonc"
+if [[ -f "$HYPRX_STATE_DIR/install.state" ]]; then
+    fail "install.state left behind after a clean install"
+else
+    pass "install.state cleared on success"
+fi
+
+# --- 2. THE REGRESSION: failing packages must not abort the pipeline -------
+# Before the fix, `set -e` leaked out of the install loop, so the first retry of
+# a failing package killed the process: no retry ladder, no summary, no deploy,
+# no snapshot, and install.state left behind for the next run to resume from.
+export E2E_FAIL_PKGS="rofi
+swaync"
+
+mkdir -p "$E2E_ROOT/home2/.config"
+e2e_out="$(HYPRX_TARGET_HOME="$E2E_ROOT/home2" "$E2E_CLI" install 2>&1)" && e2e_rc=0 || e2e_rc=$?
+
+# It must NOT claim success.
+if grep -q "Installation completed successfully" <<<"$e2e_out"; then
+    fail "install claimed success while packages were failing"
+else
+    pass "install does not claim success when packages fail"
+fi
+
+# It must still finish the pipeline.
+for stage in "Retrying failed packages" "Installation Summary" "Systemd services" "Deploying configuration"; do
+    if grep -q "$stage" <<<"$e2e_out"; then
+        pass "pipeline survived failures and reached '$stage'"
+    else
+        fail "pipeline aborted before '$stage' (errexit leak?)"
+    fi
+done
+
+# The retry ladder must have actually retried.
+retry_count="$(grep -c "Retrying " <<<"$e2e_out")"
+if (( retry_count > 0 )); then
+    pass "retry ladder ran ($retry_count attempts)"
+else
+    fail "no retry attempts after a package failure"
+fi
+
+# The summary must report the failures.
+if grep -qE "Failed[[:space:]]*:[[:space:]]*[1-9]" <<<"$e2e_out"; then
+    pass "install summary reports a non-zero failure count"
+else
+    fail "install summary did not report the failures"
+fi
+
+# Non-zero exit.
+if (( e2e_rc != 0 )); then
+    pass "install exits non-zero when packages fail (rc=$e2e_rc)"
+else
+    fail "install exited 0 despite failing packages"
+fi
+
+# Recovery state must be cleared even on a partial run - otherwise the next
+# install resumes from a phantom interrupted one.
+if [[ -f "$E2E_ROOT/state/install.state" ]]; then
+    fail "install.state left behind after a partial install"
+else
+    pass "install.state cleared after a partial install"
+fi
+
+# And the configs must still have been deployed, because that is what the user
+# needs in order to recover.
+assert_true test -d "$E2E_ROOT/home2/.config/hypr"
+
+export E2E_FAIL_PKGS=""
+
+# --- 3. --dry-run through the CLI changes nothing --------------------------
+DRY_HOME="$E2E_ROOT/dryhome"
+mkdir -p "$DRY_HOME/.config"
+dry_before="$(find "$DRY_HOME" | wc -l | tr -d ' ')"
+dry_out="$(HYPRX_TARGET_HOME="$DRY_HOME" HYPRX_STATE_DIR="$E2E_ROOT/state" "$E2E_CLI" install --dry-run 2>&1)"
+
+if grep -q "Dry run complete" <<<"$dry_out"; then
+    pass "install --dry-run reports it changed nothing"
+else
+    fail "install --dry-run did not print its completion notice"
+fi
+
+dry_after="$(find "$DRY_HOME" | wc -l | tr -d ' ')"
+assert_equals "$dry_before" "$dry_after"
+
+if [[ -d "$DRY_HOME/.config/hypr" ]]; then
+    fail "install --dry-run deployed configs anyway"
+else
+    pass "install --dry-run deployed nothing"
+fi
+
+# It must still reach every stage - that is the point of the flag.
+for stage in "Validating packages" "Installing packages" "Fonts" "Systemd services" "Deploying configuration"; do
+    if grep -q "$stage" <<<"$dry_out"; then
+        pass "install --dry-run reached '$stage'"
+    else
+        fail "install --dry-run skipped '$stage'"
+    fi
+done
+
+# --dry-run must not claim a snapshot it did not write.
+if grep -q "Snapshot saved" <<<"$dry_out"; then
+    fail "install --dry-run wrote a snapshot"
+else
+    pass "install --dry-run wrote no snapshot"
+fi
+
+# ============================================
+# wallust template / stylesheet variable contract
+# ============================================
+# wallust overwrites config/waybar/styles/colors.css on the FIRST wallpaper
+# change. Five variables existed only in the committed default, so after that
+# change GTK dropped every rule using them and the bar silently lost its module
+# backgrounds, borders, rounded corners and two module colours - while a fresh
+# clone still looked correct, which is why it shipped.
+log "Testing wallust template contract..."
+
+colour_vars() {
+    grep -oE '^\s*@define-color\s+[a-zA-Z0-9_-]+' "$1" | awk '{print "@"$2}' | sort -u
+}
+
+used_vars() {
+    # @import/@define-color are at-rules, not variable references.
+    grep -ohE '@[a-zA-Z0-9_-]+' "$@" 2>/dev/null \
+        | grep -vE '^@(import|define-color|media|keyframes|supports)$' \
+        | sort -u
+}
+
+WAYBAR_STYLES=(
+    "$ROOT_DIR/config/waybar/styles/modules.css"
+    "$ROOT_DIR/config/waybar/styles/tray.css"
+    "$ROOT_DIR/config/waybar/styles/base.css"
+    "$ROOT_DIR/config/waybar/styles/workspaces.css"
+    "$ROOT_DIR/config/waybar/styles/tooltip.css"
+    "$ROOT_DIR/config/waybar/styles/animations.css"
+)
+
+colour_vars "$ROOT_DIR/config/wallust/templates/waybar-colors.css" >"$TEST_ROOT/tmpl_vars"
+used_vars "${WAYBAR_STYLES[@]}" >"$TEST_ROOT/used_vars"
+
+missing_vars="$(comm -23 "$TEST_ROOT/used_vars" "$TEST_ROOT/tmpl_vars")"
+if [[ -z "$missing_vars" ]]; then
+    pass "waybar template defines every variable the stylesheets use"
+else
+    fail "waybar template is missing: $(tr '\n' ' ' <<<"$missing_vars")"
+fi
+
+colour_vars "$ROOT_DIR/config/waybar/styles/colors.css" >"$TEST_ROOT/default_vars"
+if diff -q "$TEST_ROOT/default_vars" "$TEST_ROOT/tmpl_vars" >/dev/null; then
+    pass "committed default and wallust template declare the same variables"
+else
+    fail "default/template variable sets differ: $(diff "$TEST_ROOT/default_vars" "$TEST_ROOT/tmpl_vars" | tr '\n' ' ')"
+fi
+
+# The same contract for every other wallust template that feeds a stylesheet.
+check_template_contract() {
+    local tpl="$1"; shift
+    local name; name="$(basename "$tpl")"
+    colour_vars "$tpl" >"$TEST_ROOT/tv"
+    used_vars "$@" >"$TEST_ROOT/uv"
+    local miss; miss="$(comm -23 "$TEST_ROOT/uv" "$TEST_ROOT/tv")"
+    if [[ -z "$miss" ]]; then
+        pass "$name covers its consumer"
+    else
+        fail "$name is missing: $(tr '\n' ' ' <<<"$miss")"
+    fi
+}
+
+check_template_contract "$ROOT_DIR/config/wallust/templates/swaync-colors.css" "$ROOT_DIR/config/swaync/style.css"
+check_template_contract "$ROOT_DIR/config/wallust/templates/wlogout-colors.css" "$ROOT_DIR/config/wlogout/style.css"
+
+# ============================================
+# Fonts: Caudex only, JetBrainsMono gone
+# ============================================
+# Caudex is the only font this rice uses. It is fetched and SHA256-pinned by
+# lib/installer/fonts.sh rather than installed as a package, because
+# ttf-google-fonts-git pulls in the whole Google catalogue plus 22 font packages.
+log "Testing font configuration..."
+
+# JetBrainsMono was in every font-family while its package was in neither list -
+# the README called it "assumed pre-installed". The whole UI depended on it.
+if grep -rq "JetBrains" "$ROOT_DIR/config" "$ROOT_DIR/packages.list" 2>/dev/null; then
+    hits="$(grep -rl "JetBrains" "$ROOT_DIR/config" "$ROOT_DIR/packages.list" 2>/dev/null | tr '\n' ' ')"
+    fail "JetBrainsMono is still referenced: $hits"
+else
+    pass "no JetBrainsMono references remain"
+fi
+
+# The replacement must not have introduced an unquoted or empty font stack.
+while IFS= read -r decl; do
+    family="${decl#*: }"
+    if [[ -z "${family// /}" ]]; then
+        fail "empty font-family in $decl"
+        continue
+    fi
+    if [[ "$family" == *"," ]] && [[ "${family%,}" =~ [[:space:]] ]]; then
+        fail "trailing comma in font-family: $decl"
+        continue
+    fi
+done < <(grep -rhoE 'font-family: [^;]+' "$ROOT_DIR/config" 2>/dev/null | sort -u)
+pass "font-family declarations are well formed"
+
+if [[ -f "$ROOT_DIR/lib/installer/fonts.sh" ]]; then
+    # The shipped default pin list, read out of the source so this tracks the
+    # file rather than a copy of it. The E2E block above overrides
+    # HYPRX_FONT_SPEC with a local fixture, so this is the only assertion on the
+    # real pins.
+    default_spec="$(font_shipped_spec)"
+
+    font_entries=0
+    pin_ok=true
+    for entry in $default_spec; do
+        [[ "$entry" == *"|"* ]] || { pin_ok=false; continue; }
+        name="${entry%%|*}"
+        pin="${entry##*|}"
+        # The trailing space of the last entry is part of the token, so trim it.
+        pin="${pin%"${pin##*[![:space:]]}"}"
+
+        [[ "$pin" =~ ^[0-9a-f]{64}$ ]] || { pin_ok=false; continue; }
+        [[ "$name" =~ ^Caudex-(Regular|Bold|Italic|BoldItalic)\.ttf$ ]] || { pin_ok=false; continue; }
+        font_entries=$((font_entries + 1))
+    done
+
+    if $pin_ok; then
+        pass "the shipped pin list is 4 well-formed Caudex entries"
+    else
+        fail "the shipped pin list has a malformed entry: $default_spec"
+    fi
+    assert_equals "4" "$font_entries"
+
+    # Four DISTINCT checksums. A duplicated one would install four copies of a
+    # single file while still reporting every file as verified.
+    # Word-split on purpose: $default_spec is a space-separated list of
+    # "file|sha256" entries, and each field is split again on the pipe below.
+    # shellcheck disable=SC2086
+    dupes="$(printf '%s\n' $default_spec | awk -F'|' '{print $2}' | sort | uniq -d | tr -d ' ')"
+    assert_equals "" "$dupes"
+
+    # The upstream URL must be the real one. If it were pointed somewhere else
+    # the pins would still "verify" against whatever that host served.
+    if grep -q 'HYPRX_FONT_SOURCE:-https://raw.githubusercontent.com/google/fonts/main/ofl/caudex' \
+        "$ROOT_DIR/lib/installer/fonts.sh"; then
+        pass "fonts are fetched from the upstream Google Fonts repository"
+    else
+        fail "the Caudex source URL is not the upstream google/fonts repo"
+    fi
+
+    # Verify the pins against the real upstream files. Skipped without network,
+    # because a CI outage must not read as a code regression - but on a machine
+    # with connectivity this is the check that proves the pins are Caudex.
+    if command -v curl >/dev/null 2>&1 && curl -fsSL --max-time 20 \
+        -o /dev/null "https://raw.githubusercontent.com/google/fonts/main/ofl/caudex/Caudex-Regular.ttf" 2>/dev/null
+    then
+        upstream_spec="$(mktemp -d)"
+        pin_mismatch=0
+        for entry in $default_spec; do
+            name="${entry%%|*}"
+            pin="${entry##*|}"
+            if curl -fsSL --max-time 60 -o "$upstream_spec/$name" \
+                "https://raw.githubusercontent.com/google/fonts/main/ofl/caudex/$name" 2>/dev/null
+            then
+                got="$(sha256sum "$upstream_spec/$name" 2>/dev/null | awk '{print $1}')"
+                if [[ "$got" != "$pin" ]]; then
+                    fail "pin for $name does not match upstream (upstream may have been re-cut; re-pin deliberately)"
+                    pin_mismatch=$((pin_mismatch + 1))
+                fi
+            else
+                fail "could not fetch $name from upstream to verify its pin"
+                pin_mismatch=$((pin_mismatch + 1))
+            fi
+        done
+        rm -rf "$upstream_spec"
+        (( pin_mismatch == 0 )) && pass "all 4 pinned checksums match the upstream Caudex files"
+    else
+        hyprx_ui_info "no network - upstream checksum verification skipped"
+    fi
+else
+    fail "lib/installer/fonts.sh missing"
+fi
+
+# --- the fetch-and-verify path, exercised for real --------------------------
+# Local fixtures, so this runs offline and installs no font binaries into the
+# repository. A wrong checksum must fail the install rather than install the
+# wrong bytes.
+FONTBOX="$TEST_ROOT/fontbox"
+font_fixture_spec "$FONTBOX/src" >/dev/null
+fixture_spec="$(font_fixture_spec "$FONTBOX/src")"
+
+(
+    HYPRX_FONT_DIR="$FONTBOX/dst" \
+    HYPRX_FONT_SOURCE="file://$FONTBOX/src" \
+    HYPRX_FONT_SPEC="$fixture_spec" \
+    HYPRX_DRY_RUN=0 \
+    bash -c 'source "$1/lib/bootstrap.sh"; hyprx_fonts_install' _ "$ROOT_DIR"
+) >"$FONTBOX/good.log" 2>&1
+if [[ -f "$FONTBOX/dst/Caudex-Regular.ttf" ]] && grep -q "Installed" "$FONTBOX/good.log"; then
+    pass "font install places verified files in the font dir"
+else
+    fail "font install did not install from a local source"
+    tail -5 "$FONTBOX/good.log"
+fi
+
+# Idempotent: a second run must short-circuit on the verified copy.
+(
+    HYPRX_FONT_DIR="$FONTBOX/dst" \
+    HYPRX_FONT_SOURCE="file://$FONTBOX/src" \
+    HYPRX_FONT_SPEC="$fixture_spec" \
+    HYPRX_DRY_RUN=0 \
+    bash -c 'source "$1/lib/bootstrap.sh"; hyprx_fonts_install' _ "$ROOT_DIR"
+) >"$FONTBOX/again.log" 2>&1
+if grep -q "already installed and verified" "$FONTBOX/again.log"; then
+    pass "font install short-circuits on a verified copy"
+else
+    fail "font install re-fetched instead of recognising the verified copy"
+fi
+
+# A corrupted pin must fail and leave nothing behind.
+bad_spec="$(printf '%s' "$fixture_spec" \
+    | sed 's/Caudex-Regular\.ttf|[0-9a-f]\{64\}/Caudex-Regular.ttf|0000000000000000000000000000000000000000000000000000000000000000/')"
+
+# This one is EXPECTED to fail, so `|| true` is mandatory: under `set -e` a
+# non-zero subshell would abort the suite before the assertion that proves the
+# failure was the right one.
+bad_rc=0
+(
+    HYPRX_FONT_DIR="$FONTBOX/dst2" \
+    HYPRX_FONT_SOURCE="file://$FONTBOX/src" \
+    HYPRX_FONT_SPEC="$bad_spec" \
+    HYPRX_DRY_RUN=0 \
+    bash -c 'source "$1/lib/bootstrap.sh"; hyprx_fonts_install' _ "$ROOT_DIR"
+) >"$FONTBOX/bad.log" 2>&1 || bad_rc=$?
+if (( bad_rc != 0 )) && grep -qi "checksum mismatch" "$FONTBOX/bad.log"; then
+    pass "font install refuses a checksum mismatch"
+else
+    fail "font install accepted a bad checksum (rc=$bad_rc)"
+fi
+if [[ -d "$FONTBOX/dst2" ]] && [[ -n "$(ls -A "$FONTBOX/dst2" 2>/dev/null)" ]]; then
+    fail "font install left files behind after a checksum failure"
+else
+    pass "font install leaves nothing behind after a checksum failure"
+fi
+
+# The heavyweight package must be gone.
+if grep -qE '^\s*ttf-google-fonts' "$ROOT_DIR/packages.list"; then
+    fail "ttf-google-fonts-git is still installed for one font"
+else
+    pass "the whole-Google-catalogue font package is not installed"
+fi
+
+# ============================================
+# Dependency manifest
+# ============================================
+# Seven binaries were referenced by the config and installed by nothing:
+# hyprpaper (the entire wallpaper/theming chain), notify-send (the error handler
+# for six scripts), hostname, blueman-manager, nemo, rsync, fc-cache. Each
+# failed silently. This is the guard so it cannot recur.
+log "Testing dependency manifest..."
+
+MANIFEST="$ROOT_DIR/database/binary-providers.conf"
+if [[ -f "$MANIFEST" ]]; then
+    pass "database/binary-providers.conf exists"
+
+    # Every declared provider must be in packages.list, or the install will not
+    # pull it and the binary will be missing at runtime.
+    manifest_bad=0
+    while IFS='|' read -r binary provider _rest; do
+        # Trim BOTH ends of both fields. Leading-only trimming leaves the
+        # padding the aligned table uses on the right, so every provider looked
+        # like "hyprpaper       " and nothing matched packages.list.
+        binary="${binary#"${binary%%[![:space:]]*}"}"
+        binary="${binary%"${binary##*[![:space:]]}"}"
+        provider="${provider#"${provider%%[![:space:]]*}"}"
+        provider="${provider%"${provider##*[![:space:]]}"}"
+
+        [[ -z "$binary" || -z "$provider" ]] && continue
+        [[ "$provider" == "system" ]] && continue
+
+        if ! grep -qx "$provider" "$ROOT_DIR/packages.list"; then
+            fail "manifest: '$binary' needs '$provider', not in packages.list"
+            manifest_bad=$((manifest_bad + 1))
+        fi
+    done <"$MANIFEST"
+    if (( manifest_bad == 0 )); then
+        pass "every manifest provider is in packages.list"
+    fi
+
+    # The seven that shipped broken. Five were fixed by adding a provider; two
+    # were fixed by removing the reference entirely, so their absence from the
+    # manifest is the correct end state and the config must no longer mention
+    # them.
+    for required_binary in hyprpaper notify-send hostname fc-cache fc-match; do
+        if grep -qE "^\s*$required_binary\s*\|" "$MANIFEST"; then
+            pass "manifest declares '$required_binary'"
+        else
+            fail "manifest does not declare '$required_binary' (it shipped broken)"
+        fi
+    done
+
+    # nemo and rsync were resolved by deleting the reference, not by installing
+    # them: the file-manager bind now uses thunar (already in packages.list) and
+    # both dev-sync.sh copies are gone.
+    for removed_ref in nemo rsync dev-sync; do
+        if grep -rq "$removed_ref" "$ROOT_DIR/config" "$ROOT_DIR/scripts" 2>/dev/null; then
+            where="$(grep -rl "$removed_ref" "$ROOT_DIR/config" "$ROOT_DIR/scripts" 2>/dev/null | tr '\n' ' ')"
+            fail "'$removed_ref' is still referenced: $where"
+        else
+            pass "'$removed_ref' is no longer referenced"
+        fi
+    done
+
+    # The file-manager bind must name something packages.list installs.
+    fm="$(grep -oE 'local fileManager = "[^"]+"' "$ROOT_DIR/config/hypr/hyprland.lua" \
+        | head -n1 | sed 's/.*"\(.*\)"/\1/')"
+    if [[ -n "$fm" ]] && grep -qx "$fm" "$ROOT_DIR/packages.list"; then
+        pass "the file-manager bind ('$fm') is in packages.list"
+    else
+        fail "the file-manager bind ('$fm') is not in packages.list"
+    fi
+
+    # And the packages must actually be in the list now.
+    for required_pkg in hyprpaper libnotify inetutils hyprpolkit-agent \
+                       xdg-desktop-portal-hyprland pipewire wireplumber; do
+        if grep -qx "$required_pkg" "$ROOT_DIR/packages.list"; then
+            pass "packages.list includes '$required_pkg'"
+        else
+            fail "packages.list is still missing '$required_pkg'"
+        fi
+    done
+else
+    fail "database/binary-providers.conf missing - the manifest guard does not exist"
+fi
+
+# The portal and polkit gap: a Hyprland session with no portal silently fails
+# screen sharing and every privileged GUI prompt.
+if grep -qx "xdg-desktop-portal-hyprland" "$ROOT_DIR/packages.list" \
+   && grep -qx "hyprpolkit-agent" "$ROOT_DIR/packages.list"; then
+    pass "portal and polkit agent are installed"
+else
+    fail "no portal/polkit agent - screen sharing and auth dialogs would fail"
+fi
+
+# `services.list` listed pipewire while no package provided it. A service for a
+# package that is not installed cannot start, so this pair must agree.
+if grep -qx "pipewire" "$ROOT_DIR/services.list" && ! grep -qx "pipewire" "$ROOT_DIR/packages.list"; then
+    fail "services.list enables pipewire but packages.list does not install it"
+else
+    pass "services.list entries have their packages in packages.list"
+fi
+
+# ============================================
+# Doctor: the sections and the exit code
+# ============================================
+log "Testing doctor sections and exit codes..."
+
+for section in fonts manifest; do
+    if printf '%s' "$usage" | grep -qF "$section"; then
+        pass "doctor --help lists $section"
+    else
+        fail "doctor --help omits $section"
+    fi
+done
+
+# The new sections must be routable.
+assert_exit_in "doctor --only fonts"    "0,1,2" "$CLI" doctor --only fonts --no-report
+assert_exit_in "doctor --only manifest" "0,1,2" "$CLI" doctor --only manifest --no-report
+
+# The Applications section used to print a red X per missing app and exit 0.
+# It has to feed the tallies now.
+out="$("$CLI" doctor --only applications --no-report 2>&1 | sed 's/\x1b\[[0-9;]*m//g' || true)"
+if printf '%s' "$out" | grep -q '^== Applications =='; then
+    pass "--only applications runs the Applications section"
+else
+    fail "--only applications did not run the Applications section"
+fi
+# On this machine everything may well be present, so assert the mechanism: every
+# app line must be a note (✓ or ✗ followed by text) and the section must be
+# reachable through --json.
+json_apps="$("$CLI" doctor --json 2>/dev/null || true)"
+if printf '%s' "$json_apps" | "$PYTHON" -c '
+import json, sys
+d = json.load(sys.stdin)
+blob = " ".join(f["detail"] for f in d["findings"])
+# These were hypr_table_row / plain printers and never reached findings.
+missing = [k for k in ("Hyprland", "Waybar", "Rofi", "Kitty", "Git")
+           if k not in blob]
+if missing:
+    sys.exit("absent from findings: " + ", ".join(missing))
+' 2>/dev/null; then
+    pass "Applications and system rows now appear in --json findings"
+else
+    fail "table-row sections are still absent from --json"
+fi
+
+# ============================================
+# Config: validation before write
+# ============================================
+# A rejected set used to reset the key to its DEFAULT rather than leaving the
+# previous value, while printing "Current value left unchanged".
+log "Testing config value preservation..."
+
+hyprx_config_set LOG_LEVEL debug
+before_val="$(hyprx_config_get LOG_LEVEL)"
+hyprx_config_set LOG_LEVEL verbose >/dev/null 2>&1 || true
+after_val="$(hyprx_config_get LOG_LEVEL)"
+assert_equals "debug" "$after_val"
+
+hyprx_config_set LOG_LEVEL info >/dev/null
+
+# A '#' inside a quoted value must survive the round trip.
+printf 'HYPRX_CONFIG_LOG_FILE="/var/log/my#app.log" # a comment\n' >"$HYPRX_CONFIG_FILE"
+hyprx_config_load >/dev/null 2>&1
+assert_equals "/var/log/my#app.log" "$(hyprx_config_get LOG_FILE)"
+
+# An unquoted trailing comment must still be stripped.
+printf 'HYPRX_CONFIG_LOG_LEVEL=warn # trailing\n' >"$HYPRX_CONFIG_FILE"
+hyprx_config_load >/dev/null 2>&1
+assert_equals "warn" "$(hyprx_config_get LOG_LEVEL)"
+hyprx_config_set LOG_LEVEL info >/dev/null
+
+# THEME must accept a theme that is a FILE. It tested -d against a path that only
+# ever contained one-dark.css, so the only shipped theme was unselectable.
+if hyprx_config_validate THEME one-dark; then
+    pass "THEME accepts the shipped one-dark theme"
+else
+    fail "THEME rejects one-dark - a theme is a file, not a directory"
+fi
+if hyprx_config_validate THEME definitely-not-a-theme; then
+    fail "THEME accepts a theme that does not exist"
+else
+    pass "THEME rejects a nonexistent theme"
+fi
+
+# ============================================
+# The preflight gate
+# ============================================
+# preflight.sh and compatibility.sh used to be two files that probed the same six
+# facts and disagreed about three of them: internet was fatal in one and
+# advisory in the other, `sudo -v` ran twice (and can prompt twice), and RAM was
+# read with two different divisors so "8GB" was compared against gigabytes while
+# "4GB" was compared against megabytes.
+log "Testing the preflight gate..."
+
+if [[ -f "$ROOT_DIR/lib/installer/gate.sh" ]]; then
+    pass "lib/installer/gate.sh exists"
+else
+    fail "lib/installer/gate.sh missing"
+fi
+
+for gone in preflight.sh compatibility.sh; do
+    if [[ -f "$ROOT_DIR/lib/installer/$gone" ]]; then
+        fail "$gone still exists - the overlap is back"
+    else
+        pass "$gone is gone"
+    fi
+done
+
+if grep -q 'gate.sh' "$ROOT_DIR/lib/bootstrap.sh"; then
+    pass "bootstrap sources gate.sh"
+else
+    fail "gate.sh is not sourced by bootstrap"
+fi
+
+# The engine must run ONE gate, not two.
+if [[ -f "$ROOT_DIR/lib/installer/engine.sh" ]]; then
+    gate_calls="$(grep -cE 'hyprx_(install_gate|preflight_check|compatibility_check)' \
+        "$ROOT_DIR/lib/installer/engine.sh")"
+    if [[ "$gate_calls" == "1" ]]; then
+        pass "engine.sh calls the gate exactly once"
+    else
+        fail "engine.sh invokes a gate $gate_calls times"
+    fi
+fi
+
+# Memory must be read once, in one unit. The two old files disagreed on the
+# divisor - "8GB" was compared against a value in gigabytes and "4GB" against a
+# value in megabytes - which made both verdicts meaningless.
+#
+# Comments are stripped first: gate.sh documents the old divisors in its own
+# header, and matching that prose would keep the test red forever for no reason.
+gate_code="$(grep -vE '^[[:space:]]*#' "$ROOT_DIR/lib/installer/gate.sh")"
+
+# Single-quoted on purpose: literal awk/shell fragments searched for in gate.sh,
+# not patterns for this script to evaluate.
+# shellcheck disable=SC2016
+if grep -q 'int($2/1024)' <<<"$gate_code" \
+   && ! grep -q '1024/1024' <<<"$gate_code"; then
+    pass "RAM is read once, in megabytes"
+else
+    fail "gate.sh does not read RAM as a single value in MB"
+fi
+
+# Thresholds belong in one place, named.
+for knob in HYPRX_MIN_DISK_ROOT_KB HYPRX_MIN_DISK_HOME_KB \
+            HYPRX_MIN_RAM_FLOOR_MB HYPRX_MIN_RAM_RECOMMENDED_MB; do
+    if grep -q "$knob=" "$ROOT_DIR/lib/installer/gate.sh"; then
+        pass "$knob is a named constant"
+    else
+        fail "$knob is not a named constant"
+    fi
+done
+
+# The gate must be honest: a fatal finding has to change the exit code.
+# shellcheck disable=SC2016  # literal shell fragment, searched for in gate.sh
+if grep -q 'fatal=$((fatal + 1))' "$ROOT_DIR/lib/installer/gate.sh" \
+   && grep -q 'return 1' "$ROOT_DIR/lib/installer/gate.sh"; then
+    pass "a fatal finding makes the gate return 1"
+else
+    fail "the gate can print a fatal finding without failing"
+fi
+
+# A dry run must not be blocked by things it cannot satisfy.
+dry_gate="$("$CLI" install --dry-run 2>&1 | sed 's/\x1b\[[0-9;]*m//g' || true)"
+if grep -q 'Preflight checks' <<<"$dry_gate"; then
+    pass "the gate runs under --dry-run"
+else
+    fail "the gate did not run under --dry-run"
+fi
+if grep -q 'Cannot install' <<<"$dry_gate"; then
+    fail "--dry-run was blocked by a check it cannot satisfy"
+else
+    pass "--dry-run is not blocked by unsatisfiable checks"
+fi
+
+# ============================================
+# Services: the stage that did not exist
+# ============================================
+log "Testing services.list handling..."
+
+if [[ -f "$ROOT_DIR/lib/installer/services.sh" ]]; then
+    pass "lib/installer/services.sh exists"
+    if grep -q "services.sh" "$ROOT_DIR/lib/bootstrap.sh"; then
+        pass "bootstrap sources services.sh"
+    else
+        fail "services.sh is not sourced by bootstrap - the stage cannot run"
+    fi
+    if grep -q "hyprx_services_enable" "$ROOT_DIR/lib/installer/engine.sh"; then
+        pass "the install engine calls hyprx_services_enable"
+    else
+        fail "engine never enables services (README.md:15 is still a lie)"
+    fi
+    # System and user units are mixed in services.list and the names give no
+    # hint which is which, so the scope must be probed rather than assumed.
+    if grep -q "hyprx_service_scope" "$ROOT_DIR/lib/installer/services.sh"; then
+        pass "services resolve their systemd scope"
+    else
+        fail "services assume a single scope - pipewire is a user unit, the rest are system"
+    fi
+else
+    fail "lib/installer/services.sh missing - nothing enables services.list"
+fi
+
+# ============================================
+# Entrypoint hardening
+# ============================================
+# bin/hyprx built a path from $1 and sourced it, so `hyprx ../../evil` ran an
+# arbitrary file. It has no .sh suffix, so no lint or shellcheck job ever saw it
+# either.
+log "Testing entrypoint hardening..."
+
+cat >"$TEST_ROOT/evil.sh" <<'EVIL'
+echo "arbitrary file was executed"
+EVIL
+
+bad_out="$("$CLI" '../../../../..'"$(basename "$TEST_ROOT")"'/evil' 2>&1 || true)"
+if printf '%s' "$bad_out" | grep -q "arbitrary file was executed"; then
+    fail "bin/hyprx sourced a path outside commands/ - arbitrary code execution"
+else
+    pass "bin/hyprx rejects a traversal command name"
+fi
+
+for bad_name in "a/b" "." ".." "UPPER" "-x"; do
+    if "$CLI" "$bad_name" >/dev/null 2>&1; then
+        fail "bin/hyprx accepted an invalid command name: $bad_name"
+    else
+        pass "bin/hyprx rejects '$bad_name'"
+    fi
+done
+
+# Normal commands must still work.
+assert_exit_in "hyprx help" "0" "$CLI" help
+assert_exit_in "hyprx config list" "0" "$CLI" config list
+
+# ============================================
+# clean: measurement and skip accounting
+# ============================================
+log "Testing clean accounting..."
+
+clean_usage="$("$CLI" clean --help 2>&1)"
+if printf '%s' "$clean_usage" | grep -q "HYPRX_LOG_KEEP"; then
+    pass "clean --help explains the LOG_KEEP/HYPRX_LOG_KEEP link"
+else
+    fail "clean --help does not mention HYPRX_LOG_KEEP"
+fi
+
+# Skipping a sudo step is not a failure - a non-interactive run must exit 0.
+if grep -q "SKIPPED" "$ROOT_DIR/commands/clean.sh"; then
+    pass "clean counts skipped steps separately from failures"
+else
+    fail "clean still treats an unauthenticated sudo skip as a failure"
+fi
+
+# /tmp cleanup must be scoped, or a day-old directory with a live socket in it
+# gets removed along with everything inside.
+if grep -qE 'find /tmp -mindepth 1 -user' "$ROOT_DIR/commands/clean.sh"; then
+    fail "clean still walks all of /tmp for the current user's files"
+else
+    pass "clean scopes /tmp cleanup to /tmp/\$USER at maxdepth 1"
+fi
+
+# Every pruning step must report its bytes, not assume them.
+prune_steps="$(grep -c 'add_freed' "$ROOT_DIR/commands/clean.sh")"
+if (( prune_steps >= 6 )); then
+    pass "clean reports reclaimed bytes across $prune_steps steps"
+else
+    fail "only $prune_steps measured steps - the trash/report/log steps assume their size"
 fi
 
 # ============================================

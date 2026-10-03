@@ -22,6 +22,10 @@ DEEP=false
 ASSUME_YES=false
 FAILURES=0
 FREED=0
+# Steps that were skipped because root was unavailable. Counted separately from
+# FAILURES so a non-interactive `hyprx clean` does not exit 1 for a successful
+# cleanup - see README.md "Steps needing sudo are skipped with a message".
+SKIPPED=0
 
 SCREENSHOT_AGE_DAYS="${SCREENSHOT_AGE_DAYS:-2}"
 TMP_AGE_DAYS="${TMP_AGE_DAYS:-1}"
@@ -47,11 +51,17 @@ Environment:
                        directory. System-wide steps are reported, not performed.
     HYPRX_DRY_RUN=1    Same as --dry-run.
     SCREENSHOT_AGE_DAYS  Age at which a screenshot is removed. Default 2.
-    TMP_AGE_DAYS         Age at which your /tmp files are removed. Default 1.
+    TMP_AGE_DAYS         Age at which stale files in /tmp/$USER are removed.
+                        Default 1. Scoped to your own per-user directory and to
+                        its top level, so a live socket in a directory that
+                        happens to be old is never removed.
     JOURNAL_RETENTION_DAYS  Journal entries kept. Default 7.
     SNAPSHOT_KEEP       Rollback snapshots to keep. Default 5.
     REPORT_KEEP         hyprx doctor reports to keep. Default 10.
     LOG_KEEP            Rotated log generations to keep. Default 3.
+                       Also exported as HYPRX_LOG_KEEP, which is what
+                       lib/logger.sh reads - the two were unrelated numbers
+                       before, so this step could never fire.
 EOF
 }
 
@@ -162,8 +172,13 @@ if $SKIP_SYSTEM; then
     # it is deliberately kept out of the run total.
     hyprx_util_would "run the $HYPRX_DETECT_PACKAGE_MANAGER cache clean - could free up to $(hyprx_state_human "${before:-0}")"
 elif ! $CLEAN_CAN_SUDO; then
+    # A SKIP, not a failure. README.md:109-110 promises "Steps needing sudo are
+    # skipped with a message when no cached sudo ticket exists. The run still
+    # completes and still reports what it did free." Counting this as a failure
+    # made `hyprx clean` exit 1 on a perfectly normal non-interactive run, so
+    # scripts and CI saw a failing command for a successful cleanup.
     hyprx_ui_warn "sudo unavailable or unauthenticated - skipping package cache clean"
-    FAILURES=$((FAILURES + 1))
+    SKIPPED=$((SKIPPED + 1))
 else
     hyprx_pkg_clean_cache || FAILURES=$((FAILURES + 1))
 fi
@@ -185,7 +200,7 @@ elif $SKIP_SYSTEM; then
     hyprx_util_would "remove ${#ORPHANS[@]} orphan package(s) with: sudo pacman -Rns"
 elif ! $CLEAN_CAN_SUDO; then
     hyprx_ui_warn "sudo unavailable or unauthenticated - leaving ${#ORPHANS[@]} orphan(s) installed"
-    FAILURES=$((FAILURES + 1))
+    SKIPPED=$((SKIPPED + 1))
 elif $ASSUME_YES; then
     sudo pacman -Rns --noconfirm "${ORPHANS[@]}"
     hyprx_ui_success "Removed ${#ORPHANS[@]} orphan package(s)."
@@ -290,9 +305,27 @@ if $DEEP; then
     elif ! command -v gio >/dev/null 2>&1; then
         hyprx_ui_warn "gio not available - cannot empty the trash non-destructively"
     else
+        # Measure, do not assume. This step used to add the full pre-trash size
+        # to the run total and print success unconditionally, so a failed
+        # `gio trash --empty` was reported as bytes reclaimed. That directly
+        # contradicts this command's own claim (README.md:90) that every step
+        # reports what it actually reclaimed, and it was the only step in this
+        # file that skipped the before/after measurement.
         gio trash --empty >/dev/null 2>&1
-        add_freed "$TRASH_SIZE"
-        hyprx_ui_success "Emptied the trash.$(freed_note "$TRASH_SIZE")"
+        TRASH_AFTER="$(size_of "$TRASH_DIR")"
+        [[ -z "$TRASH_AFTER" ]] && TRASH_AFTER=0
+        trash_delta=$(( ${TRASH_SIZE:-0} - TRASH_AFTER ))
+
+        if (( trash_delta > 0 )); then
+            add_freed "$trash_delta"
+            hyprx_ui_success "Emptied the trash.$(freed_note "$trash_delta")"
+        elif (( ${TRASH_AFTER:-0} > 0 )); then
+            # Still not empty: gio either failed or a new file landed mid-run.
+            hyprx_ui_warn "Trash not empty ($(hyprx_state_human "$TRASH_AFTER") remaining) - nothing counted"
+            FAILURES=$((FAILURES + 1))
+        else
+            hyprx_ui_success "Trash was already empty."
+        fi
     fi
 
     echo
@@ -329,7 +362,7 @@ if $DEEP; then
         fi
     elif ! $CLEAN_CAN_SUDO; then
         hyprx_ui_warn "sudo unavailable or unauthenticated - skipping coredump removal"
-        FAILURES=$((FAILURES + 1))
+        SKIPPED=$((SKIPPED + 1))
     else
         summary="$(coredump_summary)"
         if [[ -n "$summary" ]]; then
@@ -364,7 +397,7 @@ elif ! command -v journalctl >/dev/null 2>&1; then
     hyprx_ui_info "journalctl not available - skipping"
 elif ! $CLEAN_CAN_SUDO; then
     hyprx_ui_warn "sudo unavailable or unauthenticated - skipping journal vacuum"
-    FAILURES=$((FAILURES + 1))
+    SKIPPED=$((SKIPPED + 1))
 else
     sudo journalctl --vacuum-time="${JOURNAL_RETENTION_DAYS}d"
     hyprx_ui_success "Vacuumed journal entries older than $JOURNAL_RETENTION_DAYS days"
@@ -381,19 +414,45 @@ hyprx_ui_section "Temporary Files"
 CURRENT_USER="$(id -un)"
 
 if $SKIP_SYSTEM; then
-    mapfile -t OLD_TMP < <(find /tmp -mindepth 1 -user "$CURRENT_USER" -mtime "+$TMP_AGE_DAYS" 2>/dev/null)
+    mapfile -t OLD_TMP < <(find "/tmp/$CURRENT_USER" -mindepth 1 -maxdepth 1 -mtime "+$TMP_AGE_DAYS" 2>/dev/null)
     if ((${#OLD_TMP[@]})); then
-        hyprx_util_would "delete ${#OLD_TMP[@]} item(s) in /tmp older than $TMP_AGE_DAYS day(s), owned by $CURRENT_USER"
+        hyprx_util_would "delete ${#OLD_TMP[@]} item(s) from /tmp/$CURRENT_USER older than $TMP_AGE_DAYS day(s)"
     else
-        hyprx_ui_info "No stale temp files owned by $CURRENT_USER."
+        hyprx_ui_info "No stale files in /tmp/$CURRENT_USER."
     fi
 elif [[ -d /tmp ]]; then
-    mapfile -t OLD_TMP < <(find /tmp -mindepth 1 -user "$CURRENT_USER" -mtime "+$TMP_AGE_DAYS" 2>/dev/null)
-    if ((${#OLD_TMP[@]})); then
-        rm -rf "${OLD_TMP[@]}" 2>/dev/null
-        hyprx_ui_success "Removed ${#OLD_TMP[@]} item(s) in /tmp older than $TMP_AGE_DAYS day(s)"
+    # Scoped to /tmp/$CURRENT_USER and to the top level only.
+    #
+    # This used to walk ALL of /tmp for anything owned by the user and `rm -rf`
+    # it, which meant deleting the contents of directories it had not inspected:
+    # -mtime on a directory reports the directory's own mtime, so a day-old
+    # directory holding a live socket was removed along with everything in it.
+    # systemd already maintains /tmp/$USER for exactly this purpose, so the
+    # conventional location is both safer and where users expect it.
+    USER_TMP="/tmp/$CURRENT_USER"
+
+    if [[ ! -d "$USER_TMP" ]]; then
+        hyprx_ui_success "No per-user temp directory ($USER_TMP)."
     else
-        hyprx_ui_success "No stale temp files owned by $CURRENT_USER."
+        mapfile -t OLD_TMP < <(find "$USER_TMP" -mindepth 1 -maxdepth 1 -mtime "+$TMP_AGE_DAYS" 2>/dev/null)
+        if ((${#OLD_TMP[@]})); then
+            tmp_bytes=0
+            for t in "${OLD_TMP[@]}"; do
+                s="$(size_of "$t")"
+                tmp_bytes=$((tmp_bytes + ${s:-0}))
+            done
+
+            if $DRY_RUN; then
+                hyprx_util_would "remove ${#OLD_TMP[@]} item(s) from $USER_TMP older than $TMP_AGE_DAYS day(s) - frees $(hyprx_state_human "$tmp_bytes")"
+                add_freed "$tmp_bytes"
+            else
+                rm -rf -- "${OLD_TMP[@]}" 2>/dev/null
+                add_freed "$tmp_bytes"
+                hyprx_ui_success "Removed ${#OLD_TMP[@]} item(s) from $USER_TMP older than $TMP_AGE_DAYS day(s).$(freed_note "$tmp_bytes")"
+            fi
+        else
+            hyprx_ui_success "No stale files in $USER_TMP older than $TMP_AGE_DAYS day(s)."
+        fi
     fi
 fi
 
@@ -466,9 +525,12 @@ if [[ -d "$HYPRX_STATE_REPORT_DIR" ]]; then
         for r in "${OLD_REPORTS[@]}"; do
             b="$(size_of "$HYPRX_STATE_REPORT_DIR/$r")"
             if $DRY_RUN; then
-                hyprx_util_would "drop old report $r"
+                hyprx_util_would "drop old report $r - frees $(hyprx_state_human "${b:-0}")"
+                add_freed "${b:-0}"
             else
                 rm -f "$HYPRX_STATE_REPORT_DIR/$r"
+                add_freed "${b:-0}"
+                hyprx_ui_info "Dropped old report $r.$(freed_note "${b:-0}")"
             fi
         done
         (( DRY_RUN )) || hyprx_ui_info "Kept the last $REPORT_KEEP doctor reports."
@@ -478,15 +540,31 @@ if [[ -d "$HYPRX_STATE_REPORT_DIR" ]]; then
 fi
 
 # Rotated log generations past the keep count.
+#
+# HYPRX_LOG_KEEP (lib/logger.sh) is the variable the logger actually reads.
+# This used to read a bare LOG_KEEP, defaulted to 3, and never wrote it back to
+# HYPRX_LOG_KEEP - so the two were unrelated numbers, the logger only ever
+# produced .1, and this loop could never fire. One variable, set in both places.
+#
+# The user-facing name stays LOG_KEEP because that is what `clean --help`
+# documents; it is translated once, here.
+if [[ -n "${HYPRX_LOG_KEEP_SET:-}" ]]; then
+    LOG_KEEP="$HYPRX_LOG_KEEP_SET"
+fi
+export HYPRX_LOG_KEEP="$LOG_KEEP"
+
 for f in "$HYPRX_LOGGER_FILE".*; do
     [[ -f "$f" ]] || continue
     gen="${f##*.}"
     if [[ "$gen" =~ ^[0-9]+$ ]] && (( gen > LOG_KEEP )); then
+        b="$(size_of "$f")"
         if $DRY_RUN; then
-            hyprx_util_would "drop rotated log $f"
+            hyprx_util_would "drop rotated log $f - frees $(hyprx_state_human "${b:-0}")"
+            add_freed "${b:-0}"
         else
             rm -f "$f"
-            hyprx_ui_info "Dropped rotated log generation $gen (kept $LOG_KEEP)."
+            add_freed "${b:-0}"
+            hyprx_ui_info "Dropped rotated log generation $gen (kept $LOG_KEEP).$(freed_note "${b:-0}")"
         fi
     fi
 done
@@ -523,11 +601,15 @@ if (( FAILURES > 0 )); then
     exit 1
 fi
 
+if (( SKIPPED > 0 )); then
+    hyprx_ui_info "$SKIPPED step(s) skipped (they need root). Not a failure."
+fi
+
 if (( FREED > 0 )); then
     hyprx_ui_success "Cleanup completed. Freed $(hyprx_state_human "$FREED")."
 else
     hyprx_ui_success "Cleanup completed. Nothing needed removing."
 fi
-hyprx_logger_success "Cleanup completed. Freed $(hyprx_state_human "$FREED")"
+hyprx_logger_success "Cleanup completed. Freed $(hyprx_state_human "$FREED"), $SKIPPED skipped"
 
 exit 0

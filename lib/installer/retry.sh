@@ -39,8 +39,13 @@ hyprx_retry_failed_packages() {
         for pkg in "${remaining[@]}"; do
             hyprx_ui_info "Retrying $pkg"
 
-            hyprx_pkg_install "$pkg"
-            status=$?
+            # `if`, not `cmd; status=$?` - see the note in
+            # install_packages.sh about the errexit leak this used to cause.
+            if hyprx_pkg_install "$pkg"; then
+                status=0
+            else
+                status=$?
+            fi
 
             case "$status" in
                 0)

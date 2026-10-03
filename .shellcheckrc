@@ -1,1 +1,29 @@
-disable=SC1090,SC1091,SC2010,SC2015,SC2034,SC2086
+# ShellCheck configuration for HyprX.
+#
+# The exclusion list is deliberately SHORT. It used to disable six codes
+# repo-wide, including two that hide real bugs in this codebase:
+#
+#   SC2086  unquoted expansion
+#          Hides genuine quoting errors. Every loop over a path list in this
+#          repo uses deliberate word-splitting (HYPRX_CONFIG_TARGETS is a
+#          space-separated string, not an array), which is why SC2086 fired
+#          ~60 times. Those are annotated or restructured rather than silenced
+#          globally.
+#
+#   SC2015  `A && B || C`
+#          The exact footgun in the sudo-detection branches of clean.sh, where
+#          `[[ cond ]] && WARN || FAILURES++` reports a skip as a failure.
+#          Silencing it hid that.
+#
+# SC1090/SC1091 (can't follow non-constant source) are unavoidable: bootstrap.sh
+# and the command files source through variables by design.
+#
+# SC2034 (unused variable) and SC2010 (hyphen in filename) are genuinely not
+# useful for this project.
+disable=SC1090,SC1091,SC2034,SC2010
+
+# Follow the sources that ARE statically resolvable, so a renamed function in
+# lib/ is caught rather than silently unresolved.
+source-path=SCRIPTDIR
+source-path=lib
+source-path=commands

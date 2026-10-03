@@ -1,27 +1,56 @@
 # HyprX package list
 # One package per line. Comments start with #.
+#
+# This file is the single source of truth for what HyprX installs. Every binary
+# the config layer calls must have its providing package here - see
+# database/binary-providers.conf for that mapping and `hyprx doctor --only
+# manifest`, which fails when the two disagree.
+#
+# Sections marked REQUIRED are needed for the desktop to function at all.
+# Sections marked OPTIONAL are for a specific laptop and cost nothing to leave
+# out on hardware that does not match.
 
-# Fonts
-# Caudex isn't in the official repos or a small dedicated AUR
-# package - ttf-google-fonts-git bundles Google's whole font
-# catalog (confirmed via Google's own fonts repo, ofl/caudex),
-# which is the standard way to get less-common Google Fonts on
-# Arch. JetBrainsMono Nerd Font itself is assumed pre-installed
-# (pre-existing gap, not introduced here - it was never in this
-# list even though every UI font-family already depended on it).
-ttf-google-fonts-git
-
-# Core desktop
+# ---------------------------------------------------------------------------
+# REQUIRED - display server and session
+# ---------------------------------------------------------------------------
 hyprland
+# xdg-desktop-portal is what makes screen sharing, screen capture and the
+# file/print choosers work. Without it Hyprland runs but every portal-using
+# application silently fails. -backend is the Hyprland implementation.
+xdg-desktop-portal
+xdg-desktop-portal-hyprland
+# A polkit agent is what renders the "Authentication is required" dialog for
+# GUI apps that need root (mounting, network settings, package management).
+# Without one those dialogs never appear and the app just hangs.
+hyprpolkit-agent
+
+# ---------------------------------------------------------------------------
+# REQUIRED - audio
+# ---------------------------------------------------------------------------
+# doctor checks for PipeWire and used to report it missing on a fresh install,
+# because the service was listed in services.list while the package was in
+# neither list. A service for a package that is not installed cannot start.
+pipewire
+pipewire-alsa
+wireplumber
+pavucontrol
+playerctl
+
+# ---------------------------------------------------------------------------
+# REQUIRED - core desktop
+# ---------------------------------------------------------------------------
 waybar
 rofi
 kitty
 swaync
 thunar
-mission-center
 wlogout
 hyprlock
 hypridle
+# hyprpaper is not optional decoration: the wallpaper is what wallust reads to
+# generate every colour scheme. Without it there is no wallpaper AND no
+# dynamic theming - the entire headline feature is inert.
+hyprpaper
 cliphist
 wl-clipboard
 gsimplecal
@@ -30,15 +59,65 @@ slurp
 swappy
 rofimoji
 waypaper
+wallust
+fastfetch
+nwg-look
+nwg-displays
+brightnessctl
 
-# GPU / hybrid graphics
+# ---------------------------------------------------------------------------
+# REQUIRED - notifications and theming support
+# ---------------------------------------------------------------------------
+# libnotify provides notify-send, which seven scripts use as their error
+# handler. Without it every one of those "surface the problem" paths degrades
+# to a silent no-op - the exact failure those scripts exist to prevent.
+libnotify
+
+# ---------------------------------------------------------------------------
+# REQUIRED - fonts
+# ---------------------------------------------------------------------------
+# fontconfig is what makes an installed font visible to GTK and to fc-match, and
+# lib/installer/fonts.sh calls fc-cache immediately after writing Caudex.
+fontconfig
+# Caudex itself is fetched directly by lib/installer/fonts.sh from the upstream
+# Google Fonts repository and installed to ~/.local/share/fonts/hyprx/. It is NOT
+# a package here on purpose: the only Arch option, ttf-google-fonts-git, depends
+# on 22 further font packages (noto-*, adobe-source-*, roboto, ubuntu, fira,
+# lato ...) and installs the entire Google catalogue - hundreds of megabytes for
+# one serif face. Caudex is 4 files, under 2 MB, pinned by SHA256.
+
+# ---------------------------------------------------------------------------
+# REQUIRED - base utilities referenced directly by scripts
+# ---------------------------------------------------------------------------
+# inetutils provides `hostname`, used by lib/installer/failure_logger.sh:19.
+# Without it the failure log prints "hostname: command not found" while logging
+# the failure, which is exactly the wrong moment to be missing a tool.
+inetutils
+
+# ---------------------------------------------------------------------------
+# REQUIRED - development
+# ---------------------------------------------------------------------------
+git
+neovim
+visual-studio-code-bin
+lazygit
+github-cli
+
+# ---------------------------------------------------------------------------
+# OPTIONAL - hybrid graphics
+# ---------------------------------------------------------------------------
+# Target-specific. On a machine with no NVIDIA or no ASUS hardware these are
+# inert but installed; `hyprx doctor --only gpu` tells you which apply.
+# Remove this section entirely on a single-GPU or non-ASUS laptop.
 nvidia-utils
 supergfxctl
 intel-gpu-tools
 asusctl
 rog-control-center
 
-# Networking
+# ---------------------------------------------------------------------------
+# OPTIONAL - networking
+# ---------------------------------------------------------------------------
 networkmanager
 network-manager-applet
 nm-connection-editor
@@ -47,27 +126,11 @@ bluez-utils
 firewalld
 firewall-config
 
-# System
-nwg-look
-nwg-displays
-fastfetch
-
-# Development
-git
-neovim
-visual-studio-code-bin
-lazygit
-github-cli
-
-# Gaming
+# ---------------------------------------------------------------------------
+# OPTIONAL - gaming and media
+# ---------------------------------------------------------------------------
 mangohud
 gamemode
-
-# Media
 mpv
 vlc
 spotify-launcher
-pavucontrol
-playerctl
-brightnessctl
-wallust

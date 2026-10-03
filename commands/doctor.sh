@@ -165,6 +165,207 @@ check_failed_units() {
     fi
 }
 
+# ============================================================================
+# Dependency manifest
+# ============================================================================
+#
+# Lives in commands/doctor.sh rather than lib/ because it is purely a
+# reporting concern with no other consumer. The data it reads is a database
+# file, like the package replacements and requirements tables.
+
+# binary | providing package | why it is needed
+#
+# Only binaries that are NOT obviously covered by a package whose name matches.
+# `waybar` in packages.list obviously provides `waybar`; `libnotify` obviously
+# provides `notify-send`; `bluez` obviously provides `bluetoothctl`. This table
+# exists for the pairs where the names differ or the need is non-obvious.
+manifest_load() {
+    local file="$HYPRX_DATABASE/binary-providers.conf"
+
+    MANIFEST_BINARIES=()
+    MANIFEST_PROVIDERS=()
+    MANIFEST_REASONS=()
+
+    [[ -f "$file" ]] || return 0
+
+    local line binary provider reason
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%%#*}"
+        [[ -z "${line// /}" ]] && continue
+
+        IFS='|' read -r binary provider reason <<<"$line"
+        # Trim BOTH ends of both fields. The table is column-aligned, so
+        # leading-only trimming leaves the right-hand padding attached and every
+        # lookup misses.
+        binary="${binary#"${binary%%[![:space:]]*}"}"
+        binary="${binary%"${binary##*[![:space:]]}"}"
+        provider="${provider#"${provider%%[![:space:]]*}"}"
+        provider="${provider%"${provider##*[![:space:]]}"}"
+
+        [[ -z "$binary" || -z "$provider" ]] && continue
+
+        MANIFEST_BINARIES+=("$binary")
+        MANIFEST_PROVIDERS+=("$provider")
+        MANIFEST_REASONS+=("${reason:-}")
+    done <"$file"
+
+    return 0
+}
+
+# Every declared provider must actually be in packages.list. A provider that
+# is not means the install will not pull it, and the binary will be missing.
+manifest_check_declarations() {
+    manifest_load
+
+    if (( ${#MANIFEST_BINARIES[@]} == 0 )); then
+        hyprx_ui_info "No binary-providers.conf - skipping declaration check"
+        return 0
+    fi
+
+    local -A declared=()
+    local pkg
+    while IFS= read -r pkg; do
+        [[ -z "$pkg" || "$pkg" =~ ^# ]] && continue
+        pkg="${pkg//[[:space:]]/}"
+        [[ -n "$pkg" ]] && declared["$pkg"]=1
+    done <"$HYPRX_ROOT/packages.list"
+
+    local -i i
+    local binary provider missing=0 absent=0
+    for (( i = 0; i < ${#MANIFEST_BINARIES[@]}; i++ )); do
+        binary="${MANIFEST_BINARIES[$i]}"
+        provider="${MANIFEST_PROVIDERS[$i]}"
+
+        if [[ ! -v declared["$provider"] ]]; then
+            # The declared provider is not going to be installed.
+            hyprx_doctor_note_err "'$binary' needs '$provider', which is not in packages.list"
+            [[ -n "${MANIFEST_REASONS[$i]}" ]] && printf '      %s\n' "${MANIFEST_REASONS[$i]}"
+            hyprx_doctor_suggest "add '$provider' to packages.list"
+            missing=$((missing + 1))
+            continue
+        fi
+
+        missing=$((missing + 1))
+        absent=$((absent + 1))
+    done
+
+    if (( missing == 0 )); then
+        hyprx_doctor_note_ok "All $missing declared binaries have their provider in packages.list"
+    fi
+
+    return 0
+}
+
+# The other direction, and the one that actually catches the class of bug:
+# scan config/ and scripts/ for binary references and report any that is not
+# declared AND not on PATH.
+#
+# Deliberately conservative. A false positive costs a line of noise; a false
+# negative is a silently broken script. So it only reports a binary when the
+# name is a plausible command (lowercase, no dots/slashes) and appears in a
+# position where a command is actually invoked.
+manifest_check_references() {
+    local -A declared=()
+    local binary
+    for binary in "${MANIFEST_BINARIES[@]}"; do
+        declared["$binary"]=1
+    done
+
+    # Binaries the config layer legitimately calls that need no declaration
+    # because they are either shell builtins, coreutils, or provided by a
+    # package whose name is the binary. Kept as an explicit allowlist so a new
+    # undeclared binary is still surfaced.
+    local -A known=(
+        [hyprctl]=1 [hyprpaper]=1 [waybar]=1 [swaync-client]=1 [swaync]=1
+        [rofi]=1 [wlogout]=1 [hyprlock]=1 [hypridle]=1 [grim]=1 [slurp]=1
+        [swappy]=1 [gsimplecal]=1 [cliphist]=1 [wl-paste]=1 [wl-copy]=1
+        [notify-send]=1 [blueman-manager]=1 [nmcli]=1 [nm-applet]=1
+        [nm-connection-editor]=1 [pavucontrol]=1 [playerctl]=1 [playerctl.sh]=1
+        [brightnessctl]=1 [systemctl]=1 [journalctl]=1 [loginctl]=1
+        [coredumpctl]=1 [rfkill]=1 [ping]=1 [git]=1 [curl]=1 [wget]=1
+        [fc-cache]=1 [fc-match]=1 [hostnamectl]=1 [hostname]=1
+        [bash]=1 [sh]=1 [awk]=1 [sed]=1 [grep]=1 [cat]=1 [find]=1
+        [head]=1 [tail]=1 [sort]=1 [uniq]=1 [cut]=1 [tr]=1 [wc]=1
+        [date]=1 [sleep]=1 [printf]=1 [echo]=1 [read]=1 [test]=1
+        [mkdir]=1 [rm]=1 [mv]=1 [cp]=1 [ln]=1 [touch]=1 [du]=1 [df]=1
+        [free]=1 [pgrep]=1 [ps]=1 [kill]=1 [pkill]=1 [timeout]=1
+        [xargs]=1 [seq]=1 [stat]=1 [sha256sum]=1 [shasum]=1 [unzip]=1
+        [qtpaths]=1 [qt5ct]=1 [python3]=1 [python]=1 [jq]=1 [lspci]=1
+        [lscpu]=1 [nproc]=1 [sensors]=1 [swapon]=1 [systemctl-analyze]=1
+        [dbus-update-activation-environment]=1 [gsettings]=1 [flatpak]=1
+        [super_gfxctl]=1 [supergfxctl]=1 [asusctl]=1 [prime-run]=1
+        [env]=1 [whoami]=1 [id]=1 [nvidia-smi]=1 [xdg-open]=1 [wlrctl]=1
+        [dunstctl]=1 [eww]=1 [inotifywait]=1 [sleep]=1 [basename]=1
+        [dirname]=1 [mktemp]=1 [diff]=1 [yes]=1 [false]=1 [true]=1
+        [exit]=1 [set]=1 [unset]=1 [export]=1 [source]=1 [local]=1
+        [declare]=1 [mapfile]=1 [readarray]=1 [shift]=1 [command]=1
+        [type]=1 [umask]=1 [ulimit]=1 [wait]=1 [eval]=1 [trap]=1
+    )
+
+    # Pull candidate binary names out of the deployed config and the scripts.
+    # Sources: exec_cmd/bind in lua, "exec"/"on-click" in waybar's jsonc,
+    # notify-send messages, and plain command lines in shell scripts.
+    local -a roots=("$HYPRX_CONFIG" "$HYPRX_ROOT/scripts")
+    local -A referenced=()
+    local f
+
+    for f in "${roots[@]}"; do
+        [[ -d "$f" ]] || continue
+
+        # shell_exec patterns: exec_cmd("..."), "exec": "...", on-click: "...",
+        # bind = ..., exec = ... and bare leading commands in .sh files.
+        while IFS= read -r name; do
+            [[ -z "$name" ]] && continue
+            referenced["$name"]=1
+        done < <(
+            grep -rhoE '\b(exec_cmd|bind|exec|on-click|on_click)\s*[=(]?\s*"[^"]*"' \
+                "$f" --include='*.lua' --include='*.jsonc' --include='*.json' --include='*.rasi' 2>/dev/null \
+                | grep -oE '"[^"]*"' | tr -d '"'
+            grep -rhoE '^\s*(exec|sudo|pacman|notify-send|systemctl|fc-cache|fc-match)\s+[a-z][a-z0-9._-]*' \
+                "$f" --include='*.sh' 2>/dev/null \
+                | awk '{print $NF}'
+            grep -rhoE 'command -v [a-z][a-z0-9._-]*' "$f" --include='*.sh' 2>/dev/null \
+                | awk '{print $NF}'
+        )
+    done
+
+    # Reduce to the first word of each reference.
+    local -A firsts=()
+    local ref word
+    for ref in "${!referenced[@]}"; do
+        word="${ref%% *}"
+        word="${word%%;*}"
+        word="${word%%|*}"
+
+        # Skip anything that is a path, a URL, a variable, or a shell keyword.
+        [[ "$word" == */* ]] && continue
+        [[ "$word" == *'$'* ]] && continue
+        [[ "$word" == *"%"* || "$word" == *"{"* || "$word" == *"}"* ]] && continue
+        [[ "$word" =~ ^[a-z][a-z0-9._-]*$ ]] || continue
+
+        firsts["$word"]=1
+    done
+
+    local -i undeclared=0
+    for word in "${!firsts[@]}"; do
+        [[ -v known["$word"] ]] && continue
+        [[ -v declared["$word"] ]] && continue
+        # Already installed, so nothing is broken right now.
+        command -v "$word" >/dev/null 2>&1 && continue
+
+        undeclared=$((undeclared + 1))
+        hyprx_doctor_note_warn "'$word' is referenced by the config but is neither declared nor installed"
+    done
+
+    if (( undeclared == 0 )); then
+        hyprx_doctor_note_ok "Every command referenced by config/ and scripts/ is either declared or installed"
+    else
+        hyprx_doctor_suggest "add each to database/binary-providers.conf with its providing package, or stop referencing it"
+    fi
+
+    return 0
+}
+
 # Called from the session section and from the gpu section.
 gpu_checks() {
     if systemctl is-active --quiet supergfxd 2>/dev/null; then
@@ -218,25 +419,41 @@ run_doctor_checks() {
     if doctor_wants applications; then
     # Applications
     hyprx_ui_section "Applications"
-    check() {
-        local name="$1"
-        local status="$2"
+
+    # These were plain hyprx_ui_error/hyprx_ui_success printers, so a missing
+    # application printed a red X and was never tallied. `hyprx doctor
+    # --only applications` on a box with nothing installed printed nine red X
+    # and then "All checks passed", exiting 0.
+    #
+    # doctor_note_err is what feeds both the exit code and --json, so using it
+    # here makes the section honest in all three output modes.
+    #
+    # A missing app is an ERROR, not a warning: packages.list is a closed set,
+    # so its absence means the install is incomplete.
+    check_app() {
+        local name="$1" status="$2" hint="${3:-}"
         if [[ "$status" == true ]]; then
-            hyprx_ui_success "$name"
+            hyprx_doctor_note_ok "$name"
         else
-            hyprx_ui_error "$name"
+            hyprx_doctor_note_err "$name: not installed"
+            [[ -n "$hint" ]] && hyprx_doctor_suggest "$hint"
         fi
     }
-    check "Hyprland Installed" "$HYPRX_DETECT_HAS_HYPRLAND"
-    check "Waybar Installed" "$HYPRX_DETECT_HAS_WAYBAR"
-    check "Rofi Installed" "$HYPRX_DETECT_HAS_ROFI"
-    check "Kitty Installed" "$HYPRX_DETECT_HAS_KITTY"
-    check "VS Code Installed" "$HYPRX_DETECT_HAS_CODE"
-    check "Neovim Installed" "$HYPRX_DETECT_HAS_NVIM"
-    check "Git Installed" "$HYPRX_DETECT_HAS_GIT"
-    check "SwayNC Installed" "$HYPRX_DETECT_HAS_SWAYNC"
-    check "PipeWire Installed" "$HYPRX_DETECT_HAS_PIPEWIRE"
-    check "Bluetooth Installed" "$HYPRX_DETECT_HAS_BLUETOOTH"
+
+    check_app "Hyprland" "$HYPRX_DETECT_HAS_HYPRLAND" "pacman -S hyprland"
+    check_app "Waybar" "$HYPRX_DETECT_HAS_WAYBAR" "pacman -S waybar"
+    check_app "Rofi" "$HYPRX_DETECT_HAS_ROFI" "pacman -S rofi"
+    check_app "Kitty" "$HYPRX_DETECT_HAS_KITTY" "pacman -S kitty"
+    check_app "VS Code" "$HYPRX_DETECT_HAS_CODE" "pacman -S visual-studio-code-bin"
+    check_app "Neovim" "$HYPRX_DETECT_HAS_NVIM" "pacman -S neovim"
+    check_app "Git" "$HYPRX_DETECT_HAS_GIT" "pacman -S git"
+    check_app "SwayNC" "$HYPRX_DETECT_HAS_SWAYNC" "pacman -S swaync"
+    # PipeWire and Bluetooth were the two that actually bite: pipewire because
+    # no audio without it, bluetooth because bluez being installed does not
+    # mean the daemon is reachable.
+    check_app "PipeWire" "$HYPRX_DETECT_HAS_PIPEWIRE" "pacman -S pipewire wireplumber"
+    check_app "Bluetooth" "$HYPRX_DETECT_HAS_BLUETOOTH" "pacman -S bluez bluez-utils"
+
     echo
 
     fi
@@ -732,6 +949,79 @@ EOF
         echo
     fi
 
+    if doctor_wants fonts; then
+    # Fonts
+    #
+    # Caudex is installed to ~/.local/share/fonts/hyprx/ by
+    # lib/installer/fonts.sh rather than by a package, because the only Arch
+    # option (ttf-google-fonts-git) installs the entire Google catalogue plus 22
+    # font packages. So the presence and integrity of those files is a real
+    # thing to check - nothing else in the tool would notice their absence.
+    hyprx_ui_section "Fonts"
+
+    hyprx_fonts_status
+
+    if (( ${#HYPRX_FONT_BAD[@]} > 0 )); then
+        for bad in "${HYPRX_FONT_BAD[@]}"; do
+            hyprx_doctor_note_err "Font checksum mismatch: $bad in $HYPRX_FONT_DIR"
+        done
+        hyprx_doctor_suggest "hyprx install   # re-fetches and re-verifies the pinned files"
+    fi
+
+    if (( ${#HYPRX_FONT_MISSING[@]} > 0 )); then
+        hyprx_doctor_note_err "Caudex is not installed (${#HYPRX_FONT_MISSING[@]} of 4 files missing in $HYPRX_FONT_DIR)"
+        printf '%s\n' "${HYPRX_FONT_MISSING[@]}" | while IFS= read -r missing; do
+            printf '      missing: %s\n' "$missing"
+        done
+        hyprx_doctor_suggest "hyprx install   # fetches Caudex (4 files, ~2MB, SHA256-pinned)"
+    elif (( ${#HYPRX_FONT_BAD[@]} == 0 )); then
+        hyprx_doctor_note_ok "Caudex installed and checksum-verified ($HYPRX_FONT_DIR)"
+    fi
+
+    # Proof that fontconfig actually resolves it. Without this the bar renders
+    # in a fallback and nothing reports why.
+    if command -v fc-match >/dev/null 2>&1; then
+        match="$(fc-match -f '%{family}' Caudex 2>/dev/null)"
+        case "$match" in
+            Caudex*) hyprx_ui_info "fontconfig resolves Caudex" ;;
+            *)
+                hyprx_doctor_note_warn "fontconfig resolves '$match' for Caudex - it is installed but not yet usable"
+                hyprx_doctor_suggest "fc-cache -f $HYPRX_FONT_DIR   # then log out and back in"
+                ;;
+        esac
+    else
+        hyprx_ui_info "fc-match not available - skipping resolution check"
+    fi
+    echo
+
+    fi
+
+    if doctor_wants manifest; then
+    # Dependency manifest
+    #
+    # The bug class this exists to catch: HyprX calls a binary that nothing
+    # installs. Seven instances shipped at once - hyprpaper (the whole
+    # wallpaper/theming chain), notify-send (the error handler for six scripts),
+    # nemo, blueman-manager, rsync, inetutils' hostname, and JetBrainsMono Nerd
+    # Font in every font-family.
+    #
+    # Each is invisible from inside the tool: the script `exec`s a name that
+    # resolves to nothing and exits quietly, or fontconfig falls back. Nothing
+    # errors, so nothing was ever reported.
+    #
+    # database/binary-providers.conf maps each such binary to its providing
+    # package. This section checks both directions: every declared provider is
+    # actually in packages.list, and every binary the config layer references is
+    # declared at all.
+    hyprx_ui_section "Dependency Manifest"
+
+    manifest_check_declarations
+    manifest_check_references
+
+    echo
+
+    fi
+
     # --json emits from the collected findings, so the human summary and its
     # exit are skipped; the caller turns the tallies into the exit code.
     $DOCTOR_JSON && return 0
@@ -773,13 +1063,13 @@ Options:
 Sections:
     configuration  applications  system  validation  drift  storage
     memory  swap  systemd  services  session  gpu  network  pacman
-    daemons  battery  diskusage
+    daemons  battery  diskusage  fonts  manifest
 
 An unknown section name is rejected rather than silently running nothing.
 EOF
 }
 
-DOCTOR_SECTIONS="configuration applications system validation drift storage memory swap systemd services session gpu network pacman daemons battery diskusage"
+DOCTOR_SECTIONS="configuration applications system validation drift storage memory swap systemd services session gpu network pacman daemons battery diskusage fonts manifest"
 
 # A section runs when it is neither excluded by --skip nor absent from --only.
 doctor_wants() {

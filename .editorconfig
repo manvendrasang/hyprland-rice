@@ -1,0 +1,63 @@
+# EditorConfig for HyprX
+# https://editorconfig.org
+#
+# The repo mixes shell, Lua, JSONC, CSS and rasi. The shell settings are the
+# load-bearing ones: a tab/space mix in a .sh file is a real bug, and the tests
+# run bash -n over every script.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{sh,hyprx}]
+indent_size = 4
+max_line_length = 100
+
+[bin/hyprx]
+indent_size = 4
+
+[*.{lua,json,jsonc}]
+indent_size = 4
+
+[*.{css,rasi}]
+indent_size = 4
+
+[*.conf]
+indent_size = 4
+
+# list-style: files are a plain newline-separated column, no bullets or commas
+[packages.list]
+indent_style = unset
+indent_size = unset
+trim_trailing_whitespace = false
+
+[*.list]
+indent_style = unset
+indent_size = unset
+trim_trailing_whitespace = false
+
+# Lua comments are column-aligned on purpose in several places.
+[config/hypr/hyprland.lua]
+trim_trailing_whitespace = false
+
+# Trailing whitespace is load-bearing here: `text = ` with nothing after it is a
+# real (empty) hyprlock label, and other rasi blocks rely on exact spacing.
+[config/rofi/*.rasi]
+trim_trailing_whitespace = false
+
+[config/wlogout/layout]
+trim_trailing_whitespace = false
+
+# Generated output and machine-written reports.
+[tests/test-results.log]
+insert_final_newline = false
+trim_trailing_whitespace = false
+
+[REVIEW.md]
+max_line_length = unset
