@@ -19,7 +19,18 @@ wallust run "$WALLPAPER" --quiet --check-contrast
 # hyprpaper.conf, so without this the conf drifts to a stale path and the next
 # hyprpaper restart reverts the wallpaper or comes up with nothing at all.
 HYPRX_SYNC_CONF="${HYPRX_TARGET_HOME:-$HOME}/.local/share/hyprx/scripts/sync-hyprpaper-conf.sh"
-[[ -x "$HYPRX_SYNC_CONF" ]] && "$HYPRX_SYNC_CONF" "$WALLPAPER" || true
+# if/then rather than `[[ -x … ]] && "$…" || true`. The &&/|| form is not
+# if-then-else: the trailing `|| true` is a third statement that runs whenever
+# the sync script itself fails, so a sync failure and a missing script are
+# indistinguishable - and neither was reported. Here both are handled, and the
+# sync failure is visible in the log instead of vanishing.
+if [[ -x "$HYPRX_SYNC_CONF" ]]; then
+    if ! "$HYPRX_SYNC_CONF" "$WALLPAPER"; then
+        echo "apply-wallust-theme: could not sync hyprpaper.conf" >&2
+    fi
+else
+    echo "apply-wallust-theme: $HYPRX_SYNC_CONF is missing or not executable" >&2
+fi
 
 # Waybar only reads colors.css at (re)start.
 ~/.local/share/hyprx/scripts/reload-waybar.sh >/dev/null 2>&1 &

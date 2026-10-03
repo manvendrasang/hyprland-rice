@@ -83,7 +83,14 @@ doctor_json_emit() {
         [[ "$i" -gt 0 ]] && printf ','
         printf '\n    "%s"' "$(doctor_json_escape "${DOCTOR_SUGGESTIONS[$i]}")"
     done
-    (( ${#DOCTOR_SUGGESTIONS[@]} )) && printf '\n  ' || printf ']'
+    # if/then, not `(( count )) && printf '\n  ' || printf ']'`. The &&/|| form
+    # is not if-then-else, and here the fallback it reaches for is the wrong one:
+    # on an EMPTY array the first printf must not run at all.
+    if (( ${#DOCTOR_SUGGESTIONS[@]} > 0 )); then
+        printf '\n  '
+    else
+        printf ']'
+    fi
     printf '],\n'
 
     printf '  "findings": ['
@@ -95,7 +102,11 @@ doctor_json_emit() {
             "$status" "$(doctor_json_escape "$detail")"
         [[ "$i" -lt "$last" ]] && printf ','
     done
-    (( ${#DOCTOR_JSON_FINDINGS[@]} )) && printf '\n  ' || printf ']'
+    if (( ${#DOCTOR_JSON_FINDINGS[@]} > 0 )); then
+        printf '\n  '
+    else
+        printf ']'
+    fi
     printf ']\n'
     printf '}\n'
 }

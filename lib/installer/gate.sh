@@ -51,28 +51,48 @@ HYPRX_MIN_RAM_FLOOR_MB=4096
 # second caller cannot re-probe, which is the entire point of merging the files.
 HYPRX_GATE_CACHE=()
 
-# hyprx_gate_cached <key> <command...> - run once, print the result.
+# hyprx_gate_probe <key> <varname> <command...> - run once, store the result in
+# <varname>.
+#
+# The value is returned through a NAMED VARIABLE, not through stdout. Every call
+# site originally captured stdout with `$(...)`, and a command substitution runs
+# in a subshell: the `HYPRX_GATE_CACHE+=(...)` append happened inside that
+# subshell and evaporated when it exited. So the cache looked right, was read as
+# correct by the review, and in fact never held a single entry - the second
+# caller always re-probed, which is the one thing a cache exists to prevent.
+# Returning through a variable keeps the write in the caller's shell.
+#
+# Because bash uses dynamic scoping, `printf -v` lands in the caller's local if
+# the caller declared one - so declare the destination local before calling.
+# Every local here is prefixed `__hyprx_`, so a destination can never collide
+# with one of them and be captured by the wrong scope.
+#
+# One more trap: the caller must invoke this function DIRECTLY, not inside
+# `$(...)`. A command substitution is a subshell, and the cache append below
+# would happen there and evaporate with it - which is exactly how this cache
+# managed to never hold a single entry while looking correct.
 #
 # Returns the stored value on every call after the first. A probe that fails
-# stores the empty string rather than being retried, so a missing `ping` does
-# not mean six invocations.
+# stores the empty string rather than being retried, so a missing probe tool does
+# not turn into six invocations.
 hyprx_gate_probe() {
-    local key="$1"
-    shift
+    local __hyprx_key="$1"
+    local __hyprx_dest="$2"
+    shift 2
 
-    local stored
-    for stored in "${HYPRX_GATE_CACHE[@]}"; do
-        if [[ "$stored" == "$key="* ]]; then
-            printf '%s' "${stored#*=}"
+    local __hyprx_stored
+    for __hyprx_stored in "${HYPRX_GATE_CACHE[@]}"; do
+        if [[ "$__hyprx_stored" == "$__hyprx_key="* ]]; then
+            printf -v "$__hyprx_dest" '%s' "${__hyprx_stored#*=}"
             return 0
         fi
     done
 
-    local value
-    value="$("$@" 2>/dev/null)" || value=""
+    local __hyprx_value
+    __hyprx_value="$("$@" 2>/dev/null)" || __hyprx_value=""
 
-    HYPRX_GATE_CACHE+=("$key=$value")
-    printf '%s' "$value"
+    HYPRX_GATE_CACHE+=("$__hyprx_key=$__hyprx_value")
+    printf -v "$__hyprx_dest" '%s' "$__hyprx_value"
     return 0
 }
 
@@ -83,13 +103,84 @@ hyprx_gate_reset() {
 
 # --- individual probes ----------------------------------------------------
 
-# Probes `ping -c1` against the distro mirror, not a generic host: what matters
-# is whether pacman's mirrors are reachable.
-hyprx_gate_internet() {
-    [[ -n "$(hyprx_gate_probe internet ping -c1 -W2 archlinux.org)" ]] \
-        && return 0
-    return 1
+# Reachability, in order of preference.
+#
+# `ping` was the original probe and it is the wrong one: ping lives in `iputils`,
+# which is not a dependency of anything here, so on a minimal system - notably
+# the archlinux:base container the test suite runs in - the probe itself is
+# missing. The gate read that as "network unreachable" and aborted the install,
+# which is the one conclusion a missing tool must never produce.
+#
+# So the ladder is: bash's own /dev/tcp (no binary at all, and bash is already
+# running this function), then curl, then wget, then ping. Only if NONE of them
+# is available is the answer unknown rather than false.
+#
+# hyprx_gate_internet_state <varname> - stores ok | down | unknown.
+#
+# Takes a destination instead of printing, for the same reason hyprx_gate_probe
+# does: this is called from inside `case "$(...)"`, and a command substitution
+# runs the whole call in a subshell - the cache append would evaporate with it.
+hyprx_gate_internet_state() {
+    local __hyprx_dest="$1"
+    hyprx_gate_probe internet "$__hyprx_dest" hyprx_gate_internet_probe
+    # A failed probe stores the empty string; an empty answer means nobody could
+    # tell, which is not the same as down.
+    if [[ -z "${!__hyprx_dest:-}" ]]; then
+        printf -v "$__hyprx_dest" '%s' "unknown"
+    fi
 }
+
+hyprx_gate_internet_probe() {
+    # The distro mirror, not a generic host: what matters is whether pacman can
+    # reach its own databases. 443 is the port the official mirrorlist uses.
+    local host="archlinux.org" port=443
+
+    # 1. bash's /dev/tcp. No external binary, so it works in a container.
+    if ( exec 3<>"/dev/tcp/$host/$port" ) 2>/dev/null; then
+        exec 3<&- 2>/dev/null
+        exec 3>&- 2>/dev/null
+        printf 'ok'
+        return 0
+    fi
+
+    # 2. curl
+    if command -v curl >/dev/null 2>&1; then
+        if curl -fsS --max-time 5 -o /dev/null "https://$host/" 2>/dev/null; then
+            printf 'ok'
+            return 0
+        fi
+        printf 'down'
+        return 0
+    fi
+
+    # 3. wget
+    if command -v wget >/dev/null 2>&1; then
+        if wget -q --spider --timeout=5 "https://$host/" 2>/dev/null; then
+            printf 'ok'
+            return 0
+        fi
+        printf 'down'
+        return 0
+    fi
+
+    # 4. ping, last: ICMP is frequently blocked where HTTPS is not, so a
+    #    ping failure here is weak evidence of anything.
+    if command -v ping >/dev/null 2>&1; then
+        if ping -c1 -W2 "$host" >/dev/null 2>&1; then
+            printf 'ok'
+            return 0
+        fi
+        printf 'down'
+        return 0
+    fi
+
+    # No probe available at all. Unknown is not down.
+    printf 'unknown'
+}
+
+# `hyprx_gate_internet` - a boolean wrapper over the state function - used to
+# live here and had no callers, so it is gone rather than maintained as an API
+# that nothing exercises. `hyprx_gate_internet_state` is the interface.
 
 # `sudo -v` refreshes the credential cache; `sudo -n true` only tests it.
 #
@@ -98,9 +189,10 @@ hyprx_gate_internet() {
 # Whichever answers first is remembered - this used to be called twice, once per
 # file.
 hyprx_gate_sudo() {
-    # `sudo -n true` prints nothing and signals success through its exit status,
-    # so it cannot be cached through hyprx_gate_probe - which stores stdout.
-    # It is therefore run at most once, guarded by its own flag.
+    # `sudo -n true` prints nothing and signals success through its exit status.
+    # hyprx_gate_probe returns a value, not a status - it captures stdout - so it
+    # cannot tell "succeeded silently" from "failed silently". A dedicated flag
+    # carries the status instead, and gates the work at one run.
     #
     # Preferring -n matters for two reasons: it never prompts, and it does not
     # extend the credential timestamp the way `sudo -v` does. The old pair of
@@ -132,18 +224,37 @@ hyprx_gate_sudo() {
     return 1
 }
 
-# Free space in KiB (df --output=avail is 1K blocks).
-hyprx_gate_disk_kb() {
-    hyprx_gate_probe "disk_$1" df --output=avail "$1" | tail -n1 | tr -d ' '
+# `df --output=avail <path>` -> the free-space number alone. Kept separate so
+# the CACHE stores the trimmed value rather than the header line plus the value:
+# caching is done by hyprx_gate_probe, which sees only stdout, so any cleanup
+# has to happen before it.
+hyprx_gate_disk_probe() {
+    df --output=avail "$1" 2>/dev/null | tail -n1 | tr -d ' '
 }
 
+# Free space in KiB, stored in <varname>.
+#
+# Also a destination argument rather than a printed one: the gate used to call
+# this as `root_kb="$(hyprx_gate_disk_kb /)"`, and that subshell is where the
+# cache write went to die.
+hyprx_gate_disk_kb() {
+    local __hyprx_path="$1"
+    local __hyprx_dest="$2"
+    hyprx_gate_probe "disk_$__hyprx_path" "$__hyprx_dest" \
+        hyprx_gate_disk_probe "$__hyprx_path"
+}
+
+# Free RAM in MiB, stored in <varname>.
 hyprx_gate_ram_mb() {
     # One read, one unit. The old pair divided the same value by 1024/1024 in
     # one file and by 1024 in the other, so "8GB" was compared against gigabytes
     # and "4GB" against megabytes.
-    # Single-quoted: $2 is awk's field reference, not a shell variable.
+    # Single-quoted: $2 is awk's field reference, not a shell variable. The
+    # directive must sit directly above the awk command - it applies to the next
+    # command only, so a blank line or a `local` between them stops it covering
+    # the string it was written for.
     # shellcheck disable=SC2016
-    hyprx_gate_probe ram awk '/^MemTotal:/ {print int($2/1024); exit}' /proc/meminfo
+    hyprx_gate_probe ram "$1" awk '/^MemTotal:/ {print int($2/1024); exit}' /proc/meminfo
 }
 
 # --- the gate -------------------------------------------------------------
@@ -203,14 +314,33 @@ hyprx_install_gate() {
     fi
 
     # --- internet ---------------------------------------------------------
-    if hyprx_gate_internet; then
-        gate_result ok "Network reachable (archlinux.org)"
-    elif $dry; then
-        gate_result warn "Network unreachable - a real install would need this"
-    else
-        gate_result error "Network unreachable" \
-            "Package databases cannot be synchronised. Check your connection or mirrors."
-    fi
+    # Three states, not two. "unknown" means no probe tool was available, which
+    # is emphatically not evidence of a broken network - and treating it as one
+    # aborted every install in a minimal container, because ping ships in
+    # iputils and nothing here depends on that.
+    #
+    # Assigned, not `case "$(hyprx_gate_internet_state)"`: the substitution is a
+    # subshell, and the probe cache written inside it would be discarded the
+    # moment it exited.
+    local net_state
+    hyprx_gate_internet_state net_state
+    case "$net_state" in
+        ok)
+            gate_result ok "Network reachable (archlinux.org)"
+            ;;
+        unknown)
+            gate_result warn "Could not verify network reachability" \
+                "No probe available (bash /dev/tcp, curl, wget and ping all absent)."
+            ;;
+        *)
+            if $dry; then
+                gate_result warn "Network unreachable - a real install would need this"
+            else
+                gate_result error "Network unreachable" \
+                    "Package databases cannot be synchronised. Check your connection or mirrors."
+            fi
+            ;;
+    esac
 
     # --- sudo -------------------------------------------------------------
     if hyprx_gate_sudo; then
@@ -226,7 +356,7 @@ hyprx_install_gate() {
     # Fatal: pacman unpacks into /var/cache and /, and fails unhelpfully
     # partway through a transaction when it runs out.
     local root_kb
-    root_kb="$(hyprx_gate_disk_kb /)"
+    hyprx_gate_disk_kb / root_kb
     if [[ -z "$root_kb" ]]; then
         gate_result warn "Could not determine free space on /"
     elif (( root_kb < HYPRX_MIN_DISK_ROOT_KB )); then
@@ -245,7 +375,7 @@ hyprx_install_gate() {
     # single-partition setup this is the same number as the line above, and
     # printing it twice was pure noise.
     local home_kb
-    home_kb="$(hyprx_gate_disk_kb "$HOME")"
+    hyprx_gate_disk_kb "$HOME" home_kb
     if [[ -z "$home_kb" ]]; then
         gate_result warn "Could not determine free space on \$HOME"
     elif (( root_kb > 0 && home_kb == root_kb )); then
@@ -260,7 +390,7 @@ hyprx_install_gate() {
 
     # --- memory -----------------------------------------------------------
     local ram_mb
-    ram_mb="$(hyprx_gate_ram_mb)"
+    hyprx_gate_ram_mb ram_mb
     if [[ -z "$ram_mb" ]]; then
         gate_result warn "Could not read total memory"
     elif (( ram_mb < HYPRX_MIN_RAM_FLOOR_MB )); then
@@ -295,7 +425,7 @@ hyprx_install_gate() {
 
     # --- advisory inventory ----------------------------------------------
     local threads
-    threads="$(hyprx_gate_probe threads nproc)"
+    hyprx_gate_probe threads threads nproc
     [[ -n "$threads" ]] && hyprx_ui_info "CPU: $threads threads"
 
     if [[ "$HYPRX_DETECT_GPU_VENDOR" == "nvidia" ]] \

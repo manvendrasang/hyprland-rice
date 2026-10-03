@@ -115,6 +115,9 @@ If you fix a bug, add a test that fails without the fix. The ones that matter:
 - Never call `pass`/`fail` inside a pipeline. The right-hand side of `find | while`
   is a subshell; the counter it increments dies with it. This made one check
   silently incapable of failing.
+- Lint through `.shellcheckrc`, never through an inline `-e` list. The suite used
+  to carry its own copy, so it passed on findings CI rejected. There is one
+  ruleset: the file.
 
 The install and font tests use local fixtures rather than the network: an outage
 must not read as a code regression.
@@ -132,6 +135,21 @@ global disable list.
 
 `bin/hyprx` has no `.sh` suffix, so `find -name '*.sh'` skips it. Both CI jobs
 name it explicitly. Do not let that lapse.
+
+**ShellCheck must be the same version everywhere.** CI downloads a pinned
+ShellCheck from upstream rather than using `apt`, because the rule set moves
+between releases: 0.11 is lenient about `A && B || C` where `B` is an
+assignment, an older release is not. That gap is how twelve real findings passed
+the suite and failed CI. Both jobs use the same `SHELLCHECK_VERSION`; bump it
+deliberately and read the resulting diff.
+
+**Never gate on a tool you have not declared.** `hyprx install` once aborted on
+any minimal system — including the CI container — because the preflight gate
+required `ping`, which lives in `iputils` and is in no package list here. The
+probe itself was missing, and the gate read that as "no network". A missing probe
+is *unknown*, not *down*, and unknown must never be fatal. If you add a check
+that shells out, either declare the tool or give the check an explicit
+"cannot verify" branch.
 
 ## Commit messages
 

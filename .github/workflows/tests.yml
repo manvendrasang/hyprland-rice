@@ -35,19 +35,47 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - name: Install ShellCheck
+      - name: Install ShellCheck (pinned)
 
         run: |
-          sudo apt update
-          sudo apt install -y shellcheck
+          # A PINNED version, downloaded from upstream rather than taken from apt.
+          #
+          # `apt install shellcheck` follows whatever ubuntu-latest happens to
+          # ship, and the rule set moves between releases: 0.11 is lenient about
+          # `A && B || C` where B is an assignment, an older release is not. That
+          # is how the suite reported "ShellCheck OK" on twelve findings CI then
+          # rejected - two linters, two rule sets, one green and one red.
+          #
+          # Pinning makes CI reproducible and makes "passes locally" mean
+          # something. Bump SHELLCHECK_VERSION deliberately, and re-read the diff.
+          SHELLCHECK_VERSION="v0.11.0"
+          ARCH="x86_64"
+          case "$(uname -m)" in
+            aarch64|arm64) ARCH="aarch64" ;;
+          esac
+
+          curl -fsSL \
+            "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.${ARCH}.tar.xz" \
+            -o /tmp/shellcheck.tar.xz
+
+          mkdir -p /tmp/sc
+          tar -xJf /tmp/shellcheck.tar.xz -C /tmp/sc --strip-components=1
+          sudo install -m 0755 /tmp/sc/shellcheck /usr/local/bin/shellcheck
+
+          shellcheck --version
 
       - name: Lint
 
         run: |
           set -uo pipefail
+          echo "shellcheck $(shellcheck --version | awk '/^version:/{print $2}')"
           fail=0
           while IFS= read -r -d '' file; do
-            if ! shellcheck -x "$file"; then
+            # --rcfile, not the cwd-relative default: ShellCheck looks for
+            # .shellcheckrc in the current directory, so the ruleset silently
+            # changes with the working directory. The suite passes the same
+            # flag for the same reason - one ruleset, one mechanism.
+            if ! shellcheck -x --rcfile .shellcheckrc "$file"; then
               echo "::error file=$file::ShellCheck findings"
               fail=1
             fi
@@ -195,7 +223,20 @@ jobs:
           # -Syy, not -Sy: a partial upgrade against stale databases is
           # unreliable, and this job's value is that it runs the real suite on
           # the real target distro.
-          pacman -Syy --noconfirm --needed git bash sudo shellcheck python jq
+          #
+          # shellcheck is pinned here too, to the SAME version as the lint job.
+          # If the suite and the linter disagree on the rule set, the suite can
+          # report green on findings CI rejects - which is exactly what happened.
+          pacman -Syy --noconfirm --needed git bash sudo python jq
+
+          SHELLCHECK_VERSION="v0.11.0"
+          curl -fsSL \
+            "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
+            -o /tmp/shellcheck.tar.xz
+          mkdir -p /tmp/sc
+          tar -xJf /tmp/shellcheck.tar.xz -C /tmp/sc --strip-components=1
+          install -m 0755 /tmp/sc/shellcheck /usr/local/bin/shellcheck
+          shellcheck --version
 
       - uses: actions/checkout@v4
 

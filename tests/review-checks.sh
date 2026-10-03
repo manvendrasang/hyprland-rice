@@ -472,22 +472,49 @@ section "K. test suite integrity"
 # counter was incremented in a process that then exited. So the check printed
 # its [FAIL] lines and still reported FAILED=0 - it could not fail.
 #
-# Only real code is examined, and a pipeline is only flagged if the loop body
-# actually calls pass or fail. Comments describing the old bug are excluded, and
-# `| while read` with a side-effect-free body is harmless.
+# Only real code is examined. The body considered is the piped `while`'s OWN
+# body - from the `| while` up to its matching `done` - not a fixed window of
+# lines: a window bleeds into the enclosing loop and flags a subshell whose body
+# only prints.
 pipeline_loops=0
-while IFS=: read -r lineno body; do
-    [[ "$body" =~ ^[[:space:]]*# ]] && continue
-    # The body of the while is what follows, up to the matching `done`.
-    loop_body="$(sed -n "$((lineno + 1)),$((lineno + 12))p" "$ROOT_DIR/tests/run_tests.sh")"
-    if grep -qE '^[[:space:]]*done' <<<"$loop_body"; then
-        if grep -qE '(^|[[:space:]])(pass|fail)[[:space:]]' <<<"$loop_body"; then
+suite_lines="$(wc -l <"$ROOT_DIR/tests/run_tests.sh")"
+lineno=1
+while (( lineno <= suite_lines )); do
+    line="$(sed -n "${lineno}p" "$ROOT_DIR/tests/run_tests.sh")"
+
+    # Comment lines are skipped: the suite documents this very bug in prose
+    # ("Process substitution, NOT `find | while`"), and that sentence matches
+    # the pattern perfectly while describing code that no longer exists.
+    if [[ "$line" =~ ^[[:space:]]*# ]]; then
+        lineno=$((lineno + 1))
+        continue
+    fi
+
+    if [[ "$line" =~ \|[[:space:]]*while ]]; then
+        while_indent="${line%%[! ]*}"
+        body=""
+        cursor=$((lineno + 1))
+        while (( cursor <= suite_lines )); do
+            body_line="$(sed -n "${cursor}p" "$ROOT_DIR/tests/run_tests.sh")"
+            if [[ "$body_line" =~ ^[[:space:]]*done ]]; then
+                body_indent="${body_line%%[! ]*}"
+                if (( ${#body_indent} <= ${#while_indent} )); then
+                    break
+                fi
+            fi
+            body+="$body_line"$'\n'
+            cursor=$((cursor + 1))
+        done
+
+        if grep -qE '(^|[[:space:]])(pass|fail)[[:space:]]' <<<"$body"; then
             finding "tests/run_tests.sh:$lineno pipes into a while whose body calls pass/fail" \
                 "the right side of a pipeline is a subshell: FAILED is incremented in a process that then exits, so the check cannot fail"
             pipeline_loops=$((pipeline_loops + 1))
         fi
+        lineno=$cursor
     fi
-done < <(grep -nE '\|[[:space:]]*while' "$ROOT_DIR/tests/run_tests.sh")
+    lineno=$((lineno + 1))
+done
 (( pipeline_loops == 0 )) && ok "no pass/fail inside a pipeline subshell"
 
 # Every declared keybind target must exist.
@@ -541,6 +568,170 @@ if [[ "$empty_labels" == "0" ]]; then
     ok "no empty hyprlock labels"
 else
     finding "$empty_labels hyprlock label(s) have an empty text - they render nothing"
+fi
+
+# ===========================================================================
+# M. the gate
+# ===========================================================================
+# preflight.sh and compatibility.sh probed the same six facts and disagreed
+# about three of them. Merged into lib/installer/gate.sh.
+section "M. the preflight gate"
+
+if [[ -f "$ROOT_DIR/lib/installer/gate.sh" ]]; then
+    ok "lib/installer/gate.sh exists"
+else
+    finding "lib/installer/gate.sh is missing"
+fi
+
+for gone in preflight.sh compatibility.sh; do
+    if [[ -f "$ROOT_DIR/lib/installer/$gone" ]]; then
+        finding "$gone still exists - the duplicate probe set is back"
+    else
+        ok "$gone is gone"
+    fi
+done
+
+# A missing probe tool must never read as an unreachable network. It once
+# required `ping`, which ships in iputils and is in no package list here, so on
+# a minimal system the gate aborted the install.
+gate_code="$(grep -vE '^[[:space:]]*#' "$ROOT_DIR/lib/installer/gate.sh" 2>/dev/null)"
+if grep -q 'hyprx_gate_internet_state' <<<"$gate_code" \
+   && grep -q 'Could not verify network reachability' <<<"$gate_code"; then
+    ok "the gate distinguishes an unverifiable network from an outage"
+else
+    finding "the gate still conflates a missing probe tool with an unreachable network" \
+        "a tool that is absent must report 'unknown' and stay advisory, never fatal"
+fi
+
+# Any probe the gate shells out to must be guarded, so an absent tool falls
+# through to the next rung instead of being reported as a failed check.
+for probe in ping curl wget; do
+    if grep -qx "$probe" "$ROOT_DIR/packages.list"; then
+        ok "$probe is a declared dependency"
+    elif grep -q "command -v $probe" <<<"$gate_code"; then
+        ok "$probe is not declared but the gate guards it and falls through"
+    else
+        finding "the gate shells out to '$probe' without guarding it" \
+            "'$probe' is not in packages.list, so an absent probe reads as a failed check"
+    fi
+done
+
+# The engine must run the gate once.
+if [[ -f "$ROOT_DIR/lib/installer/engine.sh" ]]; then
+    gate_calls="$(grep -cE 'hyprx_(install_gate|preflight_check|compatibility_check)' \
+        "$ROOT_DIR/lib/installer/engine.sh")"
+    if [[ "$gate_calls" == "1" ]]; then
+        ok "engine.sh calls the gate exactly once"
+    else
+        finding "engine.sh invokes a gate $gate_calls times"
+    fi
+fi
+
+# The probe cache must be reachable from its callers. Every gate probe used to
+# be called as `x="$(hyprx_gate_…)"`, and a command substitution is a subshell:
+# the cache append happened there and was discarded on exit. The array was empty
+# after every run and no test could see it, because counting probe invocations
+# on a host where each probe happens to run once looks identical to caching.
+subshell_probes=0
+for pattern in 'hyprx_gate_probe' 'hyprx_gate_disk_kb' 'hyprx_gate_ram_mb' \
+               'hyprx_gate_internet_state'; do
+    # Comments are excluded: gate.sh quotes the old broken form in prose
+    # ("this as `root_kb=\"$(hyprx_gate_disk_kb /)\"`"), and that sentence is
+    # describing the bug rather than committing it.
+    hits="$(grep -nE "\$\(.*$pattern" "$ROOT_DIR/lib/installer/gate.sh" 2>/dev/null \
+        | grep -vE '^[0-9]+:[[:space:]]*#' || true)"
+    if [[ -n "$hits" ]]; then
+        finding "$pattern is captured through \$(), so its cache write is lost in a subshell" \
+            "pass a destination variable instead: $pattern <key> <var> …"
+        subshell_probes=$((subshell_probes + 1))
+    fi
+done
+(( subshell_probes == 0 )) && ok "no gate probe is called inside a command substitution"
+
+# `sudo -v` refreshes the credential timestamp and can prompt for a password;
+# `sudo -n true` only tests for a cached ticket and never prompts.
+#
+# A guarded fallback is acceptable - on a real tty, outside a dry run, there is
+# nothing to gain from refusing to authenticate. An UNGUARDED one is not: it
+# runs twice per install (the old pair of gates each called it) and can block on
+# a prompt nobody is there to answer.
+if ! grep -q 'sudo -v' <<<"$gate_code"; then
+    ok "the gate never uses the prompting 'sudo -v'"
+elif grep -q '\-t 0' <<<"$gate_code" && grep -q 'hyprx_util_dry_run' <<<"$gate_code"; then
+    ok "'sudo -v' is only reached on a real tty, outside a dry run"
+else
+    finding "gate.sh calls 'sudo -v' without guarding it on a tty and dry-run check" \
+        "it can block on a password prompt; prefer 'sudo -n true' and fall back only when there is a terminal to answer"
+fi
+
+# ===========================================================================
+# N. one linter, one ruleset
+# ===========================================================================
+# The suite used to carry its own inline `-e SC2015,SC2086,…` list while CI read
+# .shellcheckrc. Twelve findings passed the suite and failed CI, and nothing in
+# the output said which linter was authoritative.
+section "N. linter consistency"
+
+if grep -qE 'shellcheck[^|]*-e SC' "$ROOT_DIR/tests/run_tests.sh"; then
+    finding "tests/run_tests.sh still passes an inline -e exclusion list" \
+        "it must read .shellcheckrc, or the suite and CI lint against different rulesets"
+else
+    ok "the suite lints through .shellcheckrc"
+fi
+
+if grep -q 'rcfile' "$ROOT_DIR/tests/run_tests.sh"; then
+    ok "the suite passes --rcfile explicitly, so cwd cannot change the rules"
+else
+    finding "the suite relies on cwd to locate .shellcheckrc" \
+        "ShellCheck looks for it in the current directory, so the rules change with the working directory"
+fi
+
+# CI must use the same mechanism, not the cwd-relative default.
+if grep -qE 'shellcheck .*--rcfile' "$ROOT_DIR/.github/workflows/tests.yml"; then
+    ok "the CI lint job also passes --rcfile explicitly"
+else
+    finding "the CI lint job relies on cwd to locate .shellcheckrc" \
+        "one ruleset means one mechanism: pass --rcfile in both places"
+fi
+
+# ShellCheck's rule set moves between releases, so an unpinned install makes
+# "passes locally" meaningless. Both jobs must pin the same version.
+sc_pins="$(grep -oE 'SHELLCHECK_VERSION="v[0-9.]+"' "$ROOT_DIR/.github/workflows/tests.yml" \
+    | sort -u)"
+pin_count="$(grep -c 'SHELLCHECK_VERSION' "$ROOT_DIR/.github/workflows/tests.yml")"
+
+if [[ "$pin_count" -ge 2 ]] && [[ "$(wc -l <<<"$sc_pins")" == "1" ]]; then
+    ok "both CI jobs pin ShellCheck to the same version ($sc_pins)"
+else
+    finding "CI does not pin ShellCheck to one version across jobs" \
+        "apt follows whatever ubuntu-latest ships, so the rule set drifts and local results stop predicting CI"
+fi
+
+# SC2015 is the shape that produced a real bug: clean.sh reported an
+# unauthenticated-sudo SKIP as a FAILURE. It must not creep back in.
+#
+# Asked of ShellCheck directly rather than grepped for. A grep for `&&` and `||`
+# on one line cannot tell `A && B || C` from `[[ A && B ]] || C`, and an
+# earlier version of this check did exactly that - flagging six correct lines
+# while missing three real ones. ShellCheck is the authority, and CI now pins
+# its version, so "ShellCheck says no" is a reproducible answer.
+if command -v shellcheck >/dev/null 2>&1; then
+    sc2015_out="$(
+        find "$ROOT_DIR/lib" "$ROOT_DIR/commands" "$ROOT_DIR/scripts" \
+            -name '*.sh' -type f -print0 \
+        | xargs -0 shellcheck -x --rcfile "$ROOT_DIR/.shellcheckrc" \
+            -f gcc 2>&1 \
+        | grep -oE '\[SC2015\]' | wc -l | tr -d ' '
+    )"
+    sc2015_out="${sc2015_out:-0}"
+    if (( sc2015_out == 0 )); then
+        ok "ShellCheck reports no SC2015 ('A && B || C') in lib/, commands/ or scripts/"
+    else
+        finding "ShellCheck reports $sc2015_out SC2015 finding(s)" \
+            "'A && B || C' is not if-then-else; C runs whenever B fails. Replace with an explicit if/then."
+    fi
+else
+    hyprx_ui_info "shellcheck not available - skipping the SC2015 check"
 fi
 
 # ===========================================================================

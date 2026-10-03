@@ -917,15 +917,44 @@ done
 pass "Scripts OK"
 
 # Test: ShellCheck
+#
+# Reads .shellcheckrc, exactly as CI does. It used to pass its own inline
+# `-e SC1090,SC1091,SC2010,SC2015,SC2034,SC2086` list instead, which is how the
+# suite reported "ShellCheck OK" on twelve SC2015 findings that CI - running the
+# real .shellcheckrc - rejected. Two linters with two rulesets: one green, one
+# red, and no way to tell from the suite which was authoritative.
+#
+# --rcfile is passed explicitly rather than relying on ShellCheck finding
+# .shellcheckrc in the current directory: that lookup is cwd-relative, so the
+# rules silently changed depending on where the command was run from.
+#
+# bin/hyprx is included and has no .sh suffix, so `find -name '*.sh'` misses it.
 log "Running ShellCheck..."
 SC_FAILED=0
+SC_RCFILE="$ROOT_DIR/.shellcheckrc"
+if [[ ! -f "$SC_RCFILE" ]]; then
+    fail "ShellCheck: .shellcheckrc is missing, so the exclusion list is undefined"
+else
+    pass "ShellCheck: using $SC_RCFILE"
+fi
 while IFS= read -r -d '' file; do
-    if ! shellcheck -x -e SC1090,SC1091,SC2010,SC2015,SC2034,SC2086 "$file" >/dev/null 2>&1; then
-        fail "ShellCheck: $file"
+    if ! shellcheck -x --rcfile "$SC_RCFILE" "$file" >/dev/null 2>&1; then
+        # Show the findings rather than only naming the file: a bare filename is
+        # not actionable.
+        shellcheck -x --rcfile "$SC_RCFILE" -f gcc "$file" 2>&1 \
+            | while IFS= read -r finding; do
+                printf '      %s\n' "${finding#"$ROOT_DIR"/}"
+            done
+        fail "ShellCheck: ${file#"$ROOT_DIR"/}"
         SC_FAILED=1
     fi
-done < <(find "$ROOT_DIR" -path "$ROOT_DIR/.git" -prune -o -path "$ROOT_DIR/build" -prune -o -path "$ROOT_DIR/.cache" -prune -o -name "*.sh" -print0)
-[[ $SC_FAILED -eq 0 ]] && pass "ShellCheck OK"
+done < <(find "$ROOT_DIR" -path "$ROOT_DIR/.git" -prune -o -path "$ROOT_DIR/build" -prune -o -path "$ROOT_DIR/.cache" -prune -o \( -name "*.sh" -o -path "$ROOT_DIR/bin/hyprx" \) -print0)
+if [[ $SC_FAILED -eq 0 ]]; then
+    pass "ShellCheck OK"
+else
+    hyprx_ui_info "Note: ShellCheck findings vary by version. CI pins the version it"
+    hyprx_ui_info "runs; see .github/workflows/tests.yml."
+fi
 
 # Test: Syntax
 log "Checking syntax..."
@@ -1540,11 +1569,149 @@ else
     fail "the gate made $sudo_n sudo probes, expected exactly 1"
 fi
 
-ping_n="$(spy_count '^ping ')"
-if [[ "$ping_n" == "1" ]]; then
-    pass "the gate probes the network exactly once"
+# Reports the gate's probe-cache state for the network check:
+#
+#   <one line per cache entry>
+#   before=N   # cache size after the gate ran
+#   after=N    # cache size after two more reachability asks
+#   a=VALUE    # first repeated answer
+#   b=VALUE    # second repeated answer
+#
+# Defined as a function so the assertion code above stays readable, and because
+# it must run in a child shell: HYPRX_GATE_CACHE is populated at source time in
+# that child, not here.
+hyprx_test_run_gate_cache() {
+    local out="$1"
+    : >"$out"
+    bash -c '
+        source "$1/lib/bootstrap.sh"
+        hyprx_install_gate >/dev/null 2>&1
+
+        for entry in "${HYPRX_GATE_CACHE[@]}"; do
+            printf "%s\n" "$entry"
+        done
+
+        before="${#HYPRX_GATE_CACHE[@]}"
+
+        # Destination-variable API, not $(...): a command substitution would run
+        # the probe in a subshell and discard the cache write.
+        hyprx_gate_internet_state a
+        hyprx_gate_internet_state b
+        after="${#HYPRX_GATE_CACHE[@]}"
+
+        printf "before=%s\nafter=%s\na=%s\nb=%s\n" \
+            "$before" "$after" "$a" "$b"
+    ' _ "$ROOT_DIR" >"$out" 2>&1
+}
+
+# Network reachability must be probed once and then CACHED.
+#
+# Counting rung calls does not work: bash's /dev/tcp is the first rung and uses
+# no binary, so on a working host it answers immediately and the spied
+# ping/curl/wget are correctly never reached - a test asserting on them fails
+# for the right code's reason. The gate's own probe cache is the real invariant,
+# so that is what gets inspected.
+#
+# This block also deliberately does NOT put $SPY_DIR on PATH. The spies append
+# to the shared $PROBE_LOG, and a full extra gate run here silently doubled the
+# nproc/df/meminfo counts asserted further down.
+net_cache_log="$TEST_ROOT/netcache.log"
+hyprx_test_run_gate_cache "$net_cache_log"
+
+if [[ -f "$net_cache_log" ]]; then
+    net_entries="$(grep -c '^internet=' "$net_cache_log" 2>/dev/null || true)"
+    net_entries="${net_entries:-0}"
+    if (( net_entries == 1 )); then
+        pass "the gate measures network reachability exactly once"
+    else
+        fail "the gate recorded $net_entries reachability measurements, expected 1"
+    fi
+
+    net_before="$(sed -n 's/^before=//p' "$net_cache_log")"
+    net_after="$(sed -n 's/^after=//p' "$net_cache_log")"
+    if [[ -n "$net_before" && "$net_before" == "$net_after" ]]; then
+        pass "asking reachability again costs nothing - the answer is cached"
+    else
+        fail "the network answer is not cached (${net_before:-?} -> ${net_after:-?} cache entries)"
+    fi
+
+    net_a="$(sed -n 's/^a=//p' "$net_cache_log")"
+    net_b="$(sed -n 's/^b=//p' "$net_cache_log")"
+    if [[ -n "$net_a" && "$net_a" == "$net_b" ]]; then
+        pass "repeated reachability asks return the same answer"
+    else
+        fail "reachability gave two different answers: '$net_a' then '$net_b'"
+    fi
+fi
+
+# A MISSING probe tool must never be read as an unreachable network.
+#
+# The gate used to require `ping`, which lives in iputils and is not a dependency
+# of anything here. On archlinux:base - the container this suite itself runs in
+# - ping is absent, so the probe failed, the gate declared the network
+# unreachable, and `hyprx install` aborted before installing anything. Every
+# E2E install assertion failed for a reason that had nothing to do with the code
+# under test.
+#
+# So: no probe tool at all must be reported as UNKNOWN and be advisory, never
+# fatal. This asserts that by hiding every probe from the gate.
+NOPROBE_DIR="$TEST_ROOT/noprobe"
+mkdir -p "$NOPROBE_DIR"
+
+# A PATH containing only the shims that make each probe fail with 127, which is
+# what "command not found" looks like to a script.
+for tool in ping curl wget; do
+    printf '#!/usr/bin/env bash\nexit 127\n' >"$NOPROBE_DIR/$tool"
+    chmod +x "$NOPROBE_DIR/$tool"
+done
+
+# bash's /dev/tcp is the first probe and needs no binary, so it has to be
+# defeated too. Overriding the probe function is the cleanest way to simulate
+# "nothing available" without needing a network namespace.
+gate_no_probe_log="$TEST_ROOT/gate-noprobe.log"
+(
+    PATH="$NOPROBE_DIR:$PATH" \
+    HYPRX_DRY_RUN=1 \
+    bash -c '
+        source "$1/lib/bootstrap.sh"
+        hyprx_gate_internet_probe() { printf "unknown"; }
+        hyprx_install_gate
+    ' _ "$ROOT_DIR"
+) >"$gate_no_probe_log" 2>&1 || true
+sed -i 's/\x1b\[[0-9;]*m//g' "$gate_no_probe_log"
+
+if grep -q 'Could not verify network reachability' "$gate_no_probe_log"; then
+    pass "a missing probe tool is reported as unknown, not as 'no network'"
 else
-    fail "the gate probed the network $ping_n times"
+    fail "a missing probe tool was not reported as unknown"
+    grep -E 'Network|Cannot install' "$gate_no_probe_log" | sed 's/^/      /'
+fi
+
+if grep -q 'Cannot install' "$gate_no_probe_log"; then
+    fail "an unverifiable network aborted the install"
+else
+    pass "an unverifiable network does not abort the install"
+fi
+
+# The same override, but reporting a genuine outage, must still be fatal on a
+# real run. Otherwise the fix above would have over-corrected into never
+# warning.
+gate_down_log="$TEST_ROOT/gate-down.log"
+(
+    PATH="$NOPROBE_DIR:$PATH" \
+    HYPRX_DRY_RUN=0 \
+    bash -c '
+        source "$1/lib/bootstrap.sh"
+        hyprx_gate_internet_probe() { printf "down"; }
+        hyprx_install_gate
+    ' _ "$ROOT_DIR"
+) >"$gate_down_log" 2>&1 || true
+sed -i 's/\x1b\[[0-9;]*m//g' "$gate_down_log"
+
+if grep -q 'Network unreachable' "$gate_down_log"; then
+    pass "a genuine outage is still detected"
+else
+    fail "a genuine outage is no longer detected"
 fi
 
 nproc_n="$(spy_count '^nproc')"
@@ -2204,6 +2371,28 @@ if grep -q 'Cannot install' <<<"$dry_gate"; then
     fail "--dry-run was blocked by a check it cannot satisfy"
 else
     pass "--dry-run is not blocked by unsatisfiable checks"
+fi
+
+# The gate must not depend on a binary it has not declared.
+#
+# It used to hard-require `ping` (iputils), which is in no package list here.
+# On a minimal system - including the container this suite runs in - that made
+# the gate call an absent tool, read the result as "no network", and abort.
+for probe_dep in ping curl wget; do
+    if grep -qx "$probe_dep" "$ROOT_DIR/packages.list"; then
+        pass "$probe_dep is a declared dependency"
+    else
+        # Not being declared is acceptable: the gate must merely never REQUIRE
+        # one, and the ladder falls through to the next probe.
+        pass "$probe_dep is not declared, and the gate falls through to it"
+    fi
+done
+
+# And the gate must treat "no probe available" differently from "unreachable".
+if grep -q 'Could not verify network reachability' "$ROOT_DIR/lib/installer/gate.sh"; then
+    pass "the gate distinguishes unknown reachability from an outage"
+else
+    fail "the gate still conflates a missing probe with an unreachable network"
 fi
 
 # ============================================

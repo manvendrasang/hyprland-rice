@@ -527,3 +527,80 @@ disagreeing on three numbers is how the confusion started.
 Twelve new assertions cover it, including ones that count actual probe
 invocations via wrapper scripts on `PATH` - so a future re-introduction of a
 duplicate probe fails the suite rather than going unnoticed.
+
+One claim above was wrong when written, though, and it is worth being precise
+about: the cache did not work. It is corrected in the next section.
+
+### Follow-up: what CI found that the review did not (#22)
+
+The suite was green locally and red on GitHub Actions. Three separate causes,
+and only one of them was a flake-free environment difference:
+
+**1. The gate hard-required `ping`, so `hyprx install` aborted on a minimal
+system.** `ping` ships in `iputils`, which is in no package list here. On
+`archlinux:base` — the container the test suite itself runs in — the probe
+binary is absent, the gate read the failed probe as "network unreachable",
+declared one blocking problem and returned 1. Every E2E assertion downstream
+("install never reached *Validating packages*") failed for a reason unrelated to
+what it was testing.
+
+A missing probe is **unknown**, not **down**. The probe ladder is now
+`/dev/tcp` (bash's own, no binary) → `curl` → `wget` → `ping`, each guarded by
+`command -v`, and a rung that does not exist is skipped rather than failed. If
+*no* rung exists the gate reports `Could not verify network reachability` as a
+warning. A genuine outage is still fatal outside `--dry-run`.
+
+**2. The suite and CI linted with different rulesets.** CI installs ShellCheck
+from `apt`, which follows whatever `ubuntu-latest` ships; 0.11 is lenient about
+`A && B || C` where `B` is an assignment, an older release is not. Worse, the
+suite carried its own inline `-e SC1090,SC1091,SC2010,SC2015,SC2034,SC2086`
+copy while CI read `.shellcheckrc` — so the suite printed `ShellCheck OK` over
+twelve real SC2015 findings. Two linters, two rulesets, one green and one red,
+and nothing in the output saying which was authoritative.
+
+- The suite now passes `--rcfile .shellcheckrc` explicitly (ShellCheck finds
+  that file relative to the *current directory*, so the rules otherwise changed
+  with the working directory), includes `bin/hyprx` in the `find`, and prints
+  the findings instead of only the filename.
+- Both CI jobs download a pinned ShellCheck (`SHELLCHECK_VERSION="v0.11.0"`)
+  from upstream instead of using `apt`.
+- The twelve `A && B || true` capability checks in `lib/detect.sh` and the one
+  in `scripts/apply-wallust-theme.sh` became a `detect_capability` helper plus
+  explicit `if/then`; two in `commands/doctor.sh` were real bugs in JSON
+  generation, not just style.
+
+**3. The probe cache was decorative.** This one the review asserted as working
+and it was not. Every call site captured stdout:
+
+```bash
+root_kb="$(hyprx_gate_disk_kb /)"     # command substitution = subshell
+```
+
+so `HYPRX_GATE_CACHE+=(...)` executed in a subshell and evaporated when it
+exited. The array was empty after every run, the second caller always
+re-probed, and each fact was measured exactly as many times as it happened to
+be *written* — which the spy tests could not tell apart from caching, because
+they counted invocations, not cache hits.
+
+The API is now destination-variable based throughout
+(`hyprx_gate_probe <key> <var> <cmd…>`, `hyprx_gate_disk_kb <path> <var>`,
+`hyprx_gate_ram_mb <var>`, `hyprx_gate_internet_state <var>`), which keeps the
+cache write in the caller's shell. A test now asserts the cache *grows to N and
+then stops growing* when the same fact is asked twice — the invariant that
+counting probe invocations never checked.
+
+Two more things fell out:
+
+- `hyprx_gate_internet`, a boolean wrapper with no callers, was deleted rather
+  than maintained as an API nothing exercises.
+- The `find | while` guard in `review-checks.sh` had a fixed 12-line window that
+  bled into the enclosing loop and flagged a subshell whose body only prints;
+  it now walks to the matching `done`. It also matched its own documentation
+  (`# NOT \`find | while\``), and counted bare `|| true` as SC2015 — 38
+  "findings", six of which were correct `[[ A && B ]] || C` tests. It now asks
+  ShellCheck for SC2015 rather than guessing with a regex.
+
+Verified after the fixes: `run_tests` 454 pass / 0 fail, `review-checks` 0
+findings, `shellcheck --rcfile .shellcheckrc` clean over every `.sh` plus
+`bin/hyprx`, `bash -n` clean, and `hyprx install --dry-run` in a container
+without `ping`, `curl` or `wget` reaches *Installing packages*.
