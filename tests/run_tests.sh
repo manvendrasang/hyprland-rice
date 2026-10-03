@@ -164,6 +164,69 @@ log "Started: $(date)"
 log "Log file: $TEST_LOG"
 log ""
 
+# Test: suite prerequisites
+#
+# Checked before anything else, because two of these absences were invisible:
+#
+#   * `diff` was missing from the CI container, so `if diff -q a b` exited 127,
+#     the else branch ran, and the suite reported "default/template variable
+#     sets differ:" with an EMPTY diff - a false failure blaming the files for
+#     a missing program.
+#   * `comm` and friends run inside $( ), so a missing tool yields empty output
+#     rather than an error. `missing_vars="$(comm -23 a b)"` on a box without
+#     comm produces "", and `[[ -z "$missing_vars" ]]` then PASSES. A missing
+#     tool would have been reported as a passing assertion.
+#
+# This is the test-suite version of the gate's ping bug: a tool that is not
+# there is not evidence about the thing being tested. So the tools are asserted
+# up front, with the package to install.
+log "Testing suite prerequisites..."
+TOOLS_OK=1
+for tool in diff comm sort awk sed grep tr uniq wc sha256sum shellcheck jq; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        fail "missing tool: $tool (install it - CI: pacman -Syy --needed $tool)"
+        TOOLS_OK=0
+    fi
+done
+if (( TOOLS_OK == 1 )); then
+    pass "all suite tools available (diff comm sort awk sed grep tr uniq wc sha256sum shellcheck jq)"
+fi
+
+# Every comparison of two files must distinguish "they differ" from "the diff
+# tool did not run". Both are non-zero, and treating them alike is what turned
+# a missing binary into an accusation against the file contents.
+#
+# Usage: files_equal <a> <b>  ->  prints "equal" | "differ" | "no-diff-tool"
+files_equal() {
+    local a="$1" b="$2" rc=0
+    diff -q "$a" "$b" >/dev/null 2>&1 || rc=$?
+    case "$rc" in
+        0) printf 'equal' ;;
+        1) printf 'differ' ;;
+        *) printf 'no-diff-tool' ;;
+    esac
+}
+
+# assert_covers <label> <have-file> <want-file>
+#
+# Asserts every line of <want-file> appears in <have-file>. The three outcomes
+# are kept apart because they are otherwise indistinguishable: `comm` inside
+# $( ) yields "" both when there is nothing missing AND when comm itself could
+# not run, and every caller tests for "". A missing comm would therefore have
+# been reported as a passing assertion. Exit 127 makes that case loud.
+assert_covers() {
+    local label="$1" have="$2" want="$3"
+    local missing rc=0
+    missing="$(comm -23 "$want" "$have" 2>/dev/null)" || rc=$?
+    if (( rc != 0 )); then
+        fail "$label: cannot verify ('comm' exited $rc - tool missing?)"
+    elif [[ -z "$missing" ]]; then
+        pass "$label"
+    else
+        fail "$label (missing: $(tr '\n' ' ' <<<"$missing"))"
+    fi
+}
+
 # Test: Bootstrap
 log "Testing bootstrap..."
 assert_equals true "$HYPRX_INITIALIZED"
@@ -1890,19 +1953,24 @@ WAYBAR_STYLES=(
 colour_vars "$ROOT_DIR/config/wallust/templates/waybar-colors.css" >"$TEST_ROOT/tmpl_vars"
 used_vars "${WAYBAR_STYLES[@]}" >"$TEST_ROOT/used_vars"
 
-missing_vars="$(comm -23 "$TEST_ROOT/used_vars" "$TEST_ROOT/tmpl_vars")"
-if [[ -z "$missing_vars" ]]; then
-    pass "waybar template defines every variable the stylesheets use"
-else
-    fail "waybar template is missing: $(tr '\n' ' ' <<<"$missing_vars")"
-fi
+assert_covers "waybar template defines every variable the stylesheets use" \
+    "$TEST_ROOT/tmpl_vars" "$TEST_ROOT/used_vars"
 
 colour_vars "$ROOT_DIR/config/waybar/styles/colors.css" >"$TEST_ROOT/default_vars"
-if diff -q "$TEST_ROOT/default_vars" "$TEST_ROOT/tmpl_vars" >/dev/null; then
-    pass "committed default and wallust template declare the same variables"
-else
-    fail "default/template variable sets differ: $(diff "$TEST_ROOT/default_vars" "$TEST_ROOT/tmpl_vars" | tr '\n' ' ')"
-fi
+case "$(files_equal "$TEST_ROOT/default_vars" "$TEST_ROOT/tmpl_vars")" in
+    equal)
+        pass "committed default and wallust template declare the same variables"
+        ;;
+    no-diff-tool)
+        # Reported separately and unmistakably: with `diff` absent this branch
+        # used to run the else below, which printed "variable sets differ:" and
+        # then an empty diff - blaming the files for a missing program.
+        fail "cannot compare variable sets: 'diff' is not installed"
+        ;;
+    *)
+        fail "default/template variable sets differ: $(diff "$TEST_ROOT/default_vars" "$TEST_ROOT/tmpl_vars" | tr '\n' ' ')"
+        ;;
+esac
 
 # The same contract for every other wallust template that feeds a stylesheet.
 check_template_contract() {
@@ -1910,12 +1978,7 @@ check_template_contract() {
     local name; name="$(basename "$tpl")"
     colour_vars "$tpl" >"$TEST_ROOT/tv"
     used_vars "$@" >"$TEST_ROOT/uv"
-    local miss; miss="$(comm -23 "$TEST_ROOT/uv" "$TEST_ROOT/tv")"
-    if [[ -z "$miss" ]]; then
-        pass "$name covers its consumer"
-    else
-        fail "$name is missing: $(tr '\n' ' ' <<<"$miss")"
-    fi
+    assert_covers "$name covers its consumer" "$TEST_ROOT/tv" "$TEST_ROOT/uv"
 }
 
 check_template_contract "$ROOT_DIR/config/wallust/templates/swaync-colors.css" "$ROOT_DIR/config/swaync/style.css"

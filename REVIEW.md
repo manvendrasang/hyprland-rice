@@ -278,7 +278,7 @@ rsync       *** ABSENT ***     ← but scripts/dev-sync.sh:11 needs it
 | `HYPRX_STATE_DIR` derivation + `log()` | 2 | `ensure-waybar.sh:29-36`, `wallpaper-restore.sh:11,13-20` |
 | Bounded "poll a hyprctl cmd until it answers" | 2 | `ensure-waybar.sh:44-53`, `wallpaper-restore.sh:34-43` |
 | wlogout invocation (**2 different geometries**) | 3 | `hyprland.lua:321-326` (margins 400/260/260/260) vs `config.jsonc:37` (`--buttons-per-row 5` only) |
-| Deploy-to-`~/.config` logic | 2 | `deploy.sh:5-95` (safe) vs `scripts/dev-sync.sh:11-17` (unsafe subset) |
+| Deploy-to-`~/.config` logic | 2 | `deploy.sh:5-95` (safe) vs `scripts/dev-sync.sh:11-17` (unsafe subset) — **resolved**: both `dev-sync.sh` copies deleted as dead code (#19) |
 
 The two `listactive` parsers are the expensive pair: `wallpaper-restore.sh:96` contains a comment explicitly warning the copy "cannot drift from apply-wallust-theme.sh's copy" — and it already has, because they're different implementations with different accepted input formats.
 
@@ -286,7 +286,7 @@ The two `listactive` parsers are the expensive pair: `wallpaper-restore.sh:96` c
 
 ## Architecture & maintainability
 
-- **`preflight.sh` and `compatibility.sh` are ~50% the same function.** Both probe internet, sudo, disk, RAM, package manager. Both call `hyprx_ui_header`, so one install prints the header **5 times** (`engine.sh:5`, `preflight.sh:7`, `compatibility.sh:4`, `validator.sh:4`, `install_packages.sh:4`). Merge into one gate with severity levels.
+- **`preflight.sh` and `compatibility.sh` are ~50% the same function.** Both probe internet, sudo, disk, RAM, package manager. Both call `hyprx_ui_header`, so one install prints the header **5 times** (`engine.sh:5`, `preflight.sh:7`, `compatibility.sh:4`, `validator.sh:4`, `install_packages.sh:4`). Merge into one gate with severity levels. — **resolved (#21)**, see *Follow-up: the preflight/compatibility merge*.
 - **`commands/doctor.sh` is 861 lines and `commands/clean.sh` is 533** — both are effectively libraries with a thin CLI shim at the bottom. The repo's own rule in `README.md:288` is "`lib/` … never a CLI entry point"; these two commands are `lib/` that happens to live in `commands/`.
 - **State is passed through 17 `HYPRX_*` env overrides + 9 globals.** Worked well (the suite isolates in 6 lines), but `HYPRX_LOGGER_DIR` (a *directory* that overrides the *state dir*, `state.sh:28-30`) silently beats `HYPRX_STATE_DIR` when both are set. Confusing precedence.
 - **`LOG_KEEP` is defined twice with different defaults**: `logger.sh:11` → 1, `clean.sh:31` → 3. logger never produces `.2`/`.3`, so `clean`'s pruning loop is unreachable. Pick one owner.
@@ -475,8 +475,9 @@ Deliberately not done, and worth doing next, in order:
 1. `rollback --dry-run` and a confirmation prompt (#14) — the only remaining
    destructive path with neither.
 2. Batch package installs (#13).
-3. Merge `preflight` and `compatibility` (#21) and extract the shared shell
-   helpers (#20) — one hyphenated jump file fixes both.
+3. Extract the shared shell helpers (#20) — the duplicate `listactive` parsers
+   and the three `command -v X || exec X` copies are still there. (#21, the
+   preflight/compatibility merge, is done: see below.)
 4. Sub-second snapshot IDs (#16).
 5. `hyprx --version`, `hyprx logs`, `hyprx status`, `hyprx theme apply` (which
    would also close the `THEME` known gap).
@@ -604,3 +605,77 @@ Verified after the fixes: `run_tests` 454 pass / 0 fail, `review-checks` 0
 findings, `shellcheck --rcfile .shellcheckrc` clean over every `.sh` plus
 `bin/hyprx`, `bash -n` clean, and `hyprx install --dry-run` in a container
 without `ping`, `curl` or `wget` reaches *Installing packages*.
+
+### Follow-up: the same bug one layer down (#23)
+
+The next CI run failed with `tests/run_tests.sh: line 1901: diff: command not
+found`, and the suite reported:
+
+```
+[FAIL] default/template variable sets differ:
+```
+
+— an empty diff, accusing the *file contents* of differing. `diffutils` is not
+in `archlinux:base`, and the suite never checked that the tools it shells out
+to were actually present.
+
+That is #22's `ping` bug wearing the test suite's clothes: **absence of a tool
+is not evidence about the thing being tested.** It appeared in three shapes,
+and only the first was loud:
+
+- **`diff`, reported as a difference.** `if diff -q a b` exits 127 when `diff`
+  is missing; 127 is non-zero like a genuine difference, so the `else` branch
+  filed a finding against the files.
+- **`comm`, reported as agreement.** `miss="$(comm -23 a b)"` yields `""` when
+  `comm` cannot run, and every caller tested `[[ -z "$miss" ]]`. A missing
+  `comm` therefore produced a *passing* assertion — including when a variable
+  was genuinely missing. Verified: with `comm` stubbed to exit 127, the old
+  check passed on both a covered and an uncovered stylesheet.
+- **`grep`, reported as a clean tree.** `review-checks.sh` grepped for the old
+  THEME code with the BRE `\-d "\$\{HYPRX_CONFIG`. In a basic regex `\{` opens
+  an interval expression, so grep could not compile the pattern and exited 2 —
+  again non-zero, again read as "no match", so the script printed
+  `THEME validation accepts files` on *every* run while `Unmatched \{` went to
+  stderr unwatched. That check was structurally incapable of failing.
+
+What changed:
+
+- **CI installs `diffutils`** in the test-suite job.
+- **The suite asserts its own tool prerequisites first** (`diff comm sort awk
+  sed grep tr uniq wc sha256sum shellcheck jq`), naming the package, so a
+  missing tool fails loudly instead of masquerading as a result.
+- **`files_equal` separates the three outcomes** — `equal` (0), `differ` (1),
+  `no-diff-tool` (anything else) — and **`assert_covers` captures `comm`'s exit
+  status** and reports `cannot verify (exit 127)` instead of `nothing missing`.
+- **`review-checks.sh` got the same two helpers** (`check_files_equal`,
+  `check_covers`), because the checker had the identical defect in its own
+  section C and a checker that exempts itself is not one.
+- **The THEME check now extracts the real branch** from
+  `hyprx_config_validate` and tests it with `grep -F` (fixed strings cannot
+  fail to compile); a branch it cannot locate is its own finding rather than a
+  silent pass.
+- **New section O of `review-checks.sh`** re-asserts all of the above, and runs
+  `broken_grep_patterns` over both test scripts: every single-quoted grep
+  pattern is re-compiled under the flavor its own line specifies (`-E` → ERE,
+  `-F` → fixed, default → BRE), and a pattern that will not compile is a
+  finding.
+
+The self-referential hazard was real and had to be handled: section O's own
+`grep -E '(^|[^_a-z])diff -q'` contains the literal `)diff -q`, and its
+`finding "raw 'diff -q' …"` message quotes it too. Comments, helper bodies, the
+`raw_diff=`/`raw_comm=` assignments, and the messages are all stripped before
+inspecting — and the messages were reworded so the checker no longer quotes the
+pattern it searches for.
+
+Every new check was mutation-tested rather than trusted: dropping `diffutils`
+from the install line, deleting the prerequisites section, removing the
+`no-diff-tool` sentinel, reintroducing a raw `diff -q` / `comm -23`, restoring
+the broken BRE, and putting `-d` back in the THEME validation each produce a
+finding. One earlier version of the `diffutils` check grepped the whole
+workflow and passed after the package was deleted, because the explanatory
+comment above the command still said "diffutils" — it now inspects the install
+command only.
+
+Verified: `run_tests` **460 pass / 0 fail**, `review-checks` 0 findings with no
+grep errors on stderr, `shellcheck --rcfile .shellcheckrc` clean, `bash -n`
+clean, workflow YAML parses.

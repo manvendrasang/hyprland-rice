@@ -44,6 +44,100 @@ ok() { green "  ✓ $1"; }
 section() { printf '\n\033[1;34m== %s ==\033[0m\n' "$1"; }
 
 # ---------------------------------------------------------------------------
+# Tool-aware comparisons
+# ---------------------------------------------------------------------------
+# This script had the same defect it now reports in others, twice over:
+#
+#   * `if diff -q a b` exits 127 when diff is absent, which is non-zero, so the
+#     else branch fired and the script filed a finding against the CODE for a
+#     missing program.
+#   * `miss="$(comm -23 a b)"; [[ -z "$miss" ]]` passes when comm is absent,
+#     because a command that cannot run produces no output. A real, missing
+#     variable would have been reported as covered.
+#
+# Both are the gate's `ping` bug: absence of a tool is not evidence about the
+# thing being checked. So each helper separates "could not verify" from the two
+# genuine answers.
+#
+# check_covers <ok-label> <finding-label> <reason> <have-file> <want-file>
+check_covers() {
+    local ok_label="$1" find_label="$2" reason="$3" have="$4" want="$5"
+    local miss rc=0
+    miss="$(comm -23 "$want" "$have" 2>/dev/null)" || rc=$?
+    if (( rc != 0 )); then
+        finding "$find_label: cannot verify ('comm' exited $rc - tool missing?)" \
+            "a tool problem, not a code problem; install coreutils before running this"
+    elif [[ -z "$miss" ]]; then
+        ok "$ok_label"
+    else
+        finding "$find_label: $(tr '\n' ' ' <<<"$miss")" "$reason"
+    fi
+}
+
+# check_files_equal <ok-label> <finding-label> <reason> <a> <b>
+#
+# exit 1 is the only code that means "the files differ".
+check_files_equal() {
+    local ok_label="$1" find_label="$2" reason="$3" a="$4" b="$5"
+    local rc=0
+    diff -q "$a" "$b" >/dev/null 2>&1 || rc=$?
+    case "$rc" in
+        0) ok "$ok_label" ;;
+        1) finding "$find_label" "$reason" ;;
+        *) finding "$find_label: cannot verify ('diff' exited $rc - tool missing?)" \
+               "a tool problem, not a code problem; install diffutils before running this" ;;
+    esac
+}
+
+# broken_grep_patterns <file>
+#
+# Prints "line N: <pattern>" for every single-quoted grep PATTERN in <file>
+# that fails to COMPILE under the flavor its own line specifies (-E -> ERE,
+# -F -> fixed and therefore always compilable, default -> BRE).
+#
+# Why this matters more than it looks: a pattern that will not compile makes
+# grep exit 2, and exit 2 is non-zero exactly like a genuine miss. So
+#
+#     if grep -q 'BROKEN' file; then finding ...; else ok ...; fi
+#
+# takes the else branch and reports OK forever, while printing a grep error to
+# stderr that nobody reads. review-checks.sh shipped one: `\-d "\$\{...` in a
+# BRE, where `\{` opens an interval expression, so "THEME validation accepts
+# files" was green unconditionally - a check whose failure mode is a silent
+# pass is worse than no check at all.
+broken_grep_patterns() {
+    local file="$1" lineno=0 line n pat rc
+    local re_grep='(^|[[:space:] (])grep'
+    local re_fixed="$re_grep"'[^|&;]*[[:space:]]-[a-zA-Z]*F'
+    local re_ere="$re_grep"'[^|&;]*[[:space:]]-[a-zA-Z]*E'
+
+    while IFS= read -r line; do
+        lineno=$((lineno + 1))
+
+        # Comments may quote a broken pattern on purpose to illustrate it, and
+        # a pattern held in a variable has no quotes to extract.
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ "$line" == *grep* ]] || continue
+
+        n="$(tr -cd "'" <<<"$line" | wc -c)"
+        (( n >= 2 && n % 2 == 0 )) || continue
+
+        pat="$(sed -n "s/^[^']*'\([^']*\)'.*/\1/p" <<<"$line")"
+        [[ -n "$pat" ]] || continue
+
+        if [[ "$line" =~ $re_fixed ]]; then
+            continue
+        elif [[ "$line" =~ $re_ere ]]; then
+            printf '%s\n' x | grep -q -E -- "$pat" 2>/dev/null; rc=$?
+        else
+            printf '%s\n' x | grep -q -- "$pat" 2>/dev/null; rc=$?
+        fi
+
+        (( rc >= 2 )) && printf 'line %s: %s\n' "$lineno" "$pat"
+    done <"$file"
+}
+
+# ---------------------------------------------------------------------------
 # Sanity: what platform are we on?
 # ---------------------------------------------------------------------------
 section "Environment"
@@ -152,26 +246,21 @@ do
 
     [[ -f "$tpl" ]] || { finding "missing template ${pair%%:*}"; continue; }
 
-    miss="$(comm -23 <(used_vars "$dir"/*.css) <(colour_vars "$tpl"))"
-    if [[ -z "$miss" ]]; then
-        ok "${pair%%:*} covers every variable its consumer uses"
-    else
-        finding "${pair%%:*} does not define: $(tr '\n' ' ' <<<"$miss")" \
-            "GTK drops every rule using an undefined custom property"
-    fi
+    check_covers "${pair%%:*} covers every variable its consumer uses" \
+        "${pair%%:*} does not define" \
+        "GTK drops every rule using an undefined custom property" \
+        <(colour_vars "$tpl") <(used_vars "$dir"/*.css)
 done
 
 # The committed default must match the template, or the fresh clone and the
 # live bar disagree.
 if [[ -f "$ROOT_DIR/config/waybar/styles/colors.css" ]]; then
-    if diff -q <(colour_vars "$ROOT_DIR/config/waybar/styles/colors.css") \
-               <(colour_vars "$ROOT_DIR/config/wallust/templates/waybar-colors.css") >/dev/null 2>&1
-    then
-        ok "committed default and template declare the same variables"
-    else
-        finding "the committed default and the template declare different variables" \
-            "diff <(comm -3 <(...) <(...))"
-    fi
+    check_files_equal \
+        "committed default and template declare the same variables" \
+        "the committed default and the template declare different variables" \
+        "diff <(comm -3 <(...) <(...))" \
+        <(colour_vars "$ROOT_DIR/config/waybar/styles/colors.css") \
+        <(colour_vars "$ROOT_DIR/config/wallust/templates/waybar-colors.css")
 fi
 
 # ===========================================================================
@@ -384,14 +473,34 @@ else
     ok "the 'config set' branch does not revert a rejected value"
 fi
 
-# THEME must accept a file.
-# Single-quoted on purpose: the literal `$\{...}` must reach grep as regex, not
-# be expanded by this script. shellcheck disable=SC2016
-if grep -q '\-d "\$\{HYPRX_CONFIG' "$ROOT_DIR/lib/config.sh"; then  # shellcheck disable=SC2016
-    finding "THEME validation still uses -d" \
+# THEME must accept a file, not only a directory.
+#
+# This grepped for the OLD literal code, and did so in a BRE: `\$` immediately
+# followed by `\{`, where `\{` opens an interval expression. grep could not
+# compile the pattern and exited 2. The caller tests non-zero as "no match",
+# took the else branch, and printed "THEME validation accepts files" on every
+# run regardless of what the code said - while "Unmatched \{" went to stderr.
+#
+# So the branch is extracted from the real function and tested with -F (fixed
+# strings), which cannot fail to compile, and a missing branch is its own
+# finding rather than a silent pass.
+theme_branch="$(
+    sed -n '/^hyprx_config_validate()/,/^}/p' "$ROOT_DIR/lib/config.sh" \
+        | sed -n '/^[[:space:]]*THEME)/,/;;/p' \
+        | grep -vE '^[[:space:]]*#'
+)"
+
+if [[ -z "$theme_branch" ]]; then
+    finding "could not locate the THEME branch of hyprx_config_validate" \
+        "the validation moved; update this check rather than leave it permanently green"
+elif grep -qF -- '-d ' <<<"$theme_branch"; then
+    finding "THEME validation still tests with -d" \
         "a theme is a .css FILE: config/waybar/themes/ holds one-dark.css, so -d rejects the only shipped theme"
-else
+elif grep -qF -- '-e ' <<<"$theme_branch"; then
     ok "THEME validation accepts files"
+else
+    finding "THEME branch tests neither -e nor -d" \
+        "it must accept a file; -e covers both a file and a directory"
 fi
 
 # ===========================================================================
@@ -732,6 +841,118 @@ if command -v shellcheck >/dev/null 2>&1; then
     fi
 else
     hyprx_ui_info "shellcheck not available - skipping the SC2015 check"
+fi
+
+# ===========================================================================
+# O. tools the tests shell out to
+# ===========================================================================
+# The same failure mode as the gate's `ping`, one layer down. `diff` was absent
+# from the CI container, so `if diff -q a b` exited 127, the else branch ran,
+# and the suite accused the FILE CONTENTS of differing - with an empty diff.
+# Worse, tools invoked inside $( ) fail silently: `comm -23 a b` yields "" when
+# comm cannot run, and every caller tested for "", so a missing comm reported a
+# PASSING assertion.
+section "O. test tool prerequisites"
+
+suite="$ROOT_DIR/tests/run_tests.sh"
+
+# The suite must check its own tools before using them.
+if grep -q 'Testing suite prerequisites' "$suite"; then
+    ok "the suite asserts its own tool prerequisites up front"
+else
+    finding "the suite does not verify the tools it shells out to" \
+        "a missing diff/comm/sort/awk must fail loudly, not masquerade as an assertion result"
+fi
+
+# And it must distinguish 'files differ' from 'diff did not run'. Both are
+# non-zero; treating them alike is how a missing binary became an accusation.
+if grep -q 'no-diff-tool' "$suite"; then
+    ok "a failed diff is distinguished from a differing file"
+else
+    finding "a non-zero 'diff' is read as 'the files differ'" \
+        "exit 127 (not found) and exit 1 (differ) are both non-zero; report them apart"
+fi
+
+# Every file-comparison assertion should go through the helper rather than call
+# diff directly. A raw `diff` outside the helper can reintroduce the conflation.
+#
+# Both greps below need care or they flag the checker's own prose: comment lines
+# quote the bug verbatim ("if diff -q a b"), the helper bodies contain the one
+# legitimate call, and section O's own pattern definitions contain the literal
+# `)diff -q` and `)comm -23` they are searching for - which would make the check
+# report itself. All three are stripped; only what remains is inspected.
+#
+# review-checks.sh is scanned too, not only the suite: this script had exactly
+# this defect in its own section C, and a checker that exempts itself is not
+# one.
+suite_code_no_helpers="$(
+    awk '
+        /^(files_equal|assert_covers|check_covers|check_files_equal)\(\) \{/ { skip = 1 }
+        skip && /^\}/                                                       { skip = 0; next }
+        skip                                                                 { next }
+        /^[[:space:]]*#/                                                     { next }
+        /raw_(diff|comm)=/                                                   { next }
+        { print }
+    ' "$suite" "$ROOT_DIR/tests/review-checks.sh"
+)"
+
+raw_diff="$(grep -E '(^|[^_a-z])diff -q' <<<"$suite_code_no_helpers" || true)"
+if [[ -z "$raw_diff" ]]; then
+    ok "no file comparison bypasses the files_equal helpers"
+else
+    # The message deliberately does not spell out the pattern: it would then
+    # contain the very text this grep looks for, and the check would flag itself.
+    finding "raw diff invocation outside a helper: $(head -1 <<<"$raw_diff" | cut -c1-60)" \
+        "use files_equal/check_files_equal, which report 'tool missing' instead of 'differ'"
+fi
+
+# comm inside $( ) is the vacuous-pass shape. Every use should be the helper
+# that captures the exit status.
+raw_comm="$(grep -E '(^|[^_a-z])comm -23' <<<"$suite_code_no_helpers" || true)"
+if [[ -z "$raw_comm" ]]; then
+    ok "every 'comm' comparison captures its exit status"
+else
+    finding "raw comm invocation outside a helper: $(head -1 <<<"$raw_comm" | cut -c1-60)" \
+        "a missing comm yields empty output, which callers read as 'nothing missing'"
+fi
+
+# A grep pattern that will not COMPILE makes grep exit 2, which is non-zero
+# exactly like a genuine miss - so the else branch runs and the check reports
+# OK forever. This script had one (section H, THEME validation), and it printed
+# "Unmatched \{" to stderr on every run while staying green.
+compile_broken=""
+for script in "$ROOT_DIR/tests/review-checks.sh" "$ROOT_DIR/tests/run_tests.sh"; do
+    while IFS= read -r hit; do
+        [[ -n "$hit" ]] || continue
+        compile_broken+="  ${script##*/}: $hit"$'\n'
+    done < <(broken_grep_patterns "$script")
+done
+
+if [[ -z "$compile_broken" ]]; then
+    ok "every grep pattern in the test scripts compiles"
+else
+    finding "grep patterns that fail to compile:" \
+        "grep exits 2, callers test non-zero as 'no match', and the check passes unconditionally"
+    printf '%s' "$compile_broken"
+fi
+
+# CI must install what the suite needs. diffutils is not in archlinux:base.
+#
+# The word has to be looked for in the INSTALL COMMAND, not in the file: an
+# earlier version of this check grepped the whole workflow and passed after
+# the package was deleted from `pacman -Syy`, because the explanatory comment
+# above the command still said "diffutils". A check that its own documentation
+# satisfies is not a check.
+ci_install_cmds="$(grep -E '^[[:space:]]*(pacman|sudo apt|apt) ' \
+    "$ROOT_DIR/.github/workflows/tests.yml" | grep -v '^[[:space:]]*#' || true)"
+
+if grep -q 'diffutils' <<<"$ci_install_cmds"; then
+    ok "the test-suite CI job installs diffutils"
+elif ! grep -q 'archlinux:base\|pacman -Syy' <<<"$ci_install_cmds"; then
+    hyprx_ui_info "no pacman install line found - skipping the diffutils check"
+else
+    finding "the CI install command does not include diffutils" \
+        "the suite compares files with diff; archlinux:base does not ship it"
 fi
 
 # ===========================================================================
