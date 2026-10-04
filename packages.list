@@ -22,7 +22,7 @@ xdg-desktop-portal-hyprland
 # A polkit agent is what renders the "Authentication is required" dialog for
 # GUI apps that need root (mounting, network settings, package management).
 # Without one those dialogs never appear and the app just hangs.
-hyprpolkit-agent
+hyprpolkitagent
 
 # ---------------------------------------------------------------------------
 # REQUIRED - audio

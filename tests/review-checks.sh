@@ -295,7 +295,7 @@ fi
 
 # Direct spot-checks on the packages that were absent.
 for pkg in hyprpaper libnotify pipewire wireplumber xdg-desktop-portal-hyprland \
-           hyprpolkit-agent inetutils fontconfig; do
+           hyprpolkitagent inetutils fontconfig; do
     if grep -qx "$pkg" "$ROOT_DIR/packages.list"; then
         ok "packages.list has $pkg"
     else

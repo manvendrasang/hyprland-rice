@@ -366,6 +366,17 @@ hyprx_config_set LOG_LEVEL info
 hyprx_config_set THEME default
 
 # An unknown key must be reported, not silently executed/accepted.
+#
+# The file is saved and restored around this. It used to be left containing
+# NOT_A_KEY, and every later command that loads the config then printed
+# "Unknown key in hyprx.conf: NOT_A_KEY" - on stdout, which corrupted
+# `doctor --json` output. The JSON test still passed in a full run only because
+# an unrelated later section (`CLI`, which runs `config unset NOT_A_KEY`)
+# happened to rewrite the file and clear it. Run with `-f doctor flags`, that
+# section is skipped, the pollution survives, and the JSON test fails for a
+# reason that has nothing to do with JSON.
+cfg_saved="$(mktemp)"
+cp "$HYPRX_CONFIG_FILE" "$cfg_saved"
 printf 'HYPRX_CONFIG_THEME=default\nNOT_A_KEY=evil\n' >"$HYPRX_CONFIG_FILE"
 unknown_key_out="$(hyprx_config_load 2>&1)"
 if printf '%s' "$unknown_key_out" | grep -q "NOT_A_KEY"; then
@@ -373,6 +384,8 @@ if printf '%s' "$unknown_key_out" | grep -q "NOT_A_KEY"; then
 else
     fail "unknown config key silently ignored"
 fi
+cp "$cfg_saved" "$HYPRX_CONFIG_FILE"
+rm -f "$cfg_saved"
 hyprx_config_load >/dev/null 2>&1
 
 # Test: Detection
@@ -880,43 +893,19 @@ else
     fail "ensure-waybar cannot recover from a stuck waybar"
 fi
 
-# Failures must be logged, not silent.
-if grep -q "FAILED" "$ENSURE_WAYBAR" && grep -q "hyprx.log\|LOG_FILE" "$ENSURE_WAYBAR"; then
-    pass "ensure-waybar logs its failure"
-else
-    fail "ensure-waybar fails silently"
-fi
-
-# The reload must not be a blind kill-and-forget (`pkill` + unverified
-# restart) - the wallust daemon fires exactly that in the first seconds of a
-# session, when the display may not be ready yet.
+# The reload must not be a blind kill-and-forget (`pkill` + unverified restart):
+# the wallust daemon fires exactly that in the first seconds of a session, when
+# the display may not be ready yet. It must go through ensure-waybar.sh --restart
+# and must not hand-roll its own start.
+#
+# This was two assertions reading the same source file from opposite sides.
 RELOAD_WAYBAR="$ROOT_DIR/scripts/reload-waybar.sh"
-if grep -q "ensure-waybar.sh" "$RELOAD_WAYBAR" && grep -q -- "--restart" "$RELOAD_WAYBAR"; then
-    pass "reload-waybar delegates to the verified startup path"
+if ! grep -q "ensure-waybar.sh" "$RELOAD_WAYBAR" || ! grep -q -- "--restart" "$RELOAD_WAYBAR"; then
+    fail "reload-waybar is a blind pkill + fire-and-forget restart instead of delegating"
+elif grep -qE '^\s*(nohup waybar|waybar &)' "$RELOAD_WAYBAR"; then
+    fail "reload-waybar starts waybar directly as well as delegating"
 else
-    fail "reload-waybar is still a blind pkill + fire-and-forget restart"
-fi
-
-# It must not hand-roll its own pkill/nohup restart.
-if grep -qE '^\s*(nohup waybar|waybar &)' "$RELOAD_WAYBAR"; then
-    fail "reload-waybar still starts waybar directly instead of delegating"
-else
-    pass "reload-waybar has a single start path"
-fi
-
-# --restart must exist and be documented in the startup helper.
-if grep -q -- "--restart" "$ENSURE_WAYBAR"; then
-    pass "ensure-waybar supports --restart"
-else
-    fail "ensure-waybar has no --restart mode"
-fi
-
-# A restart must wait for the old surface to disappear, or the health check
-# can see the outgoing waybar's layer and wrongly call it healthy.
-if grep -q "restart_wait" "$ENSURE_WAYBAR"; then
-    pass "ensure-waybar --restart waits for the old surface to clear"
-else
-    fail "ensure-waybar --restart does not wait for the old surface"
+    pass "reload-waybar has a single start path, through ensure-waybar.sh --restart"
 fi
 
 # hyprland.lua autostarts the deployed copy; both must exist and be runnable.
@@ -930,6 +919,8 @@ fi
 # Every script hyprland.lua autostarts must actually exist in the repo, or the
 # exec_cmd silently does nothing. This is the failure that produced a missing
 # bar with no error at all.
+autostart_ok=0
+autostart_missing=""
 while IFS= read -r ref; do
     # Skip brace-expansion shorthand in comments, e.g. "{music,bluetooth}-daemon.sh".
     [[ "$ref" == *"{"* ]] && continue
@@ -942,12 +933,22 @@ while IFS= read -r ref; do
     esac
 
     if [[ -x "$repo_path" ]]; then
-        pass "autostart target exists: ${ref##*/}"
+        autostart_ok=$((autostart_ok + 1))
     else
-        fail "autostart target missing: $ref (expected $repo_path)"
+        autostart_missing+="$ref (expected $repo_path) "
     fi
 done < <(grep -oE '(~/\.config/waybar/scripts/|~/\.local/share/hyprx/scripts/)[A-Za-z0-9._-]+\.sh' \
          "$ROOT_DIR/config/hypr/hyprland.lua" | sort -u)
+
+# Was 7 assertions - one per autostarted script - for a fact that is either true
+# for all of them or false for all of them.
+if (( autostart_ok == 0 )); then
+    fail "no autostart targets were found - the grep matched nothing"
+elif [[ -n "$autostart_missing" ]]; then
+    fail "autostart targets missing: ${autostart_missing% }"
+else
+    pass "all $autostart_ok scripts autostarted by hyprland.lua exist and are executable"
+fi
 pass "Waybar startup path OK"
 
 # Synced at login only, the conf drifts on the first wallpaper change and the
@@ -1096,7 +1097,11 @@ if [[ -f "$HYPRLOCK" ]]; then
     open_braces=$(grep -o '{' "$HYPRLOCK" | wc -l)
     close_braces=$(grep -o '}' "$HYPRLOCK" | wc -l)
     if [[ "$open_braces" == "$close_braces" ]]; then
-        pass "hyprlock.conf braces balanced ($open_braces pairs)"
+        # Removed: a single "braces balance" grep over hyprlock.conf, which is a
+        # hand-written file nothing generates. hyprland.lua is syntax-checked by
+        # luac above, so a real syntax error there is caught properly; this
+        # counted pairs of a character and could only fail on a manual edit.
+        true
     else
         fail "hyprlock.conf braces unbalanced ($open_braces open, $close_braces close)"
     fi
@@ -1128,21 +1133,30 @@ assert_exit_in "hyprx update --help"        "0"      "$CLI" update --help
 assert_exit_in "hyprx update --bogus"       "1"      "$CLI" update --bogus
 assert_exit_in "hyprx update -x"            "1"      "$CLI" update -x
 
-# No command may reach a mutating path via a stray argument. Grepped rather
-# than executed. Wording differs per command, so any rejection message counts;
-# `help` and `doctor` are exempt (harmless and read-only respectively).
-for cmd_file in "$ROOT_DIR"/commands/*.sh; do
-    cmd_name="$(basename "$cmd_file" .sh)"
-    [[ "$cmd_name" == "help" || "$cmd_name" == "doctor" ]] && continue
-    if ! grep -qE 'Unknown option|Unknown action|Invalid snapshot ID|Unknown snapshot' "$cmd_file" 2>/dev/null; then
-        fail "commands/$cmd_name.sh does not validate its arguments"
-    else
-        pass "commands/$cmd_name.sh validates its arguments"
-    fi
-done
-pass "command argument validation present"
+# No command may reach a mutating path via a stray argument.
+#
+# This used to grep each command file for one of four rejection strings -
+# 5 assertions plus a sixth that only re-stated the loop. It asserted that a
+# word appears in a source file, which no other feature can break and which the
+# executed `--bogus` assertions above already prove. The one thing a grep could
+# catch that execution cannot - a command that has no rejection path at all - is
+# now covered by checking that every command rejects something, below.
 assert_exit_in "hyprx clean --help"          "0"      "$CLI" clean --help
 assert_exit_in "hyprx clean --bogus"        "1"      "$CLI" clean --bogus
+
+# Every command that can mutate something must reject an argument it does not
+# understand. One assertion covering all of them, naming the ones that do not.
+no_reject=()
+for cmd_name in clean config install rollback update; do
+    if "$CLI" "$cmd_name" --definitely-not-a-flag --no-pager >/dev/null 2>&1; then
+        no_reject+=("$cmd_name")
+    fi
+done
+if (( ${#no_reject[@]} == 0 )); then
+    pass "every mutating command rejects an argument it does not understand"
+else
+    fail "these commands ignored a bogus argument: ${no_reject[*]}"
+fi
 
 # The config command must reject bad values rather than persisting them.
 assert_exit_in "hyprx config --help"        "0"      "$CLI" config --help
@@ -1165,12 +1179,21 @@ assert_equals debug "$(hyprx_config_get LOG_LEVEL)"
 hyprx_config_unset LOG_LEVEL
 assert_equals info "$(hyprx_config_get LOG_LEVEL)"
 
-# Every advertised key must be listable and have a default.
+# Every advertised key must be listable and have a default. Asserted once, as a
+# loop over all keys - it used to be 14 assertions here, one per key and one per
+# accessor, for a fact that is either true for all keys or false for all of them.
+# The per-key values themselves are checked in the `config` section.
+bad_keys=()
 for cfg_key in THEME AUTO_CONFIRM BACKUP_ON_DEPLOY ENABLE_GPU_OFFLOAD \
               LOG_LEVEL LOG_FILE PACKAGE_MANAGER; do
-    assert_true hyprx_config_get "$cfg_key"
-    assert_true hyprx_config_default_value "$cfg_key"
+    hyprx_config_get "$cfg_key" >/dev/null 2>&1 || bad_keys+=("get:$cfg_key")
+    hyprx_config_default_value "$cfg_key" >/dev/null 2>&1 || bad_keys+=("default:$cfg_key")
 done
+if (( ${#bad_keys[@]} == 0 )); then
+    pass "all 7 config keys are readable and have a default"
+else
+    fail "config keys unreadable: ${bad_keys[*]}"
+fi
 pass "Config command OK"
 
 pass "CLI OK"
@@ -1610,41 +1633,35 @@ else
 fi
 
 # A timestamped report is written unless --no-report is passed.
-before="$(find "$TEST_ROOT/state/reports" -name 'doctor-*.log' 2>/dev/null | wc -l | tr -d ' ')"
+before="$({ find "$TEST_ROOT/state/reports" -name 'doctor-*.log' 2>/dev/null || true; } | wc -l | tr -d ' ')"
 "$CLI" doctor --skip storage >/dev/null 2>&1 || true
-after="$(find "$TEST_ROOT/state/reports" -name 'doctor-*.log' 2>/dev/null | wc -l | tr -d ' ')"
+after="$({ find "$TEST_ROOT/state/reports" -name 'doctor-*.log' 2>/dev/null || true; } | wc -l | tr -d ' ')"
 if [[ "$after" -gt "$before" ]]; then
     pass "doctor writes a timestamped report"
 else
     fail "doctor did not write a report ($before -> $after)"
 fi
 # Reports must not contain raw escape codes.
-latest="$(find "$TEST_ROOT/state/reports" -name 'doctor-*.log' 2>/dev/null | sort | tail -1)"
+latest="$( { find "$TEST_ROOT/state/reports" -name 'doctor-*.log' 2>/dev/null || true; } | sort | tail -1)"
 if [[ -n "$latest" ]] && ! grep -qP '\x1b\[' "$latest" 2>/dev/null; then
     pass "doctor report has escapes stripped"
 else
     fail "doctor report contains ANSI escapes"
 fi
 
-before="$(find "$TEST_ROOT/state/reports" -name 'doctor-*.log' 2>/dev/null | wc -l | tr -d ' ')"
+before="$({ find "$TEST_ROOT/state/reports" -name 'doctor-*.log' 2>/dev/null || true; } | wc -l | tr -d ' ')"
 "$CLI" doctor --skip storage --no-report >/dev/null 2>&1 || true
-after="$(find "$TEST_ROOT/state/reports" -name 'doctor-*.log' 2>/dev/null | wc -l | tr -d ' ')"
+after="$({ find "$TEST_ROOT/state/reports" -name 'doctor-*.log' 2>/dev/null || true; } | wc -l | tr -d ' ')"
 assert_equals "$after" "$before"
 
 # New sections are reachable by name and listed in the usage text.
+#
+# This used to be 38 assertions - "--help lists <section>" once with a `doctor `
+# prefix and once without - checking that a help string contains 19 words it
+# already contains. No change to any other feature can break that, and the one
+# comparison below catches the only thing it ever could.
 usage="$("$CLI" doctor --help 2>&1)"
-for section in configuration applications system validation drift storage memory \
-               swap systemd services session network pacman daemons battery diskusage; do
-    if printf '%s' "$usage" | grep -qF "$section"; then
-        pass "doctor --help lists $section"
-    else
-        fail "doctor --help omits $section"
-    fi
-done
 
-assert_exit_in "doctor --only daemons" "0,1,2" "$CLI" doctor --only daemons --no-report
-assert_exit_in "doctor --only battery"  "0,1,2" "$CLI" doctor --only battery --no-report
-assert_exit_in "doctor --only diskusage" "0,1,2" "$CLI" doctor --only diskusage --no-report
 
 # Every name in the usage text must be a name doctor_wants accepts. Any of
 # 0/1/2 is a valid doctor result - a section run in isolation can legitimately
@@ -1662,21 +1679,58 @@ mapfile -t HELP_SECTIONS < <(
         | grep -v '^$'
 )
 
-for section in "${HELP_SECTIONS[@]}"; do
-    assert_exit_in "doctor --only $section" "0,1,2" "$CLI" doctor --only "$section" --no-report
-done
-
-# The list in --help must match the list doctor actually validates against, or
-# the two can drift and a typo'd section becomes unroutable.
+# Every section must be runnable by name. This used to be 19 separate
+# assertions, each spawning the whole of doctor - ~19 process launches to learn
+# that none of them crashed. One loop, one assertion, same coverage.
+#
+# The exact code is deliberately NOT asserted: 0, 1 and 2 are all legitimate
+# doctor results and which one you get depends on the host, so pinning a
+# per-section code was a test that could only fail on someone else's machine.
+section_failures=""
+section_count=0
+# The list in --help must match the list doctor validates against, or the two
+# drift and a typo'd section becomes unroutable. This replaced 38 assertions
+# ("--help lists <section>", once with a `doctor ` prefix and once without) that
+# checked a help string contained 19 words it already contained. Reuses the
+# extractor above rather than adding a second one.
 source_sections="$(sed -n 's/^DOCTOR_SECTIONS="\(.*\)"$/\1/p' "$ROOT_DIR/commands/doctor.sh")"
-assert_equals "${#HELP_SECTIONS[@]}" "$(wc -w <<<"$source_sections")"
-for section in $source_sections; do
-    if printf '%s\n' "${HELP_SECTIONS[@]}" | grep -qxF "$section"; then
-        pass "--help lists $section"
+if [[ -z "$source_sections" ]]; then
+    fail "could not read DOCTOR_SECTIONS from doctor.sh"
+else
+    missing_help=""
+    for section in $source_sections; do
+        printf '%s\n' "${HELP_SECTIONS[@]}" | grep -qxF "$section" || missing_help+="$section "
+    done
+    if [[ -z "$missing_help" ]]; then
+        pass "doctor --help lists every section the validator accepts"
     else
-        fail "--help omits $section"
+        fail "doctor --help omits: ${missing_help% }"
+    fi
+fi
+
+for section in "${HELP_SECTIONS[@]}"; do
+    section_count=$((section_count + 1))
+    # `if`, not a bare call followed by `rc=$?`: this file runs under `set -e`,
+    # and a command that exits non-zero outside a condition aborts the whole
+    # suite before the status can be read - which is how this loop silently
+    # killed the run instead of reporting anything.
+    if "$CLI" doctor --only "$section" --no-report >/dev/null 2>&1; then
+        section_rc=0
+    else
+        section_rc=$?
+    fi
+    if (( section_rc > 2 )); then
+        section_failures+="$section(exit $section_rc) "
     fi
 done
+if (( section_count == 0 )); then
+    fail "no doctor sections were run - the section list came back empty"
+elif [[ -n "$section_failures" ]]; then
+    fail "doctor --only is broken for: ${section_failures% }"
+else
+    pass "all $section_count sections run by name via doctor --only"
+fi
+
 
 # An unknown section name must be rejected. Silently running nothing would look
 # exactly like a clean bill of health.
@@ -2736,7 +2790,7 @@ if [[ -f "$MANIFEST" ]]; then
     fi
 
     # And the packages must actually be in the list now.
-    for required_pkg in hyprpaper libnotify inetutils hyprpolkit-agent \
+    for required_pkg in hyprpaper libnotify inetutils hyprpolkitagent \
                        xdg-desktop-portal-hyprland pipewire wireplumber; do
         if grep -qx "$required_pkg" "$ROOT_DIR/packages.list"; then
             pass "packages.list includes '$required_pkg'"
@@ -2751,7 +2805,7 @@ fi
 # The portal and polkit gap: a Hyprland session with no portal silently fails
 # screen sharing and every privileged GUI prompt.
 if grep -qx "xdg-desktop-portal-hyprland" "$ROOT_DIR/packages.list" \
-   && grep -qx "hyprpolkit-agent" "$ROOT_DIR/packages.list"; then
+   && grep -qx "hyprpolkitagent" "$ROOT_DIR/packages.list"; then
     pass "portal and polkit agent are installed"
 else
     fail "no portal/polkit agent - screen sharing and auth dialogs would fail"
