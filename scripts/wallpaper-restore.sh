@@ -8,7 +8,7 @@
 set -uo pipefail
 
 WALLPAPER_DIR="${HYPRX_WALLPAPER_DIR:-$HOME/Pictures/Wallpapers}"
-STATE_FILE="${HYPRX_WALLPAPER_STATE:-${HYPRX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx}/last-wallpaper}"
+STATE_FILE="${HYPRX_WALLPAPER_STATE_OVERRIDE:-${HYPRX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx}/last-wallpaper}"
 WAYPAPER_CONFIG="${HYPRX_TARGET_HOME:-$HOME}/.config/waypaper/config.ini"
 LOG_FILE="${HYPRX_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hyprx}/hyprx.log"
 
@@ -27,7 +27,7 @@ wallpaper_is_active() {
 }
 
 active_path() {
-    hyprctl hyprpaper listactive 2>/dev/null | sed -n 's/^[^:]*:[[:space:]]*//p' | head -n1
+    hyprx_wallpaper_active
 }
 
 # Block until hyprpaper's IPC answers, or give up after ~10s.

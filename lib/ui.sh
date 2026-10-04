@@ -30,22 +30,33 @@ hyprx_ui_section() {
   echo -e "${HYPRX_UI_CYAN}== $1 ==${HYPRX_UI_RESET}"
 }
 
+# Every diagnostic goes to stderr. stdout is reserved for the thing the command
+# actually produces - `hyprx doctor --json` emits a JSON document, and a stray
+# warning on stdout makes it unparseable. This bit for real: the config loader
+# warns about an unknown key in hyprx.conf, and that warning landed on stdout,
+# so `doctor --json` returned a document prefixed by
+#   ! Unknown key in hyprx.conf: NOT_A_KEY
+# which is not JSON. The warning was invisible in a terminal because both
+# streams look the same there.
+#
+# `hyprx_ui_header` and `hyprx_ui_divider` are the exceptions: they are chrome
+# for a human reading a terminal, not output a caller parses.
 hyprx_ui_success() {
-  echo -e "${HYPRX_UI_GREEN}✓${HYPRX_UI_RESET} $1"
+  echo -e "${HYPRX_UI_GREEN}✓${HYPRX_UI_RESET} $1" >&2
   hyprx_logger_success "$1"
 }
 
 hyprx_ui_error() {
-  echo -e "${HYPRX_UI_RED}✗${HYPRX_UI_RESET} $1"
+  echo -e "${HYPRX_UI_RED}✗${HYPRX_UI_RESET} $1" >&2
   hyprx_logger_error "$1"
 }
 
 hyprx_ui_warn() {
-  echo -e "${HYPRX_UI_YELLOW}!${HYPRX_UI_RESET} $1"
+  echo -e "${HYPRX_UI_YELLOW}!${HYPRX_UI_RESET} $1" >&2
   hyprx_logger_warn "$1"
 }
 
 hyprx_ui_info() {
-  echo -e "${HYPRX_UI_CYAN}>${HYPRX_UI_RESET} $1"
+  echo -e "${HYPRX_UI_CYAN}>${HYPRX_UI_RESET} $1" >&2
   hyprx_logger_info "$1"
 }

@@ -66,6 +66,79 @@ hyprx_pkg_install_aur() {
     esac
 }
 
+# Install many packages in as few transactions as possible.
+#
+# This used to be one `pacman -S` per package - roughly 50 sequential
+# transactions for a full install, each one re-resolving dependencies and
+# re-reading the sync databases. Batching is not just faster: a single
+# transaction either applies or it does not, so a failure cannot leave half a
+# dependency set installed.
+#
+# Official and AUR packages are kept in separate transactions because they go
+# through different helpers and a failure in one must not abort the other.
+# Already-installed packages are filtered out first, so re-running an install is
+# a no-op rather than a full re-resolve.
+#
+# Returns 0 if everything that was missing is now installed, 1 otherwise.
+hyprx_pkg_install_many() {
+    local -a pkgs=("$@")
+    local -a official=() aur=() missing=()
+    local pkg
+
+    if (( ${#pkgs[@]} == 0 )); then
+        return 0
+    fi
+
+    for pkg in "${pkgs[@]}"; do
+        pkg="$(hyprx_replacements_get "$pkg")"
+        [[ -z "$pkg" ]] && pkg="${pkgs[0]}"
+
+        if hyprx_pkg_installed "$pkg"; then
+            continue
+        fi
+
+        if hyprx_pkg_exists_official "$pkg"; then
+            official+=("$pkg")
+        elif hyprx_pkg_exists_aur "$pkg"; then
+            aur+=("$pkg")
+        else
+            # Unresolvable here means the queue was not validated. Report it
+            # rather than silently dropping it from the transaction.
+            missing+=("$pkg")
+        fi
+    done
+
+    if (( ${#missing[@]} > 0 )); then
+        hyprx_ui_error "Cannot install: ${missing[*]}"
+        return 1
+    fi
+
+    if (( ${#official[@]} > 0 )); then
+        hyprx_ui_info "Installing ${#official[@]} package(s) from the official repos"
+        if hyprx_util_dry_run; then
+            hyprx_util_would "install (official repo) ${official[*]}"
+        else
+            # shellcheck disable=SC2086
+            sudo pacman -S --needed --noconfirm "${official[@]}" || return 1
+        fi
+    fi
+
+    if (( ${#aur[@]} > 0 )); then
+        hyprx_ui_info "Installing ${#aur[@]} package(s) from the AUR"
+        if hyprx_util_dry_run; then
+            hyprx_util_would "install (AUR via $HYPRX_DETECT_PACKAGE_MANAGER) ${aur[*]}"
+        else
+            case "$HYPRX_DETECT_PACKAGE_MANAGER" in
+                yay)  yay -S --needed --noconfirm "${aur[@]}" || return 1 ;;
+                paru) paru -S --needed --noconfirm "${aur[@]}" || return 1 ;;
+                *)    hyprx_ui_error "No AUR helper for: ${aur[*]}"; return 1 ;;
+            esac
+        fi
+    fi
+
+    return 0
+}
+
 # Returns 0 installed, 10 already present, 1 failed.
 hyprx_pkg_install() {
     local pkg="$1" replacement

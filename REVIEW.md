@@ -62,7 +62,12 @@ while `deploy.sh` two directories down went to real trouble to reject `../escape
 Fixed by validating the name and deriving the whitelist from `commands/*.sh`.
 
 **7. `THEME` validation required a directory; the only theme is a file.**
-`one-dark` was unselectable despite `hyprx.conf` advertising it.
+`one-dark` was unselectable despite `hyprx.conf` advertising it. Later the
+setting was wired up for real: `config set THEME <name>` copies the theme to
+`waybar/themes/active.css`, which the wallust template imports. The import lives
+in the template rather than the committed default because wallust regenerates
+that file on every wallpaper change — an import written into the default would
+be destroyed at exactly the moment the theme needs to still be applied.
 
 ## Correctness findings
 
@@ -72,9 +77,9 @@ Fixed by validating the name and deriving the whitelist from `commands/*.sh`.
 | 9 | `doctor --json` structurally incomplete, while `--only` was rejected for exactly that reason | fixed |
 | 10 | `clean` claimed bytes it never freed (`gio`'s failure reported as savings) | fixed |
 | 11 | A `#` inside a quoted config value was eaten as a comment | fixed, quote-aware |
-| 12 | One `pacman -S` per package — ~50 sequential transactions | **open** |
+| 12 | One `pacman -S` per package — ~50 sequential transactions | fixed: one transaction per source |
 | 13 | AUR-only packages fail silently when `PACKAGE_MANAGER=pacman` | fixed |
-| 14 | Snapshot IDs collide within the same second | **open** |
+| 14 | Snapshot IDs collide within the same second | fixed: nanosecond IDs |
 | 15 | `clean`'s `/tmp` step had a real blast radius | fixed, scoped to `/tmp/$USER` |
 | 16 | Both `dev-sync.sh` copies were broken | removed |
 | 17 | Undeclared runtime dependencies (`hyprpaper`, `notify-send`, `hostname`, `fc-cache`, …) referenced but installed by nothing | fixed via `binary-providers.conf` + `doctor --only manifest` |
@@ -236,15 +241,64 @@ additionally wrapped so `-f` skips the *work*, not just the reporting — a targ
 run went from 94s to 10s. Failures are prefixed with their section, and a filtered
 run prints what it did not count, so it cannot be mistaken for a full run.
 
+**28 — a warning on stdout corrupted `doctor --json`.** `hyprx_ui_warn` and its
+siblings wrote to stdout, so any diagnostic prefixed the JSON document with
+`! Unknown key in hyprx.conf: NOT_A_KEY`. Invisible in a terminal, because both
+streams look the same there. Diagnostics now go to stderr; stdout is reserved for
+what the command actually produces.
+
+**29 — `hyprpolkit-agent` was a typo nothing could catch.** The real package is
+`hyprpolkitagent` — no hyphen. A misspelled name and a removed name are
+indistinguishable from the outside: both make `pacman -Si` and `yay -Si` fail,
+and validation can only report "nothing answered". Fixed by declaring the
+AUR-only set in `database/aur-packages.list`; `review-checks` section A fails if
+a package is neither in the official repos nor declared there. The checker had
+been pinning the *wrong* name, which is why the typo survived.
+
+**30 — the suite had two order dependencies, found by running sections alone.**
+The `config` section wrote `NOT_A_KEY` into `hyprx.conf` and never restored it,
+so `doctor --json` returned a document prefixed by a warning — and the JSON test
+still passed in a full run because an unrelated later section happened to rewrite
+the file and clear it. And `find <dir> | wc -l` aborts under `pipefail` when the
+directory does not exist, killing any filtered run that skipped the section
+creating it. Both fixed; CI now runs every section in isolation.
+
+**31 — `music-daemon.sh` was a daemon writing to nothing.** Its only consumer was
+the `custom/music` bar module, which was removed; it was still launched every
+login and still audited by `doctor`. Deleted, with its autostart line and audit
+row.
+
+**32 — the two `hyprpaper listactive` parsers disagreed about the format.** One
+handled `MONITOR:` and the other also handled `MONITOR =` and a nameless
+fallback. The stricter one silently returned nothing on a build printing the
+other form, which looks exactly like "no wallpaper is set" — so colour
+regeneration never fired and the rice kept the colours of a wallpaper that was no
+longer there. Now one parser in `lib/wallpaper.sh`.
+
+**33 — the state override names shadowed the derived ones.** `HYPRX_STATE_SNAPSHOT_DIR`
+(derived) and `HYPRX_SNAPSHOT_DIR` (override) differ by one word, and the
+override silently wins. Every override is now `<DERIVED>_OVERRIDE`, so the
+relationship is visible at the call site. This also removed the last instance of
+the write-back-into-an-override pattern from follow-up 24a.
+
+**34 — `hyprx wallpaper`.** Setting a wallpaper used to be three tools and a
+daemon, and doing it by hand meant the colour regeneration could be missed —
+which is invisible, because the rice just keeps the colours of a wallpaper that
+is no longer there. One command now applies the wallpaper and regenerates
+immediately, reusing the colour cache.
+
+**35 — `waypaper --restore` was broken by design.** Deploy overwrote
+`waypaper/config.ini` with a copy that has no wallpaper key, so restore could
+never work after an install. Deploy now preserves the live key the same way it
+already preserves `hyprpaper.conf`.
+
 ---
 
 ## Still open
 
-- **#12** batch `pacman -S` into one official + one AUR transaction.
-- **#14** `hyprx rollback --dry-run` and an explicit confirmation prompt.
-- **#14b** sub-second snapshot IDs, so two rollbacks in a minute do not collide.
-- **#20** shared shell helpers: the duplicate `listactive` parsers and three
-  copies of `command -v X || exec X`.
-- `music-daemon.sh` is now pointless — its only consumer (`custom/music`) was
-  removed — but it is still launched from `hyprland.lua` and still audited by
-  `doctor.sh`. Harmless, just busy.
+- **#20** shared shell helpers: three copies of `command -v X || exec X` remain
+  (the duplicate `listactive` parsers went with #32).
+- `commands/doctor.sh` is 1169 lines with 86 near-identical note/section calls.
+  Table-driving the sections would take it to roughly 750 and make adding a
+  section one line instead of a dozen. Not done: it is a large mechanical change
+  to the file that most needs to stay readable, and it wants its own review.

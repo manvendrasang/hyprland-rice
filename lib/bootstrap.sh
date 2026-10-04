@@ -22,7 +22,8 @@ for file in \
     config.sh \
     detect.sh \
     packages.sh \
-    table.sh
+    table.sh \
+    wallpaper.sh
 do
     source "$HYPRX_LIB/$file"
 done

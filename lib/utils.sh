@@ -49,5 +49,7 @@ hyprx_util_validate_package_name() {
 
 hyprx_util_validate_snapshot_id() {
     local id="$1"
-    [[ "$id" =~ ^[0-9]{8}-[0-9]{6}$ ]]
+    # The trailing -<nanoseconds> is part of the id since snapshot IDs gained
+    # sub-second resolution; without it every real id reads as malformed.
+    [[ "$id" =~ ^[0-9]{8}-[0-9]{6}-[0-9]+$ ]]
 }

@@ -817,7 +817,6 @@ swaync|swaync|
 hypridle|hypridle|
 nm-aplet|nm-aplet --indicator|
 wallust theming|wallust-hyprpaper-sync|
-music daemon|music-daemon.sh|
 bluetooth daemon|bluetooth-daemon.sh|
 EOF
 

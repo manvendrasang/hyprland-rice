@@ -18,16 +18,10 @@ while true; do
 
     if [[ -n "$current_state" && "$current_state" != "$last_state" ]]; then
         last_state="$current_state"
-        # One line per monitor: current hyprpaper prints "MONITOR: /path", older builds
-        # "MONITOR = /path", and the fallback has no name - take the first real path.
-        wallpaper_path=""
-        while IFS= read -r line; do
-            candidate=$(printf '%s' "$line" | sed -E 's/^[^=:]*(=|:) *//')
-            if [[ -n "$candidate" && -f "$candidate" ]]; then
-                wallpaper_path="$candidate"
-                break
-            fi
-        done <<< "$current_state"
+        # The one parser for this output, shared with wallpaper-restore.sh.
+        # Two copies disagreed about the format and the stricter one silently
+        # returned nothing on builds that print the other form.
+        wallpaper_path="$(hyprx_wallpaper_active || true)"
         if [[ -n "$wallpaper_path" && -f "$wallpaper_path" ]]; then
             ~/.local/share/hyprx/scripts/apply-wallust-theme.sh "$wallpaper_path"
         fi

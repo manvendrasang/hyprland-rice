@@ -118,7 +118,7 @@ hyprx_config_load() {
     # Honoured here because config.sh is sourced before
     # lib/installer/failure_logger.sh, whose default then picks it up.
     if [[ -n "$HYPRX_CONFIG_LOG_FILE" ]]; then
-        export HYPRX_FAILURE_LOG="${HYPRX_CONFIG_LOG_FILE/#\~/$HOME}"
+        export HYPRX_FAILURE_LOG_OVERRIDE="${HYPRX_CONFIG_LOG_FILE/#\~/$HOME}"
     fi
 
     return 0
@@ -185,10 +185,51 @@ hyprx_config_set() {
 
         printf -v "$key" '%s' "$2"
         hyprx_config_save
+
+        # THEME is the one key with an effect beyond its own value. It used to
+        # validate and do nothing, so `hyprx config set THEME one-dark` reported
+        # success while the bar kept its default colours - a setting that
+        # silently does nothing is worse than no setting.
+        #
+        # The theme is copied to themes/active.css, which the wallust template
+        # imports. It has to be a copy rather than a pointer: wallust regenerates
+        # that template on every wallpaper change, and a theme referenced only
+        # from the committed default would stop being applied at exactly the
+        # moment it matters.
+        if [[ "$1" == "THEME" ]]; then
+            hyprx_config_apply_theme "$2"
+        fi
+
         return 0
     done
 
     return 1
+}
+
+# Install a theme into the deployed waybar config.
+#
+# The destination is themes/active.css. An unknown or empty name installs the
+# empty default, so `config unset THEME` and `config set THEME ""` both return
+# the bar to its default colours rather than leaving a stale theme behind.
+hyprx_config_apply_theme() {
+    local name="$1"
+    local source_dir="${HYPRX_CONFIG:?}/waybar/themes"
+    local target_dir="${HYPRX_TARGET_HOME:-$HOME}/.config/waybar/themes"
+    local target="$target_dir/active.css"
+
+    mkdir -p "$target_dir" 2>/dev/null || true
+
+    if [[ -z "$name" || "$name" == "default" ]]; then
+        cp "$source_dir/active.css" "$target" 2>/dev/null || true
+        return 0
+    fi
+
+    if [[ ! -f "$source_dir/$name.css" ]]; then
+        hyprx_ui_error "No such theme: $name"
+        return 1
+    fi
+
+    cp "$source_dir/$name.css" "$target"
 }
 
 hyprx_config_unset() {
@@ -199,6 +240,13 @@ hyprx_config_unset() {
 
     printf -v "$key" '%s' "$default"
     hyprx_config_save
+
+    # THEME again: unsetting it must put the empty default theme back, or the
+    # bar keeps the colours of a theme the config no longer names.
+    if [[ "$1" == "THEME" ]]; then
+        hyprx_config_apply_theme ""
+    fi
+
     return 0
 }
 

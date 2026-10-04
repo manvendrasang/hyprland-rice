@@ -27,6 +27,18 @@ case "$ACTION" in
 
         hyprx_ui_section "Rolling back: $SNAPSHOT_ID"
 
+        if hyprx_util_dry_run; then
+            hyprx_ui_warn "Dry run - nothing was changed."
+            hyprx_ui_info "Would roll back snapshot: $SNAPSHOT_ID"
+            hyprx_snapshot_preview "$SNAPSHOT_ID"
+            exit 0
+        fi
+
+        if ! hyprx_util_confirm "Roll back $SNAPSHOT_ID? This removes packages and restores configs."; then
+            hyprx_ui_info "Aborted."
+            exit 0
+        fi
+
         hyprx_snapshot_rollback "$SNAPSHOT_ID"
 
         ;;
@@ -48,6 +60,11 @@ Usage:
     hyprx rollback list           Show available snapshots
     hyprx rollback latest         Roll back the most recent install
     hyprx rollback <snapshot-id>  Roll back a specific snapshot
+
+Options:
+    --dry-run                     Report what would change, change nothing
+
+Both rollback actions ask for confirmation before touching anything.
 
 Notes:
     Only packages newly installed by HyprX in that run are removed.
@@ -75,6 +92,18 @@ EOF
         fi
 
         hyprx_ui_section "Rolling back: $SNAPSHOT_ID"
+
+        if hyprx_util_dry_run; then
+            hyprx_ui_warn "Dry run - nothing was changed."
+            hyprx_ui_info "Would roll back snapshot: $SNAPSHOT_ID"
+            hyprx_snapshot_preview "$SNAPSHOT_ID"
+            exit 0
+        fi
+
+        if ! hyprx_util_confirm "Roll back $SNAPSHOT_ID? This removes packages and restores configs."; then
+            hyprx_ui_info "Aborted."
+            exit 0
+        fi
 
         hyprx_snapshot_rollback "$SNAPSHOT_ID"
 

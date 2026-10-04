@@ -1,0 +1,20 @@
+# Packages in packages.list that are NOT in the official Arch repos.
+#
+# Why this file exists: `hyprpolkit-agent` was in packages.list for a long time
+# and nothing ever flagged it, because the real package is `hyprpolkitagent` -
+# no hyphen. A misspelled name and a removed name are indistinguishable from the
+# outside: both make `pacman -Si` and `yay -Si` fail, and the only thing
+# validation can report is "nothing answered".
+#
+# So the AUR-only set is declared here. `tests/review-checks.sh` fails if a
+# package is neither in the official repos nor listed here, which turns a typo
+# into a CI failure instead of a silent "Package not found".
+#
+# Add a package here when you add it to packages.list and it is AUR-only.
+# Remove it here if it is ever moved into the official repos.
+
+wlogout
+waypaper
+wallust
+visual-studio-code-bin
+supergfxctl

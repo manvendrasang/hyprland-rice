@@ -43,13 +43,19 @@ hyprx rollback <id>         undo one snapshot (id looks like 20261004-004630)
 hyprx clean [--deep] [--dry-run] [--yes]   reclaim disk space
 hyprx config list|get|set|unset|path       read and change settings
 hyprx doctor [--only ...] [--skip ...] [--json] [--deep] [--restart]
+hyprx wallpaper set|next|current         set or rotate the wallpaper
 hyprx help
 ```
 
-`--dry-run` on install and clean reports what would change and changes nothing.
+`--dry-run` on install, clean and rollback reports what would change and changes
+nothing. Both rollback actions also ask for confirmation before touching
+anything.
 
 **rollback** removes only packages HyprX installed; anything you already had is
-left alone.
+left alone. `list` shows every snapshot with its package and config counts,
+`latest` undoes the most recent install, and `<id>` undoes one specific snapshot.
+Snapshot IDs carry nanoseconds, so two rollbacks in the same second cannot
+collide and silently overwrite each other.
 
 **clean** clears the pacman cache, orphaned packages, screenshots older than
 `SCREENSHOT_AGE_DAYS` (2), thumbnail/shader/fontconfig caches, journal entries
@@ -65,7 +71,7 @@ is how the test suite exercises real deletions.
 
 | Key | Meaning |
 |---|---|
-| `THEME` | which theme file to use |
+| `THEME` | which waybar theme to use (`one-dark`, or `default`) |
 | `PACKAGE_MANAGER` | `yay`, `paru` or `pacman` |
 | `LOG_LEVEL` | how much detail the log keeps |
 | `AUTO_CONFIRM` | skip yes/no questions |
@@ -107,9 +113,8 @@ Two files are special. `hyprpaper.conf` ships with no wallpaper block on
 purpose — a committed machine-specific path meant hyprpaper started with nothing
 — and `scripts/sync-hyprpaper-conf.sh` rewrites it on every wallpaper change.
 `waypaper/config.ini` is overwritten by install with a copy that has no wallpaper
-key, so `waypaper --restore` cannot work after an install;
-`scripts/wallpaper-restore.sh` keeps its own state and falls back to a random
-wallpaper.
+key, which used to break `waypaper --restore` after every install; deploy now
+preserves the live wallpaper key the same way it preserves `hyprpaper.conf`.
 
 ## Files it writes
 
@@ -139,9 +144,11 @@ them. If Google re-cuts the fonts and a pin fails, re-pin deliberately in
 
 ## Known gaps
 
-- `THEME` validates but does nothing — `config/waybar/themes/` ships one theme
-  and the bar always starts with its default config.
-- `waypaper --restore` does not survive an install (see above).
+None outstanding. `THEME` applies the selected theme through
+`waybar/themes/active.css`, which the wallust template imports — it has to live
+there rather than in the committed default, because wallust regenerates that
+file on every wallpaper change and would destroy an import written into the
+default at exactly the moment the theme needs to still be applied.
 
 ## Limitations
 

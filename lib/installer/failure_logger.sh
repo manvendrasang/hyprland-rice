@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
 
-# lib/config.sh runs earlier in the bootstrap order and exports HYPRX_FAILURE_LOG
-# when HYPRX_CONFIG_LOG_FILE is set. That line used to overwrite it
-# unconditionally, so LOG_FILE was silently ignored: the config comment claimed
-# "Honoured here because config.sh is sourced before failure_logger.sh" and the
-# unconditional assignment defeated it on the very next line.
+# lib/config.sh runs earlier in the bootstrap order and exports
+# HYPRX_FAILURE_LOG_OVERRIDE when HYPRX_CONFIG_LOG_FILE is set. That line used
+# to overwrite it unconditionally, so LOG_FILE was silently ignored: the config
+# comment claimed "Honoured here because config.sh is sourced before
+# failure_logger.sh" and the unconditional assignment defeated it on the very
+# next line.
 #
-# Precedence: HYPRX_CONFIG_LOG_FILE > HYPRX_FAILURE_LOG (env) > state dir.
-if [[ -z "${HYPRX_FAILURE_LOG:-}" ]]; then
-    HYPRX_FAILURE_LOG="$HYPRX_STATE_FAILURE_LOG"
+# Precedence: HYPRX_CONFIG_LOG_FILE > HYPRX_FAILURE_LOG_OVERRIDE (env) > state dir.
+#
+# The name carries an _OVERRIDE suffix because lib/state.sh reads it under that
+# name. This used to assign HYPRX_FAILURE_LOG - the pre-rename override name -
+# which nothing reads any more, so the assignment was silently doing nothing.
+if [[ -z "${HYPRX_FAILURE_LOG_OVERRIDE:-}" ]]; then
+    HYPRX_FAILURE_LOG_OVERRIDE="$HYPRX_STATE_FAILURE_LOG"
 fi
 
-mkdir -p "$(dirname "$HYPRX_FAILURE_LOG")" 2>/dev/null || true
-touch "$HYPRX_FAILURE_LOG" 2>/dev/null || true
+mkdir -p "$(dirname "$HYPRX_FAILURE_LOG_OVERRIDE")" 2>/dev/null || true
+touch "$HYPRX_FAILURE_LOG_OVERRIDE" 2>/dev/null || true
 
 # `hostname` comes from inetutils, which packages.list now installs - but this
 # function runs in whatever environment a failure happened in, including a
@@ -44,7 +49,7 @@ hyprx_failure_logger_log() {
         echo "Host      : $(hyprx_failure_logger_host)"
         echo "Kernel    : $(uname -r)"
         echo
-    } >>"$HYPRX_FAILURE_LOG"
+    } >>"$HYPRX_FAILURE_LOG_OVERRIDE"
 }
 
 hyprx_failure_logger_summary() {
@@ -73,5 +78,5 @@ hyprx_failure_logger_summary() {
 
         echo
         echo "=========================================================="
-    } >>"$HYPRX_FAILURE_LOG"
+    } >>"$HYPRX_FAILURE_LOG_OVERRIDE"
 }

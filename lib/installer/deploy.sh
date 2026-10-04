@@ -44,6 +44,22 @@ hyprx_deploy_config_dir() {
         cp "${target}/hyprpaper.conf" "$preserved_conf" 2>/dev/null || preserved_conf=""
     fi
 
+    # waypaper records the last wallpaper it applied in its own config.ini, and
+    # the repo copy has no wallpaper key on purpose. Deploying it verbatim used
+    # to wipe that key, so `waypaper --restore` could not work after an install
+    # and silently fell back to a random wallpaper. Same treatment as
+    # hyprpaper.conf above: capture the live value, restore it after the swap.
+    local preserved_wallpaper=""
+    if [[ "$dir" == "waypaper" && -f "${target}/config.ini" ]]; then
+        preserved_wallpaper="$(sed -n 's/^wallpaper[[:space:]]*=[[:space:]]*//p' \
+            "${target}/config.ini" 2>/dev/null | head -n1)"
+        if [[ -n "$preserved_wallpaper" ]]; then
+            preserved_wallpaper="$(dirname "$target")/.waypaper-wallpaper.preserved.$$"
+            sed -n 's/^wallpaper[[:space:]]*=[[:space:]]*//p' "${target}/config.ini" 2>/dev/null \
+                | head -n1 >"$preserved_wallpaper" || preserved_wallpaper=""
+        fi
+    fi
+
     # Stage first: copying a large config with the live target already removed
     # leaves it missing for seconds, which a config watcher can catch.
     rm -rf "$staging"
@@ -83,6 +99,15 @@ hyprx_deploy_config_dir() {
     if [[ -n "$preserved_conf" && -f "$preserved_conf" ]]; then
         mv "$preserved_conf" "${target}/hyprpaper.conf"
         hyprx_ui_info "Preserved live hyprpaper.conf (wallpaper path kept)"
+    fi
+
+    if [[ -n "$preserved_wallpaper" && -f "$preserved_wallpaper" ]]; then
+        # Rewrite the key in place rather than replacing the file, so any other
+        # setting the user added to config.ini survives the deploy.
+        sed -i "s|^wallpaper[[:space:]]*=.*|wallpaper = $(cat "$preserved_wallpaper")|" \
+            "${target}/config.ini" 2>/dev/null || true
+        rm -f "$preserved_wallpaper"
+        hyprx_ui_info "Preserved live waypaper wallpaper (waypaper --restore still works)"
     fi
 
     # The swaync package enables a systemd user service that races this rice's

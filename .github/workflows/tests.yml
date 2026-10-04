@@ -249,3 +249,31 @@ jobs:
       - name: Run Tests
 
         run: bash tests/run_tests.sh
+
+      # Every section run in isolation.
+      #
+      # The full suite passes while sections still depend on each other, and
+      # that is invisible: two real order dependencies shipped this way. The
+      # `config` section wrote NOT_A_KEY into hyprx.conf and never restored it,
+      # so `doctor --json` returned a document prefixed by a warning - and the
+      # JSON test still passed, because an unrelated later section happened to
+      # rewrite the file and clear it. Run with `-f doctor flags` that section is
+      # skipped, the pollution survives, and the test fails for a reason that has
+      # nothing to do with JSON.
+      #
+      # So each section is run alone. A section that needs another section's side
+      # effects fails here instead of passing by accident.
+      - name: Run each section in isolation
+
+        run: |
+          set -uo pipefail
+          fail=0
+          for section in $(bash tests/run_tests.sh --list); do
+            echo "=== $section ==="
+            if ! bash tests/run_tests.sh -f "$section" >"/tmp/sec-$section.log" 2>&1; then
+              echo "::error::section failed in isolation: $section"
+              tail -20 "/tmp/sec-$section.log"
+              fail=1
+            fi
+          done
+          exit "$fail"

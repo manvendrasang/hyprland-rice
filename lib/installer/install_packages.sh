@@ -15,6 +15,38 @@ hyprx_install_packages_run() {
 
     local pkg status
 
+    # One transaction per source instead of one per package. The per-package loop
+    # below still runs, but it now finds everything already installed and
+    # short-circuits, so the user still sees each package reported.
+    #
+    # The queue is filtered to what is actually missing first: re-running an
+    # install must be a no-op, not a full re-resolve of 136 packages.
+    local -a todo=()
+    for pkg in "${HYPRX_INSTALL_QUEUE[@]}"; do
+        if hyprx_pkg_installed "$pkg"; then
+            HYPRX_INSTALL_SKIPPED+=("$pkg")
+            hyprx_recovery_mark_complete "$pkg"
+        else
+            todo+=("$pkg")
+        fi
+    done
+
+    # Remember what the batch was asked to install. After it succeeds those
+    # packages answer "already installed" to hyprx_pkg_install, which would
+    # report them as SKIPPED - so the summary would say a package was skipped
+    # in the same run that installed it.
+    declare -A batch_installed=()
+
+    if (( ${#todo[@]} > 0 )); then
+        if hyprx_pkg_install_many "${todo[@]}"; then
+            for pkg in "${todo[@]}"; do
+                batch_installed["$pkg"]=1
+            done
+        fi
+        # A failed batch falls through to the per-package loop, which retries
+        # each one individually and reports the real failures.
+    fi
+
     for pkg in "${HYPRX_INSTALL_QUEUE[@]}"; do
         hyprx_ui_info "Installing $pkg"
 
@@ -44,9 +76,15 @@ hyprx_install_packages_run() {
                 HYPRX_INSTALL_INSTALLED+=("$pkg")
                 hyprx_recovery_mark_complete "$pkg"
                 ;;
+            # Installed by the batch above, so it answers "already present" here.
             10)
-                hyprx_ui_info "$pkg already installed."
-                HYPRX_INSTALL_SKIPPED+=("$pkg")
+                if [[ -n "${batch_installed[$pkg]:-}" ]]; then
+                    hyprx_ui_success "$pkg"
+                    HYPRX_INSTALL_INSTALLED+=("$pkg")
+                else
+                    hyprx_ui_info "$pkg already installed."
+                    HYPRX_INSTALL_SKIPPED+=("$pkg")
+                fi
                 hyprx_recovery_mark_complete "$pkg"
                 ;;
             *)
@@ -96,7 +134,7 @@ hyprx_install_packages_run() {
 
         echo
         hyprx_ui_warn "Failure log"
-        echo " $HYPRX_FAILURE_LOG"
+        echo " $HYPRX_FAILURE_LOG_OVERRIDE"
 
         hyprx_failure_logger_summary
     else

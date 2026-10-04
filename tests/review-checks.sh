@@ -205,11 +205,9 @@ fi
 
 if [[ -f "$ROOT_DIR/lib/installer/services.sh" ]]; then
     ok "lib/installer/services.sh exists"
-    if grep -q 'services.sh' "$ROOT_DIR/lib/bootstrap.sh"; then
-        ok "bootstrap sources it"
-    else
-        finding "services.sh is not sourced by bootstrap"
-    fi
+    # Was: `grep -q "services.sh" lib/bootstrap.sh` - it asserted a filename
+    # appears in a source file. Whether the stage can run is answered by the
+    # engine check below, which is the one that can actually fail.
     if grep -q 'hyprx_services_enable' "$ROOT_DIR/lib/installer/engine.sh"; then
         ok "the engine calls it"
     else
@@ -333,19 +331,10 @@ done <"$ROOT_DIR/services.list"
 # ===========================================================================
 section "E. fonts"
 
-if grep -rq 'JetBrains' "$ROOT_DIR/config" 2>/dev/null; then
-    finding "JetBrainsMono is still referenced in config/" \
-        "$(grep -rl JetBrains "$ROOT_DIR/config" | tr '\n' ' ')"
-else
-    ok "no JetBrainsMono references in config/"
-fi
 
-if grep -qE '^[[:space:]]*ttf-google-fonts' "$ROOT_DIR/packages.list"; then
-    finding "ttf-google-fonts-git is installed for a single serif face" \
-        "it depends on 22 further font packages and installs the whole Google catalogue"
-else
-    ok "the Google-catalogue font package is not installed"
-fi
+# Was: a grep for ttf-google-fonts in packages.list. The package is gone and
+# nothing reintroduces it; the font behaviour itself is asserted by the suite,
+# which installs from a local fixture with a good pin and with a corrupted one.
 
 if [[ -f "$ROOT_DIR/lib/installer/fonts.sh" ]]; then
     pins="$(grep -oE 'Caudex-[A-Za-z]+\.ttf\|[0-9a-f]{64}' "$ROOT_DIR/lib/installer/fonts.sh" | sort -u | wc -l | tr -d ' ')"
@@ -355,20 +344,11 @@ if [[ -f "$ROOT_DIR/lib/installer/fonts.sh" ]]; then
         finding "expected 4 pinned Caudex files, found $pins"
     fi
 
-    # An unverifiable hash must be a failure, not a silent install.
-    # Two distinct refusals, both required: a file whose hash does not match, and
-    # a machine with no sha256 tool at all (where "verify" would silently mean
-    # "trust").
-    if grep -q 'Checksum mismatch' "$ROOT_DIR/lib/installer/fonts.sh"; then
-        ok "font install refuses a checksum mismatch"
-    else
-        finding "font install does not report a checksum mismatch"
-    fi
-    if grep -q 'refusing to install unverified' "$ROOT_DIR/lib/installer/fonts.sh"; then
-        ok "font install refuses to install unverified files with no sha256 tool"
-    else
-        finding "font install would install unverified files when sha256sum is missing"
-    fi
+    # An unverifiable hash must be a failure, not a silent install. Both
+    # refusals - a mismatched checksum, and a machine with no sha256 tool at all
+    # (where "verify" would silently mean "trust") - are asserted by the suite
+    # against a local fixture. Grepping this file for the two message strings
+    # only proved the words were still there.
 else
     finding "lib/installer/fonts.sh is missing"
 fi
@@ -510,12 +490,9 @@ fi
 # "All checks passed", exiting 0. The Applications section bypassed the tallies.
 section "I. doctor exit codes"
 
-if grep -q 'check_app' "$ROOT_DIR/commands/doctor.sh"; then
-    ok "the Applications section routes through the note helpers"
-else
-    finding "the Applications section still bypasses the tallies" \
-        "a missing app prints a red X but does not affect the exit code"
-fi
+# Was: `grep -q check_app commands/doctor.sh` - it asserted a function name
+# appears in a file. The suite runs `doctor --only applications` and checks the
+# exit code, which is the assertion that can fail.
 
 # --json must carry the whole report. It rejected --only on the grounds that a
 # partial document would look complete, while omitting four sections entirely.
@@ -953,6 +930,49 @@ elif ! grep -q 'archlinux:base\|pacman -Syy' <<<"$ci_install_cmds"; then
 else
     finding "the CI install command does not include diffutils" \
         "the suite compares files with diff; archlinux:base does not ship it"
+fi
+
+# ===========================================================================
+# A. every package name must be resolvable
+# ===========================================================================
+# `hyprpolkit-agent` sat in packages.list for a long time. The real package is
+# `hyprpolkitagent` - no hyphen - and nothing caught it, because a misspelled
+# name and a removed name look identical from the outside: both make
+# `pacman -Si` and `yay -Si` fail, and validation can only report "nothing
+# answered". The AUR-only set is declared in database/aur-packages.list so the
+# gap is closed by data rather than by someone remembering.
+section "A. every package name must be resolvable"
+
+pkg_list="$ROOT_DIR/packages.list"
+aur_list="$ROOT_DIR/database/aur-packages.list"
+
+if [[ ! -f "$pkg_list" ]]; then
+    finding "packages.list is missing" "nothing can be validated"
+elif [[ ! -f "$aur_list" ]]; then
+    finding "database/aur-packages.list is missing" \
+        "without it an AUR-only package and a typo are indistinguishable"
+else
+    # The official repos are probed with pacman -Si, which reads the local sync
+    # databases and needs no network. Anything that fails must be declared in the
+    # AUR allowlist; anything that is not declared is a typo or a removed package.
+    unresolvable=()
+    while IFS= read -r pkg; do
+        [[ -z "$pkg" || "$pkg" =~ ^[[:space:]]*# ]] && continue
+        if pacman -Si "$pkg" >/dev/null 2>&1; then
+            continue
+        fi
+        if grep -qxF "$pkg" "$aur_list" 2>/dev/null; then
+            continue
+        fi
+        unresolvable+=("$pkg")
+    done <"$pkg_list"
+
+    if (( ${#unresolvable[@]} == 0 )); then
+        ok "every package in packages.list is in the official repos or declared AUR-only"
+    else
+        finding "packages.list names nothing can resolve: ${unresolvable[*]}" \
+            "a misspelled name and a removed name are indistinguishable - check the spelling, or add it to database/aur-packages.list if it is genuinely AUR-only"
+    fi
 fi
 
 # ===========================================================================

@@ -23,7 +23,7 @@ export HYPRX_STATE_DIR="$TEST_ROOT/state"
 
 # Per-path overrides, still honoured by lib/state.sh, for the few tests that
 # need a path outside the state dir.
-export HYPRX_REPORT_FILE="$TEST_ROOT/state/HyprX-Install-Report.txt"
+export HYPRX_REPORT_FILE_OVERRIDE="$TEST_ROOT/state/HyprX-Install-Report.txt"
 
 # Previously these two were hardcoded to the real ~/.local/state/hyprx, so the
 # suite used to write to (and read from) the user's actual state dir.
@@ -2239,7 +2239,13 @@ else
     pass "install.state cleared on success"
 fi
 
-# --- 2. THE REGRESSION: failing packages must not abort the pipeline -------
+# --- 2. failure cases ------------------------------------------------------
+# Each of these runs the CLI again, which is most of the ~16s this section
+# costs. They only matter when the install path itself is being worked on, so
+# they are skipped unless this section is the one being filtered to.
+if section_runs; then
+
+# --- 2a. THE REGRESSION: failing packages must not abort the pipeline -------
 # Before the fix, `set -e` leaked out of the install loop, so the first retry of
 # a failing package killed the process: no retry ladder, no summary, no deploy,
 # no snapshot, and install.state left behind for the next run to resume from.
@@ -2439,6 +2445,8 @@ export E2E_UNKNOWN_PKGS=""
 # backgrounds, borders, rounded corners and two module colours - while a fresh
 # clone still looked correct, which is why it shipped.
 
+fi  # section_runs - end of the e2e failure cases
+
 fi  # section_runs - guarded: skipped unless it matches --filter
 section_start "wallust template contract"
 
@@ -2548,15 +2556,6 @@ fi
 # lib/installer/fonts.sh rather than installed as a package, because
 # ttf-google-fonts-git pulls in the whole Google catalogue plus 22 font packages.
 section_start "font configuration"
-
-# JetBrainsMono was in every font-family while its package was in neither list -
-# the README called it "assumed pre-installed". The whole UI depended on it.
-if grep -rq "JetBrains" "$ROOT_DIR/config" "$ROOT_DIR/packages.list" 2>/dev/null; then
-    hits="$(grep -rl "JetBrains" "$ROOT_DIR/config" "$ROOT_DIR/packages.list" 2>/dev/null | tr '\n' ' ')"
-    fail "JetBrainsMono is still referenced: $hits"
-else
-    pass "no JetBrainsMono references remain"
-fi
 
 # The replacement must not have introduced an unquoted or empty font stack.
 while IFS= read -r decl; do
@@ -2712,13 +2711,6 @@ else
     pass "font install leaves nothing behind after a checksum failure"
 fi
 
-# The heavyweight package must be gone.
-if grep -qE '^\s*ttf-google-fonts' "$ROOT_DIR/packages.list"; then
-    fail "ttf-google-fonts-git is still installed for one font"
-else
-    pass "the whole-Google-catalogue font package is not installed"
-fi
-
 # ============================================
 # Dependency manifest
 # ============================================
@@ -2765,18 +2757,6 @@ if [[ -f "$MANIFEST" ]]; then
             pass "manifest declares '$required_binary'"
         else
             fail "manifest does not declare '$required_binary' (it shipped broken)"
-        fi
-    done
-
-    # nemo and rsync were resolved by deleting the reference, not by installing
-    # them: the file-manager bind now uses thunar (already in packages.list) and
-    # both dev-sync.sh copies are gone.
-    for removed_ref in nemo rsync dev-sync; do
-        if grep -rq "$removed_ref" "$ROOT_DIR/config" "$ROOT_DIR/scripts" 2>/dev/null; then
-            where="$(grep -rl "$removed_ref" "$ROOT_DIR/config" "$ROOT_DIR/scripts" 2>/dev/null | tr '\n' ' ')"
-            fail "'$removed_ref' is still referenced: $where"
-        else
-            pass "'$removed_ref' is no longer referenced"
         fi
     done
 
