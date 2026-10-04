@@ -46,6 +46,26 @@ hyprx_services_clean() {
     printf '%s' "$svc"
 }
 
+# services.list entries are bare names (`bluetooth`, `NetworkManager`), but
+# `systemctl list-unit-files` matches on the FULL unit name - a bare
+# `NetworkManager` matches nothing and exits 1. Every entry in the file is
+# bare, so all seven answered "no unit file in either scope": networkmanager,
+# pipewire, firewalld and bluez were installed on the test machine and each was
+# reported as absent, and the stage enabled nothing (Enabled 0, Skipped 7) on a
+# system that had four of them.
+#
+# doctor.sh already appends the suffix (commands/doctor.sh:652), which is why
+# doctor and install disagreed about the same machine. Idempotent: an entry that
+# already names a type (`foo.timer`, `greetd.socket`) is left alone.
+hyprx_service_unit_name() {
+    local svc="$1"
+    if [[ "$svc" == *.* ]]; then
+        printf '%s' "$svc"
+    else
+        printf '%s.service' "$svc"
+    fi
+}
+
 hyprx_services_read() {
     local file="$HYPRX_ROOT/services.list"
     HYPRX_SERVICES=()
@@ -65,7 +85,8 @@ hyprx_services_read() {
 # Which manager owns this unit: "system", "user", or empty for neither.
 # Both probes are non-fatal; a missing bus simply answers nothing.
 hyprx_service_scope() {
-    local unit="$1"
+    local unit
+    unit="$(hyprx_service_unit_name "$1")"
 
     if systemctl list-unit-files "$unit" --no-legend >/dev/null 2>&1 \
        && systemctl list-unit-files "$unit" --no-legend 2>/dev/null | grep -q .; then
@@ -156,7 +177,7 @@ hyprx_services_enable() {
 
     local svc unit scope
     for svc in "${HYPRX_SERVICES[@]}"; do
-        unit="$svc"
+        unit="$(hyprx_service_unit_name "$svc")"
 
         # --- deliberately not enabled -------------------------------------
         if [[ " $HYPRX_SERVICE_NO_ENABLE " == *" $unit "* ]]; then
@@ -228,9 +249,9 @@ hyprx_services_verify() {
     (( ${#HYPRX_SERVICES[@]} == 0 )) && return 0
 
     for svc in "${HYPRX_SERVICES[@]}"; do
-        [[ " $HYPRX_SERVICE_NO_ENABLE " == *" $svc "* ]] && continue
+        unit="$(hyprx_service_unit_name "$svc")"
+        [[ " $HYPRX_SERVICE_NO_ENABLE " == *" $unit "* ]] && continue
 
-        unit="$svc"
         scope="$(hyprx_service_scope "$unit")" || scope=""
 
         if [[ -z "$scope" ]]; then

@@ -93,6 +93,40 @@ fi
 
 log "no healthy waybar - starting"
 
+# waybar's own log is the ONLY evidence of why it failed to register a surface,
+# and it used to be sent to /dev/null. The log then held sixteen identical "no
+# surface yet" lines and never the reason, so the only thing it could offer was
+# "run it in a terminal to see the error" - which is exactly what had to be done
+# by hand.
+#
+# The reason in that case was not a display race at all: waybar exits
+# immediately on a CSS parse error, printing e.g.
+#   [error] colors.css:34:30'18111F' is not a valid color name
+# because the wallust template emitted bare hex with the leading '#' stripped.
+# GTK refuses to start rather than ignoring one bad declaration.
+#
+# Both streams are captured because it is not obvious which one carries it:
+# waybar writes its log to STDOUT, and with stderr redirected to a file that
+# file stays empty. A pipeline (`waybar 1>/dev/null | head`) appears to show the
+# message on stderr, which is misleading - only writing each stream to its own
+# file settles it.
+waybar_output="$(mktemp -t ensure-waybar-output.XXXXXX)"
+trap 'rm -f "$waybar_output"' EXIT
+
+report_waybar_output() {
+    # Nothing to report if waybar said nothing - and say so, rather than leaving
+    # the log looking as though the capture failed.
+    if [[ -s "$waybar_output" ]]; then
+        log "waybar said:"
+        while IFS= read -r line; do
+            log "  | $line"
+        done <"$waybar_output"
+    else
+        log "waybar produced no output at all - if this repeats, run it in a terminal:"
+        log "  waybar -c ~/.config/waybar/config.jsonc"
+    fi
+}
+
 # Generous window: delays back off then settle at 4s, so with the 4s inner health
 # wait this totals a little over two minutes - long enough to outlast a slow
 # hybrid-GPU init, short enough to report a real failure while you are watching.
@@ -110,7 +144,8 @@ for delay in 1 1 2 2 3 3 4 4 4 4 4 4 4 4 4 4; do
 
     if ! pgrep -x waybar >/dev/null 2>&1; then
         log "attempt $attempt: launching waybar"
-        waybar >/dev/null 2>&1 &
+        : >"$waybar_output"
+        waybar >"$waybar_output" 2>&1 &
         disown 2>/dev/null || true
     fi
 
@@ -126,10 +161,17 @@ for delay in 1 1 2 2 3 3 4 4 4 4 4 4 4 4 4 4; do
         fi
     done
 
-    log "attempt $attempt: no surface yet - retrying in ${delay}s"
+    # Surface never appeared. If waybar has already exited it left a reason
+    # behind - surface that now, instead of sixteen lines later.
+    if ! pgrep -x waybar >/dev/null 2>&1; then
+        log "attempt $attempt: waybar exited without registering a surface"
+        report_waybar_output
+    else
+        log "attempt $attempt: no surface yet - retrying in ${delay}s"
+    fi
     sleep "$delay"
 done
 
 log "FAILED - waybar never registered a surface after $attempt attempts"
-log "check: waybar -c ~/.config/waybar/config.jsonc   (run it in a terminal to see the error)"
+report_waybar_output
 exit 1

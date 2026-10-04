@@ -27,7 +27,16 @@ hyprx_engine_run() {
         hyprx_resolver_resolve || return 1
     fi
 
-    hyprx_validator_validate || return 1
+    # Recorded, not fatal - for the same reason the install stage below is. A
+    # package the repos do not have is a fact about the request, not a reason
+    # to withhold the configs, the fonts and the snapshot that would let the
+    # user fix it and re-run. It still changes the exit code.
+    #
+    # This used to be `|| return 1`, which never fired: the validator's last
+    # statement was an `if` that resolves to 0 either way, so an install
+    # naming a nonexistent package sailed through to "completed successfully".
+    local validate_rc=0
+    hyprx_validator_validate || validate_rc=$?
 
     # A partial install must not abort here. Configs, the snapshot and the
     # report are exactly what the user needs in order to recover from a package
@@ -72,6 +81,19 @@ hyprx_engine_run() {
     hyprx_ui_divider
 
     if hyprx_util_dry_run; then
+        # A dry run downgrades the gate's THRESHOLDS (disk, RAM, network),
+        # because those are facts about this machine and running --dry-run on a
+        # machine that cannot satisfy them is often the whole point. A package
+        # the repos do not have is not a threshold: it is wrong regardless of
+        # the hardware, the real run would exit 1, and a dry run that says
+        # "fine" is a prediction that is simply false.
+        if (( validate_rc != 0 )); then
+            hyprx_ui_error "Dry run found packages it could not resolve."
+            hyprx_ui_info "Fix the 'Invalid packages' list above before installing."
+            hyprx_ui_divider
+            return 1
+        fi
+
         hyprx_ui_warn "Dry run complete - nothing was installed, deployed or changed."
         hyprx_ui_info "Re-run without --dry-run to apply."
         hyprx_ui_divider
@@ -79,6 +101,12 @@ hyprx_engine_run() {
     fi
 
     local problems=0
+
+    if (( validate_rc != 0 )); then
+        problems=$((problems + 1))
+        hyprx_ui_error "Some packages could not be resolved."
+        hyprx_ui_info "See the 'Invalid packages' list above and the install report."
+    fi
 
     if (( install_rc != 0 )); then
         problems=$((problems + 1))

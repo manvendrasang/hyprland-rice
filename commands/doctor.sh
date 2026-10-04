@@ -649,11 +649,18 @@ run_doctor_checks() {
             svc="${line%%#*}"
             svc="$(echo "$svc" | xargs)"
             [[ -z "$svc" ]] && continue
-            if ! systemctl list-unit-files "${svc}.service" --no-legend 2>/dev/null | grep -q .; then
+            # The SAME helper lib/installer/services.sh uses. doctor used to
+            # append `.service` inline while services.sh passed the bare name
+            # from services.list, so `systemctl list-unit-files NetworkManager`
+            # matched nothing and the install stage reported every installed
+            # unit as absent - one file, two conventions, two different answers
+            # about the same machine. The convention now lives in one place.
+            svc_unit="$(hyprx_service_unit_name "$svc")"
+            if ! systemctl list-unit-files "$svc_unit" --no-legend 2>/dev/null | grep -q .; then
                 hyprx_ui_info "$svc: not installed (no unit file found)"
                 continue
             fi
-            state=$(systemctl is-enabled "${svc}.service" 2>/dev/null || true)
+            state=$(systemctl is-enabled "$svc_unit" 2>/dev/null || true)
             case "$state" in
                 enabled|static|enabled-runtime|alias)
                     hyprx_doctor_note_ok "$svc ($state)"

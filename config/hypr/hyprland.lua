@@ -64,7 +64,10 @@ hl.on("hyprland.start", function()
 	hl.exec_cmd("hypridle")
 	hl.exec_cmd("wl-paste --type text --watch cliphist store")
 	hl.exec_cmd("wl-paste --type image --watch cliphist store")
-	hl.exec_cmd("nm-applet --indicator")
+	-- nm-applet used to be launched here as well as the waybar `network` module,
+	-- so the tray showed a second, redundant wifi indicator immediately after
+	-- the notifications module. It was not even in packages.list, so nothing
+	-- tracked it. The `network` module is the one that reports signal strength.
 	-- Event-driven, replacing 1s/3s polling.
 	hl.exec_cmd("~/.config/waybar/scripts/music-daemon.sh &")
 	hl.exec_cmd("~/.config/waybar/scripts/bluetooth-daemon.sh &")

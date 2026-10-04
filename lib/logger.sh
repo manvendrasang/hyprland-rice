@@ -2,7 +2,19 @@
 
 # Paths come from lib/state.sh.
 
-HYPRX_LOGGER_DIR="$HYPRX_STATE_DIR"
+# NOTE: HYPRX_LOGGER_DIR is deliberately NOT assigned here. It is the
+# back-compat OVERRIDE - lib/state.sh:28-30 honours it when it is non-empty and
+# otherwise leaves HYPRX_STATE_DIR alone. Writing the derived value back into
+# that name turns "not set" into a concrete path, and because the test suite
+# exports it (as "" meaning "derive it"), the assignment stayed exported: every
+# child process then inherited it and state.sh used it to OVERRIDE its own
+# HYPRX_STATE_DIR.
+#
+# The effect was that no child honoured the state dir it was given. The e2e
+# install tests set HYPRX_STATE_DIR to a sandbox, and every log, snapshot,
+# backup and install.state still landed under the suite-level dir - so
+# "install.state cleared on success" and "install.state cleared after a partial
+# install" were asserting against a directory the install never wrote to.
 HYPRX_LOGGER_FILE="$HYPRX_STATE_LOG_FILE"
 
 # Rotate before the file crosses this size, keeping one previous generation.

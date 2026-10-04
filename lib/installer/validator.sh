@@ -62,5 +62,22 @@ hyprx_validator_validate() {
             echo " • $pkg"
         done
         echo
+
+        # An EXPLICIT return. This block used to be the function's last
+        # statement, and `if cond; then ...; fi` exits 0 whether the body ran
+        # or not - so `hyprx_validator_validate || return 1` in engine.sh was
+        # dead code. A real install whose queue named something that does not
+        # exist printed "Package not found: bad", then deployed every config,
+        # installed the fonts, snapshotted, wrote a report and exited 0 with
+        # "Installation completed successfully."
+        #
+        # Returning 1 does not make the caller abort: engine.sh records it and
+        # keeps going, because the configs and the snapshot are exactly what
+        # someone with a broken package list needs in order to recover. It only
+        # changes the final message and the exit code, which is the part that
+        # was lying.
+        return 1
     fi
+
+    return 0
 }

@@ -138,12 +138,22 @@ hyprx_deploy_all() {
     hyprx_ui_section "Deploying configuration"
 
     local dir
+    local -a failed=()
+
     # Deliberate word-splitting: HYPRX_CONFIG_TARGETS is a space-separated list
     # of directory names, not an array. Each is validated by
     # hyprx_deploy_config_dir before anything is written.
     # shellcheck disable=SC2086
     for dir in $HYPRX_CONFIG_TARGETS; do
-        hyprx_deploy_config_dir "$dir"
+        # Each target's status has to be collected. The loop used to ignore it,
+        # and the function then fell off the end returning the status of its
+        # last statement - so `hyprx_deploy_all || return 1` in engine.sh was
+        # dead code, and a config dir that failed to deploy (a missing source in
+        # a partial clone, say) still produced "Installation completed
+        # successfully" at the end of the run.
+        if ! hyprx_deploy_config_dir "$dir"; then
+            failed+=("$dir")
+        fi
     done
 
     hyprx_deploy_remove_orphaned
@@ -157,4 +167,12 @@ hyprx_deploy_all() {
         # shellcheck disable=SC2086
         hyprx_snapshot_write_deployed $HYPRX_CONFIG_TARGETS
     fi
+
+    if (( ${#failed[@]} > 0 )); then
+        hyprx_ui_error "Config deploy failed for: ${failed[*]}"
+        hyprx_ui_info "Those directories were not written. Fix them, then re-run 'hyprx install'."
+        return 1
+    fi
+
+    return 0
 }

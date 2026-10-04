@@ -39,23 +39,118 @@ source "$ROOT_DIR/lib/bootstrap.sh"
 # Defined up front: the clean-sandbox and CLI sections both invoke it.
 CLI="$ROOT_DIR/bin/hyprx"
 
+# ===========================================================================
+# Flags - so a failure names the section it came from, and so a targeted run
+# does not pay for the whole suite
+# ===========================================================================
+# The suite is ~3000 lines and 36 sections. Running all of it after every small
+# edit is the wrong default: most edits touch one section, and the end-to-end
+# install block alone is several seconds of subprocess work that most changes
+# cannot affect.
+#
+#   -f, --filter REGEX   only count assertions from matching sections
+#   -l, --list           print the section names and exit
+#   -h, --help           this text
+#
+# `pass`/`fail` are gated rather than each block being wrapped, so the filter
+# needs no edits at the ~150 assertion sites. The one section whose *execution*
+# is expensive (end-to-end install) is additionally guarded by section_runs, so
+# -f genuinely skips the work rather than just its reporting.
+FILTER=""
+LIST_ONLY=false
+
+usage_text() {
+    cat <<'USAGE'
+Usage: bash tests/run_tests.sh [options]
+
+  -f, --filter REGEX   Only report assertions from sections whose name matches
+                       REGEX (an extended regex). Other sections still run their
+                       cheap checks but are not counted, so a failure can only
+                       come from the section you are working on.
+  -l, --list           List section names, one per line, and exit.
+  -h, --help           Show this help.
+
+With no options the full suite runs and every assertion is counted.
+USAGE
+}
+
+while (( $# )); do
+    case "$1" in
+        -f|--filter) FILTER="${2:-}"; shift 2 ;;
+        -l|--list)   LIST_ONLY=true; shift ;;
+        -h|--help)   usage_text; exit 0 ;;
+        *)
+            printf 'unknown option: %s\n\n' "$1" >&2
+            usage_text >&2
+            exit 2
+            ;;
+    esac
+done
+
 PASSED=0
 FAILED=0
 FAILED_ASSERTIONS=()
+CURRENT_SECTION=""
+SECTION_ON=true
+SECTION_SKIPPED=()
+SECTION_TIMES=()
+SECTION_START=0
+
+# Names are read out of the file rather than duplicated in a table, so a new
+# section cannot be added without appearing in --list.
+section_name_at() {
+    sed -n 's/^section_start "\(.*\)"$/\1/p' "$ROOT_DIR/tests/run_tests.sh"
+}
+
+if [[ "$LIST_ONLY" == true ]]; then
+    section_name_at
+    exit 0
+fi
 
 # Log both to stdout and to the log file
 log() {
     printf "%s\n" "$*" | tee -a "$TEST_LOG"
 }
 
-pass() { log "  [PASS] $1"; PASSED=$((PASSED + 1)); }
+# Marks the start of a section: decides whether it counts, and starts its clock.
+section_start() {
+    local name="$1"
+
+    if [[ -n "$CURRENT_SECTION" ]]; then
+        SECTION_TIMES+=("$(( $(date +%s) - SECTION_START ))	$CURRENT_SECTION")
+    fi
+    CURRENT_SECTION="$name"
+    SECTION_START="$(date +%s)"
+
+    if [[ -n "$FILTER" ]] && ! [[ "$name" =~ $FILTER ]]; then
+        SECTION_ON=false
+        SECTION_SKIPPED+=("$name")
+        return 0
+    fi
+
+    SECTION_ON=true
+    log "Testing $name..."
+}
+
+# True only when the current section both matches the filter and is one of the
+# expensive ones worth skipping outright. Used to guard heavy blocks.
+section_runs() {
+    [[ "$SECTION_ON" == true ]]
+}
+
+pass() {
+    [[ "$SECTION_ON" == true ]] || return 0
+    log "  [PASS] $1"
+    PASSED=$((PASSED + 1))
+}
 
 # Failures are also collected so the summary can repeat them. A CI log viewer
 # collapses the middle of a long run, and a failure buried there is invisible.
 fail() {
+    [[ "$SECTION_ON" == true ]] || return 0
     log "  [FAIL] $1"
     FAILED=$((FAILED + 1))
-    FAILED_ASSERTIONS+=("$1")
+    FAILED_ASSERTIONS+=("$CURRENT_SECTION: $1")
 }
 
 assert_equals() {
@@ -180,7 +275,7 @@ log ""
 # This is the test-suite version of the gate's ping bug: a tool that is not
 # there is not evidence about the thing being tested. So the tools are asserted
 # up front, with the package to install.
-log "Testing suite prerequisites..."
+section_start "suite prerequisites"
 TOOLS_OK=1
 for tool in diff comm sort awk sed grep tr uniq wc sha256sum shellcheck jq; do
     if ! command -v "$tool" >/dev/null 2>&1; then
@@ -228,13 +323,13 @@ assert_covers() {
 }
 
 # Test: Bootstrap
-log "Testing bootstrap..."
+section_start "bootstrap"
 assert_equals true "$HYPRX_INITIALIZED"
 assert_true test -d "$HYPRX_CONFIG"
 assert_true test -d "$HYPRX_COMMANDS"
 
 # Test: Config
-log "Testing config..."
+section_start "config"
 assert_equals default "$(hyprx_config_get THEME)"
 
 # hyprx_config_set now validates before it writes, so a theme name has to be a
@@ -281,7 +376,7 @@ fi
 hyprx_config_load >/dev/null 2>&1
 
 # Test: Detection
-log "Testing detection..."
+section_start "detection"
 # CPU/GPU vendor need lscpu/lspci, which a minimal container may not ship -
 # assert they were probed (possibly "unknown") rather than non-empty.
 assert_not_empty "$HYPRX_DETECT_DISTRO"
@@ -298,7 +393,7 @@ else
 fi
 
 # Test: Logging
-log "Testing logging..."
+section_start "logging"
 rm -f "$HYPRX_LOGGER_FILE"
 hyprx_ui_info "Info"
 hyprx_ui_warn "Warning"
@@ -312,13 +407,13 @@ assert_true grep -q SUCCESS "$HYPRX_LOGGER_FILE"
 
 # Test: Table output
 # No progress bar/spinner: those files were removed as dead code.
-log "Testing table output..."
+section_start "table output"
 hyprx_table_header
 hyprx_table_row "Test" "OK"
 pass "Table output OK"
 
 # Test: Packages
-log "Testing packages..."
+section_start "packages"
 # These query a real pacman database. Skip rather than fail where pacman
 # isn't present, so the suite is runnable on a non-Arch box (the CI lint job
 # used to run on ubuntu-latest and failed here).
@@ -332,7 +427,7 @@ else
 fi
 
 # Test: Requirements
-log "Testing requirements..."
+section_start "requirements"
 HINT="$(hyprx_requirements_get_hint steam)"
 assert_not_empty "$HINT"
 assert_true grep -q "multilib" <<< "$HINT"
@@ -340,7 +435,7 @@ UNKNOWN_HINT="$(hyprx_requirements_get_hint totally-not-a-real-package)"
 assert_equals "" "$UNKNOWN_HINT"
 
 # Test: Replacements
-log "Testing replacements..."
+section_start "replacements"
 if [[ -f "$HYPRX_DATABASE/package-replacements.conf" ]]; then
     while IFS='=' read -r old new; do
         [[ -z "$old" ]] && continue
@@ -355,7 +450,7 @@ if [[ -f "$HYPRX_DATABASE/package-replacements.conf" ]]; then
 fi
 
 # Test: Installer Pipeline
-log "Testing installer pipeline..."
+section_start "installer pipeline"
 [[ "${HYPRX_INITIALIZED:-false}" == "true" ]]
 hyprx_resolver_resolve
 [[ ${#HYPRX_INSTALL_QUEUE[@]} -gt 0 ]]
@@ -363,8 +458,131 @@ UNIQUE_COUNT="$(printf "%s\n" "${HYPRX_INSTALL_QUEUE[@]}" | sort -u | wc -l)"
 [[ "$UNIQUE_COUNT" -eq "${#HYPRX_INSTALL_QUEUE[@]}" ]]
 pass "Installer pipeline OK"
 
+# --- no stage may be guarded by a return code it cannot produce --------------
+# engine.sh decides the run's verdict with `hyprx_X || return 1` and with
+# `hyprx_X || rc=$?`. The second form only means anything if X can return
+# non-zero. Three stages could not - each ended on a statement that always exits
+# 0 - so those guards were dead code that read like safety nets:
+#
+#   hyprx_resolver_resolve   ended on `mapfile`
+#   hyprx_deploy_all         ended on `hyprx_snapshot_write_deployed`
+#   hyprx_report_generate    ended on `echo`
+#
+# The observable damage in all three was the same shape as the validator's: a
+# run that had NOT done the thing still reported that it had. A missing
+# packages.list installed nothing and printed "All packages installed
+# successfully"; a config dir that failed to deploy still ended in
+# "Installation completed successfully"; an unwritable report path printed
+# "Report written:" for a file that did not exist.
+#
+# `return 0` at the end of a function is not redundant: a function's status is
+# the status of its last command, so these three each needed it stated.
+
+# resolver: a root with no packages.list at all
+saved_root="$HYPRX_ROOT"
+mkdir -p "$TEST_ROOT/emptyroot"
+HYPRX_ROOT="$TEST_ROOT/emptyroot"
+hyprx_resolver_resolve >/dev/null 2>&1 && resolver_rc=0 || resolver_rc=$?
+if (( resolver_rc != 0 )); then
+    pass "resolver refuses a root with no packages.list (rc=$resolver_rc)"
+else
+    fail "resolver returned 0 with no packages.list - an empty install would report success"
+fi
+
+# resolver: a packages.list where every entry is commented out
+mkdir -p "$TEST_ROOT/commentroot"
+printf '# only a comment\n\n# and another\n' >"$TEST_ROOT/commentroot/packages.list"
+HYPRX_ROOT="$TEST_ROOT/commentroot"
+hyprx_resolver_resolve >/dev/null 2>&1 && resolver_rc=0 || resolver_rc=$?
+if (( resolver_rc != 0 )); then
+    pass "resolver refuses an all-commented packages.list (rc=$resolver_rc)"
+else
+    fail "resolver returned 0 for a packages.list with no packages in it"
+fi
+
+HYPRX_ROOT="$saved_root"
+hyprx_resolver_resolve >/dev/null 2>&1
+if (( ${#HYPRX_INSTALL_QUEUE[@]} > 0 )); then
+    pass "resolver still resolves the real packages.list after those refusals"
+else
+    fail "resolver no longer resolves the real packages.list"
+fi
+
+# deploy: one target whose source directory does not exist
+saved_targets="$HYPRX_CONFIG_TARGETS"
+HYPRX_CONFIG_TARGETS="hypr hyprx-no-such-config-dir"
+hyprx_deploy_all >/dev/null 2>&1 && deploy_rc=0 || deploy_rc=$?
+HYPRX_CONFIG_TARGETS="$saved_targets"
+if (( deploy_rc != 0 )); then
+    pass "a failed config deploy makes hyprx_deploy_all fail (rc=$deploy_rc)"
+else
+    fail "hyprx_deploy_all returned 0 with a target that could not be deployed"
+fi
+
+# report: an unwritable report path.
+#
+# The parent has to be a regular FILE, not a missing directory: the report
+# generator starts with `mkdir -p "$(dirname "$report")"`, so any path under a
+# writable directory is simply created and the write succeeds. A file in the way
+# is the case that actually fails - a test pointed at a merely-absent directory
+# would have passed while proving nothing.
+printf 'not a directory\n' >"$TEST_ROOT/report-blocker"
+saved_report="$HYPRX_STATE_REPORT_FILE"
+HYPRX_STATE_REPORT_FILE="$TEST_ROOT/report-blocker/report.txt"
+hyprx_report_generate >/dev/null 2>&1 && report_rc=0 || report_rc=$?
+HYPRX_STATE_REPORT_FILE="$saved_report"
+if (( report_rc != 0 )); then
+    pass "an unwritable report path makes hyprx_report_generate fail (rc=$report_rc)"
+else
+    fail "hyprx_report_generate returned 0 for a path it could not write"
+fi
+
+# ...and the report must not claim to exist when it does not.
+HYPRX_STATE_REPORT_FILE="$TEST_ROOT/report-blocker/report.txt"
+report_out="$(hyprx_report_generate 2>&1 || true)"
+HYPRX_STATE_REPORT_FILE="$saved_report"
+if [[ "$report_out" == *"Report written"* ]]; then
+    fail "hyprx_report_generate announced 'Report written' for a file it could not write"
+else
+    pass "hyprx_report_generate does not announce a report it failed to write"
+fi
+
+# And every guard in engine.sh must now have a callee that can return non-zero.
+# A check that cannot fail is worse than no check, so the engine is inspected
+# rather than trusted.
+guard_dead=()
+while IFS= read -r callee; do
+    [[ -z "$callee" ]] && continue
+    def_file="$(grep -rln "^${callee}()" "$ROOT_DIR/lib" 2>/dev/null | head -1)"
+    if [[ -z "$def_file" ]]; then
+        guard_dead+=("$callee: not defined")
+        continue
+    fi
+    def_line="$(grep -n "^${callee}()" "$def_file" | head -1 | cut -d: -f1)"
+    if ! awk -v s="$def_line" 'NR>s && /^}$/ {exit} NR>s && /(^|[[:space:]])return 1([[:space:]]|$)/ {found=1} END {exit found?0:1}' "$def_file"; then
+        guard_dead+=("$callee ($def_file)")
+    fi
+done < <(grep -oE '^[[:space:]]*hyprx_[a-z_]+ \|\| return 1' "$ROOT_DIR/lib/installer/engine.sh" \
+         | grep -oE 'hyprx_[a-z_]+' | sort -u)
+
+if (( ${#guard_dead[@]} == 0 )); then
+    pass "every '|| return 1' stage in engine.sh can actually return 1"
+else
+    fail "engine.sh guards a stage that cannot fail: ${guard_dead[*]}"
+    info "a guard on something that always exits 0 is not a guard - it reads like one"
+fi
+
+# Guard against the check itself matching nothing, which is how a check like
+# this silently becomes a permanent pass.
+guard_count="$(grep -cE '^[[:space:]]*hyprx_[a-z_]+ \|\| return 1' "$ROOT_DIR/lib/installer/engine.sh" || true)"
+if (( guard_count >= 3 )); then
+    pass "the dead-guard scan inspected $guard_count stages"
+else
+    fail "the dead-guard scan only saw $guard_count stage(s) - it is not inspecting engine.sh"
+fi
+
 # Test: Config Deployment
-log "Testing config deployment..."
+section_start "config deployment"
 hyprx_snapshot_init_id
 TARGET="${HYPRX_TARGET_HOME:-$HOME}/.config/hypr"
 rm -rf "$TARGET"
@@ -384,7 +602,7 @@ assert_false grep -q "user edit" "$TARGET/hyprland.lua"
 pass "Config deployment OK"
 
 # Test: Orphaned Target Cleanup
-log "Testing orphaned-target cleanup..."
+section_start "orphaned-target cleanup"
 ORPHAN_TARGET="${HYPRX_TARGET_HOME:-$HOME}/.config/orphan-theme"
 rm -rf "$ORPHAN_TARGET"
 mkdir -p "$ORPHAN_TARGET"
@@ -405,7 +623,7 @@ assert_equals "0" "${#HYPRX_SNAPSHOT_CONFIG_BACKUPS[@]}"
 pass "Orphaned-target cleanup OK"
 
 # Test: Snapshot/Rollback
-log "Testing snapshot/rollback..."
+section_start "snapshot/rollback"
 hyprx_snapshot_init_id
 hyprx_pkg_remove() { echo "stub-removed: $1"; return 0; }
 HYPRX_INSTALL_INSTALLED=(fake-pkg-one fake-pkg-two)
@@ -437,12 +655,12 @@ assert_false hyprx_snapshot_exists "$SNAPSHOT_ID"
 pass "Snapshot/rollback OK"
 
 # Test: Retry
-log "Testing retry..."
+section_start "retry"
 hyprx_retry 1 true
 pass "Retry OK"
 
 # Test: Report Generation
-log "Testing report generation..."
+section_start "report generation"
 HYPRX_INSTALL_FAILED=()
 HYPRX_INSTALL_INSTALLED=()
 HYPRX_INSTALL_SKIPPED=()
@@ -465,7 +683,7 @@ fi
 pass "Report generation OK"
 
 # Test: Dry run
-log "Testing dry-run semantics..."
+section_start "dry-run semantics"
 
 # The flag itself
 assert_false hyprx_util_dry_run
@@ -543,7 +761,8 @@ pass "Dry-run semantics OK"
 # Test: Clean sandbox
 # HYPRX_CLEAN_ROOT runs the real deletion logic against a throwaway tree;
 # without it only --dry-run is testable and the rm/find calls go unexercised.
-log "Testing clean sandbox..."
+section_start "clean sandbox"
+if section_runs; then
 CLEAN_SANDBOX_ROOT="$TEST_ROOT/clean-sandbox"
 mkdir -p "$CLEAN_SANDBOX_ROOT/Pictures/Screenshots"
 mkdir -p "$CLEAN_SANDBOX_ROOT/.cache/thumbnails/normal/large"
@@ -574,7 +793,8 @@ pass "Clean sandbox OK"
 # A blank-desktop-on-login bug had two independent causes, neither checked:
 # hyprpaper's conf pinned a non-existent absolute path, and waypaper can exit
 # 0 having set nothing.
-log "Testing wallpaper startup path..."
+fi  # section_runs - guarded: skipped unless it matches --filter
+section_start "wallpaper startup path"
 
 WPSCRIPT="$ROOT_DIR/scripts/wallpaper-restore.sh"
 assert_true test -x "$WPSCRIPT"
@@ -638,7 +858,8 @@ pass "Wallpaper startup path OK"
 # Same class as the wallpaper bug: the old ensure-waybar.sh treated "a waybar
 # process exists" as success, but waybar can run with no layer-shell surface -
 # so it exited 0, nothing retried, and the bar was gone all session.
-log "Testing waybar startup path..."
+section_start "waybar startup path"
+if section_runs; then
 
 ENSURE_WAYBAR="$ROOT_DIR/config/waybar/scripts/ensure-waybar.sh"
 assert_true test -x "$ENSURE_WAYBAR"
@@ -776,7 +997,9 @@ fi
 pass "hyprpaper.conf sync OK"
 
 # Test: Install/Uninstall
-log "Testing install/uninstall..."
+fi  # section_runs - guarded: skipped unless it matches --filter
+section_start "install/uninstall"
+if section_runs; then
 INSTALL_TEST_ROOT="$(mktemp -d)"
 export HYPRX_INSTALL_DIR="$INSTALL_TEST_ROOT/share/hyprx"
 export HYPRX_BIN_DIR="$INSTALL_TEST_ROOT/bin"
@@ -800,7 +1023,9 @@ rm -rf "$INSTALL_TEST_ROOT"
 pass "Install/uninstall OK"
 
 # Test: CLI
-log "Testing CLI..."
+fi  # section_runs - guarded: skipped unless it matches --filter
+section_start "CLI"
+if section_runs; then
 
 # Read-only / non-destructive probes only. `hyprx clean` (no flags) really
 # does vacuum the journal, wipe the pacman cache, clear thumbnail caches
@@ -1031,7 +1256,9 @@ done < <(find "$ROOT_DIR" -path "$ROOT_DIR/.git" -prune -o -path "$ROOT_DIR/buil
 [[ $SYN_FAILED -eq 0 ]] && pass "Syntax OK"
 
 # Test: Source
-log "Testing source..."
+fi  # section_runs - guarded: skipped unless it matches --filter
+section_start "source"
+if section_runs; then
 for _ in $(seq 25); do
     bash -c "source \"$ROOT_DIR/lib/bootstrap.sh\"" >/dev/null 2>&1 || fail "Bootstrap source failed"
 done
@@ -1066,7 +1293,8 @@ done < <(find "$ROOT_DIR/lib" -name '*.sh' -type f | sort)
 # ============================================
 # State path resolution
 # ============================================
-log "Testing state path resolution..."
+fi  # section_runs - guarded: skipped unless it matches --filter
+section_start "state path resolution"
 
 # state.sh must be sourced before logger.sh, which reads the paths it defines.
 first_lib="$(sed -n '/^for file in \\/,/do$/p' "$ROOT_DIR/lib/bootstrap.sh" | sed -n '2,$p' | head -1)"
@@ -1084,6 +1312,40 @@ for var in HYPRX_STATE_LOG_FILE HYPRX_STATE_REPORT_DIR HYPRX_STATE_SNAPSHOT_DIR 
         fail "$var escapes the sandbox: $val"
     fi
 done
+
+# ...and it must still resolve that way in a FRESH process after the state dir
+# changes. Two assignments used to break this, both writing a derived value back
+# into the name of a back-compat OVERRIDE that the suite exports as "":
+#
+#   logger.sh:5   HYPRX_LOGGER_DIR="$HYPRX_STATE_DIR"
+#   recovery.sh:6 HYPRX_RECOVERY_STATE_DIR="$HYPRX_STATE_RECOVERY_DIR"
+#
+# Because the name was exported, the concrete value stayed exported, and the
+# child's state.sh then used it to override the HYPRX_STATE_DIR it had been
+# given. The e2e install wrote install.state (and every log, snapshot and
+# backup) under the suite-level dir while the assertions looked under the e2e
+# one, so "install.state cleared on success" and "install.state cleared after a
+# partial install" were green without either having looked at the file the
+# install actually wrote.
+child_state="$(
+    HYPRX_STATE_DIR="$TEST_ROOT/moved/state" bash -c \
+        "source '$ROOT_DIR/lib/bootstrap.sh' >/dev/null 2>&1; printf '%s' \"\$HYPRX_STATE_DIR\""
+)"
+if [[ "$child_state" == "$TEST_ROOT/moved/state" ]]; then
+    pass "HYPRX_STATE_DIR is honoured in a fresh process"
+else
+    fail "HYPRX_STATE_DIR is overridden to '$child_state' instead of '$TEST_ROOT/moved/state'"
+fi
+
+child_recovery="$(
+    HYPRX_STATE_DIR="$TEST_ROOT/moved/state" bash -c \
+        "source '$ROOT_DIR/lib/bootstrap.sh' >/dev/null 2>&1; printf '%s' \"\$HYPRX_RECOVERY_STATE_FILE\""
+)"
+if [[ "$child_recovery" == "$TEST_ROOT/moved/state/install.state" ]]; then
+    pass "the recovery file follows HYPRX_STATE_DIR in a fresh process"
+else
+    fail "recovery file is frozen at '$child_recovery' instead of '$TEST_ROOT/moved/state/install.state'"
+fi
 
 # doctor.sh used to hardcode the reports path, which ignored XDG_STATE_HOME
 # and the override above.
@@ -1112,7 +1374,7 @@ pass "hyprx_state_size on a missing path is empty"
 # ============================================
 # Log rotation
 # ============================================
-log "Testing log rotation..."
+section_start "log rotation"
 
 ROT="$TEST_ROOT/rot"
 rm -rf "$ROT"; mkdir -p "$ROT"
@@ -1159,7 +1421,8 @@ HYPRX_LOGGER_FILE="$OLD_FILE"
 # ============================================
 # clean: new flags and reporting
 # ============================================
-log "Testing hyprx clean flags..."
+section_start "hyprx clean flags"
+if section_runs; then
 
 SB="$TEST_ROOT/cleanbox"
 mkdir -p "$SB/.cache/mesa_shader_cache" "$SB/.cache/yay/pkg" "$SB/Pictures/Screenshots"
@@ -1277,7 +1540,9 @@ done
 # ============================================
 # doctor: new flags
 # ============================================
-log "Testing hyprx doctor flags..."
+fi  # section_runs - guarded: skipped unless it matches --filter
+section_start "hyprx doctor flags"
+if section_runs; then
 
 # The JSON shape checks need an interpreter. Arch's `python` package ships
 # `python3`, but not every CI image does, so accept either name rather than
@@ -1461,7 +1726,14 @@ fi
 # `hyprx install` through the CLI at all - only `install --help` and
 # `install --bogus` - so no test could observe what the install stage returned
 # or what the pipeline did after it.
-log "Testing hyprx install end to end..."
+fi  # section_runs - guarded: skipped unless it matches --filter
+section_start "hyprx install end to end"
+if section_runs; then
+
+# The only section whose EXECUTION is expensive: it installs the CLI into a
+# sandbox and runs it four times, which is seconds of subprocess work that most
+# edits cannot possibly affect. Guarded so `-f` skips the work, not just its
+# reporting. Everything it exports is read only by sections that still run.
 
 E2E_ROOT="$TEST_ROOT/e2e"
 mkdir -p "$E2E_ROOT/bin"
@@ -1472,7 +1744,9 @@ E2E_CLI="$HYPRX_BIN_DIR/hyprx"
 
 # Stub `pacman` so nothing real is ever touched. Answers:
 #   -Q <pkg>   not installed   (exit 1)
-#   -Si <pkg>  known           (exit 0)  -> passes validation
+#   -Si <pkg>  known (exit 0) unless it is in E2E_UNKNOWN_PKGS -> passes
+#              validation, or is refused, which is how a package that the repos
+#              genuinely do not have is reproduced without editing packages.list
 #   -S ...     the FAIL_PKGS list decides
 #   -Qtdq      no orphans
 #   -Qdtq      no orphans
@@ -1481,7 +1755,19 @@ cat >"$E2E_ROOT/bin/pacman" <<'STUB'
 #!/usr/bin/env bash
 case "$1" in
     -Q|-Qq)  exit 1 ;;
-    -Si)     exit 0 ;;
+    -Si)
+        for arg in "$@"; do
+            case "$arg" in
+                -*) continue ;;
+                *)
+                    if printf '%s\n' "$E2E_UNKNOWN_PKGS" | grep -qx "$arg"; then
+                        exit 1
+                    fi
+                    ;;
+            esac
+        done
+        exit 0
+        ;;
     -Qtdq)   exit 0 ;;
     -Qdtq)   exit 1 ;;
     -S)
@@ -1517,10 +1803,88 @@ case "$1" in
 esac
 exec "$@"
 STUB
-chmod +x "$E2E_ROOT/bin/pacman" "$E2E_ROOT/bin/sudo"
+# `yay` is stubbed for the same reason `pacman` is. Until now every package
+# passed `hyprx_pkg_exists_official`, so the AUR fallback was unreachable and
+# the suite never invoked a real helper. A package that the repos do NOT have
+# takes that path, and an unstubbed `yay -Si` would query the AUR over the
+# network - turning a code regression into a slow run or a red CI for the wrong
+# reason. Same answers as pacman's -Si, so official and AUR agree.
+cat >"$E2E_ROOT/bin/yay" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+    -Si)
+        for arg in "$@"; do
+            case "$arg" in
+                -*) continue ;;
+                *)
+                    if printf '%s\n' "$E2E_UNKNOWN_PKGS" | grep -qx "$arg"; then
+                        exit 1
+                    fi
+                    ;;
+            esac
+        done
+        exit 0
+        ;;
+esac
+exit 0
+STUB
+# `systemctl` is stubbed too. Until now every services.list entry resolved to
+# "no unit file", so the stage did nothing but print warnings and never reached
+# an enable. With the unit-name fixed, a host that actually has networkmanager
+# or pipewire would have `systemctl enable --now` run against it by the test
+# suite - mutating the real machine to make a test pass.
+#
+# The stub answers list-unit-files/is-enabled from E2E_UNITS (space-separated,
+# full unit names; empty by default, which reproduces the old all-skipped
+# behaviour) and treats every mutation as a no-op.
+cat >"$E2E_ROOT/bin/systemctl" <<'STUB'
+#!/usr/bin/env bash
+user=false
+verb=""
+pos=()
+for a in "$@"; do
+    case "$a" in
+        --user) user=true ;;
+        --*)    ;;
+        *)      if [[ -z "$verb" ]]; then verb="$a"; else pos+=("$a"); fi ;;
+    esac
+done
+
+known() {
+    local u="$1" x
+    for x in $2; do [[ "$x" == "$u" ]] && return 0; done
+    return 1
+}
+
+case "$verb" in
+    list-unit-files)
+        if $user; then
+            known "${pos[0]:-}" "${E2E_USER_UNITS:-}" || exit 1
+        else
+            known "${pos[0]:-}" "${E2E_UNITS:-}" || exit 1
+        fi
+        echo "${pos[0]:-} enabled enabled"
+        exit 0
+        ;;
+    is-enabled)
+        known "${pos[0]:-}" "${E2E_UNITS:-} ${E2E_USER_UNITS:-}" \
+            && { echo enabled; exit 0; }
+        echo disabled
+        exit 1
+        ;;
+    is-active) echo active; exit 0 ;;
+    enable|disable|start|stop|restart|daemon-reload|mask|unmask) exit 0 ;;
+esac
+exit 0
+STUB
+chmod +x "$E2E_ROOT/bin/pacman" "$E2E_ROOT/bin/sudo" "$E2E_ROOT/bin/yay" \
+         "$E2E_ROOT/bin/systemctl"
 
 export PATH="$E2E_ROOT/bin:$PATH"
 export E2E_FAIL_PKGS=""
+export E2E_UNKNOWN_PKGS=""
+export E2E_UNITS=""
+export E2E_USER_UNITS=""
 export HYPRX_TARGET_HOME="$E2E_ROOT/home"
 export HYPRX_STATE_DIR="$E2E_ROOT/state"
 
@@ -1887,7 +2251,12 @@ export E2E_FAIL_PKGS=""
 DRY_HOME="$E2E_ROOT/dryhome"
 mkdir -p "$DRY_HOME/.config"
 dry_before="$(find "$DRY_HOME" | wc -l | tr -d ' ')"
-dry_out="$(HYPRX_TARGET_HOME="$DRY_HOME" HYPRX_STATE_DIR="$E2E_ROOT/state" "$E2E_CLI" install --dry-run 2>&1)"
+# The `&&/||` form, not a bare assignment: this file runs under `set -e`, and a
+# command substitution that exits non-zero inside one is itself a failing
+# command - so as soon as --dry-run is able to fail (it now can, when a package
+# cannot be resolved) the bare form would abort the suite here instead of
+# asserting anything.
+dry_out="$(HYPRX_TARGET_HOME="$DRY_HOME" HYPRX_STATE_DIR="$E2E_ROOT/state" "$E2E_CLI" install --dry-run 2>&1)" && dry_rc=0 || dry_rc=$?
 
 if grep -q "Dry run complete" <<<"$dry_out"; then
     pass "install --dry-run reports it changed nothing"
@@ -1920,6 +2289,93 @@ else
     pass "install --dry-run wrote no snapshot"
 fi
 
+# --- 4. an unresolvable package must not be reported as success -------------
+# Reproduced from a real run: a stale install.state carried a package the repos
+# do not have, the gate resumed it, validation printed "Package not found: bad"
+# - and the install then deployed every config, installed the fonts, saved a
+# snapshot, wrote a report and exited 0 with "Installation completed
+# successfully."
+#
+# The cause was one line: `hyprx_validator_validate || return 1` in engine.sh,
+# where the validator's last statement was `if cond; then ...; fi` - which
+# exits 0 whether the body ran or not. Dead code, so nothing could ever return.
+#
+# The queue is seeded through install.state rather than packages.list: that is
+# both how it happened in the wild and the only way to get an unknown package
+# into the queue without editing a tracked file while the suite runs.
+seed_pending_queue() {
+    mkdir -p "$E2E_ROOT/state"
+    {
+        echo "PACKAGE_MANAGER=pacman"
+        echo
+        echo "[PENDING]"
+        echo "$1"
+    } >"$E2E_ROOT/state/install.state"
+}
+
+UNRESOLVED_PKG="hyprx-definitely-not-a-real-package-xyz"
+export E2E_UNKNOWN_PKGS="$UNRESOLVED_PKG"
+
+seed_pending_queue "$UNRESOLVED_PKG"
+mkdir -p "$E2E_ROOT/home3/.config"
+e2e_out="$(HYPRX_TARGET_HOME="$E2E_ROOT/home3" "$E2E_CLI" install 2>&1)" && e2e_rc=0 || e2e_rc=$?
+
+if grep -q "Package not found: $UNRESOLVED_PKG" <<<"$e2e_out"; then
+    pass "validation reports an unresolvable package"
+else
+    fail "validation did not report the unresolvable package"
+fi
+
+if grep -q "Installation completed successfully" <<<"$e2e_out"; then
+    fail "install claimed success while a package could not be resolved"
+else
+    pass "install does not claim success with an unresolvable package"
+fi
+
+if (( e2e_rc != 0 )); then
+    pass "install exits non-zero when a package cannot be resolved (rc=$e2e_rc)"
+else
+    fail "install exited 0 despite an unresolvable package"
+fi
+
+# Not aborting is deliberate: the configs and the snapshot are what let the
+# user fix the list and re-run. Only the verdict may change.
+assert_true test -d "$E2E_ROOT/home3/.config/hypr"
+
+if [[ -f "$E2E_ROOT/state/install.state" ]]; then
+    fail "install.state left behind after a validation failure"
+else
+    pass "install.state cleared after a validation failure"
+fi
+
+# --dry-run must predict the same verdict. Thresholds (disk, RAM, network)
+# downgrade under --dry-run, because probing a machine that cannot satisfy them
+# is often the point; a package that does not exist is wrong on any machine, so
+# a dry run that says "fine" is simply a false prediction.
+seed_pending_queue "$UNRESOLVED_PKG"
+dry_out="$(HYPRX_TARGET_HOME="$E2E_ROOT/home3" "$E2E_CLI" install --dry-run 2>&1)" && dry_rc=0 || dry_rc=$?
+
+if (( dry_rc != 0 )); then
+    pass "install --dry-run exits non-zero for an unresolvable package (rc=$dry_rc)"
+else
+    fail "install --dry-run predicted success for an unresolvable package"
+fi
+
+if grep -q "could not resolve" <<<"$dry_out"; then
+    pass "install --dry-run reports the unresolved package"
+else
+    fail "install --dry-run did not report the unresolved package"
+fi
+
+if [[ -f "$E2E_ROOT/state/install.state" ]]; then
+    pass "install --dry-run left the pending queue alone"
+else
+    fail "install --dry-run discarded the pending queue it had just resumed"
+fi
+
+rm -f "$E2E_ROOT/state/install.state"
+export E2E_UNKNOWN_PKGS=""
+
 # ============================================
 # wallust template / stylesheet variable contract
 # ============================================
@@ -1928,7 +2384,9 @@ fi
 # change GTK dropped every rule using them and the bar silently lost its module
 # backgrounds, borders, rounded corners and two module colours - while a fresh
 # clone still looked correct, which is why it shipped.
-log "Testing wallust template contract..."
+
+fi  # section_runs - guarded: skipped unless it matches --filter
+section_start "wallust template contract"
 
 colour_vars() {
     grep -oE '^\s*@define-color\s+[a-zA-Z0-9_-]+' "$1" | awk '{print "@"$2}' | sort -u
@@ -1984,13 +2442,58 @@ check_template_contract() {
 check_template_contract "$ROOT_DIR/config/wallust/templates/swaync-colors.css" "$ROOT_DIR/config/swaync/style.css"
 check_template_contract "$ROOT_DIR/config/wallust/templates/wlogout-colors.css" "$ROOT_DIR/config/wlogout/style.css"
 
+# --- every colour the templates emit must be one GTK can parse ---------------
+# The contract above compares variable NAMES only, so it stayed green while the
+# waybar template's values were unusable. wallust's `strip` filter removes the
+# leading '#', so `{{color1}}` renders as `#8263B2` and `{{color1 | strip}}` as
+# `8263B2`. Bare hex is not a colour, and GTK does not skip one bad declaration:
+# it refuses the stylesheet, waybar exits, and the bar is simply gone. It cost a
+# reboot to notice, because the log only ever said "no surface yet" - waybar's
+# own output went to /dev/null.
+#
+# Rendered here instead of by running wallust, which is not in the test job.
+# `strip` is emulated as wallust actually behaves - it drops the '#' - and not
+# as the whitespace trim its name suggests, since believing the name is exactly
+# what let this through. `strip` IS correct inside rgba(), which is why
+# hypr-colors.lua uses it and this only rejects it as a standalone value.
+render_wallust_colours() {
+    sed -E \
+        -e 's/\{\{[[:space:]]*[a-zA-Z0-9_]+[[:space:]]*\|[[:space:]]*rgb[[:space:]]*\}\}/26,43,60/g' \
+        -e 's/\{\{[[:space:]]*[a-zA-Z0-9_]+[[:space:]]*\|[[:space:]]*strip[[:space:]]*\}\}/1A2B3C/g' \
+        -e 's/\{\{[[:space:]]*[a-zA-Z0-9_]+[[:space:]]*\}\}/#1A2B3C/g' "$1"
+}
+
+colour_checked=0
+colour_bad=()
+for tpl in "$ROOT_DIR"/config/wallust/templates/*.css; do
+    while IFS= read -r value; do
+        [[ -z "$value" ]] && continue
+        colour_checked=$((colour_checked + 1))
+        if [[ "$value" =~ ^\#[0-9A-Fa-f]{3,8}$ ]] || [[ "$value" =~ ^rgba?\([^()]*\)$ ]]; then
+            continue
+        fi
+        colour_bad+=("$(basename "$tpl"): $value")
+    done < <(render_wallust_colours "$tpl" | awk '/@define-color/ { sub(/;[[:space:]]*$/, "", $3); print $3 }')
+done
+
+# The counter is the point: a glob or an awk that silently matches nothing would
+# otherwise report "every colour is parseable" having checked none.
+if (( colour_checked == 0 )); then
+    fail "cannot verify template colours: no @define-color value was read at all"
+elif (( ${#colour_bad[@]} > 0 )); then
+    fail "$colour_checked colour value(s) checked, ${#colour_bad[@]} unparseable: ${colour_bad[*]}"
+    info "GTK aborts the whole stylesheet on one bad value, so the affected app exits"
+else
+    pass "all $colour_checked wallust @define-color values are parseable GTK colours"
+fi
+
 # ============================================
 # Fonts: Caudex only, JetBrainsMono gone
 # ============================================
 # Caudex is the only font this rice uses. It is fetched and SHA256-pinned by
 # lib/installer/fonts.sh rather than installed as a package, because
 # ttf-google-fonts-git pulls in the whole Google catalogue plus 22 font packages.
-log "Testing font configuration..."
+section_start "font configuration"
 
 # JetBrainsMono was in every font-family while its package was in neither list -
 # the README called it "assumed pre-installed". The whole UI depended on it.
@@ -2169,7 +2672,7 @@ fi
 # hyprpaper (the entire wallpaper/theming chain), notify-send (the error handler
 # for six scripts), hostname, blueman-manager, nemo, rsync, fc-cache. Each
 # failed silently. This is the guard so it cannot recur.
-log "Testing dependency manifest..."
+section_start "dependency manifest"
 
 MANIFEST="$ROOT_DIR/database/binary-providers.conf"
 if [[ -f "$MANIFEST" ]]; then
@@ -2265,7 +2768,8 @@ fi
 # ============================================
 # Doctor: the sections and the exit code
 # ============================================
-log "Testing doctor sections and exit codes..."
+section_start "doctor sections and exit codes"
+if section_runs; then
 
 for section in fonts manifest; do
     if printf '%s' "$usage" | grep -qF "$section"; then
@@ -2311,7 +2815,8 @@ fi
 # ============================================
 # A rejected set used to reset the key to its DEFAULT rather than leaving the
 # previous value, while printing "Current value left unchanged".
-log "Testing config value preservation..."
+fi  # section_runs - guarded: skipped unless it matches --filter
+section_start "config value preservation"
 
 hyprx_config_set LOG_LEVEL debug
 before_val="$(hyprx_config_get LOG_LEVEL)"
@@ -2353,7 +2858,8 @@ fi
 # advisory in the other, `sudo -v` ran twice (and can prompt twice), and RAM was
 # read with two different divisors so "8GB" was compared against gigabytes while
 # "4GB" was compared against megabytes.
-log "Testing the preflight gate..."
+section_start "the preflight gate"
+if section_runs; then
 
 if [[ -f "$ROOT_DIR/lib/installer/gate.sh" ]]; then
     pass "lib/installer/gate.sh exists"
@@ -2461,7 +2967,9 @@ fi
 # ============================================
 # Services: the stage that did not exist
 # ============================================
-log "Testing services.list handling..."
+fi  # section_runs - guarded: skipped unless it matches --filter
+section_start "services.list handling"
+if section_runs; then
 
 if [[ -f "$ROOT_DIR/lib/installer/services.sh" ]]; then
     pass "lib/installer/services.sh exists"
@@ -2477,11 +2985,72 @@ if [[ -f "$ROOT_DIR/lib/installer/services.sh" ]]; then
     fi
     # System and user units are mixed in services.list and the names give no
     # hint which is which, so the scope must be probed rather than assumed.
+    #
+    # This check used to be `grep -q "hyprx_service_scope" services.sh` - it
+    # asserted the function was MENTIONED, never that it resolved anything,
+    # which is precisely how a bug where all seven entries failed to resolve
+    # shipped green.
+    #
+    # The bug: services.list holds bare names, and `systemctl list-unit-files`
+    # matches only FULL unit names, so `NetworkManager` matched nothing and
+    # exited 1. Every entry answered "no unit file in either scope" - including
+    # networkmanager, pipewire, firewalld and bluez, which were installed - so
+    # the stage reported Enabled 0 / Skipped 7 and enabled nothing at all.
+    # doctor.sh appended the suffix and services.sh did not, so the two
+    # disagreed about the same machine.
     if grep -q "hyprx_service_scope" "$ROOT_DIR/lib/installer/services.sh"; then
         pass "services resolve their systemd scope"
     else
         fail "services assume a single scope - pipewire is a user unit, the rest are system"
     fi
+
+    # A bare name must resolve to the system scope...
+    export E2E_UNITS="NetworkManager.service pipewire.service"
+    scope="$(hyprx_service_scope NetworkManager)" || scope=""
+    if [[ "$scope" == "system" ]]; then
+        pass "a bare name resolves to its system scope"
+    else
+        fail "hyprx_service_scope NetworkManager gave '$scope', expected 'system'"
+    fi
+
+    # ...and one that does not exist must resolve to nothing. Normalising the
+    # name must not turn every probe into a hit.
+    scope="$(hyprx_service_scope hyprx-no-such-unit-xyz)" || scope=""
+    if [[ -z "$scope" ]]; then
+        pass "an absent unit still resolves to no scope"
+    else
+        fail "hyprx_service_scope invented a scope ('$scope') for a unit that does not exist"
+    fi
+
+    # An entry that already names a type must not gain a second suffix.
+    if [[ "$(hyprx_service_unit_name greetd.socket)" == "greetd.socket" \
+       && "$(hyprx_service_unit_name NetworkManager)" == "NetworkManager.service" ]]; then
+        pass "unit-name normalisation is idempotent"
+    else
+        fail "hyprx_service_unit_name mis-normalised: $(hyprx_service_unit_name greetd.socket) / $(hyprx_service_unit_name NetworkManager)"
+    fi
+
+    # End to end through the stage itself: a declared unit must be recognised
+    # and reported, not swallowed as missing.
+    export E2E_UNITS="NetworkManager.service"
+    svc_out="$(hyprx_services_enable 2>&1)" || true
+
+    if grep -q "NetworkManager: already enabled (system)" <<<"$svc_out"; then
+        pass "the services stage enables a unit that exists"
+    else
+        fail "the services stage did not recognise NetworkManager: $(head -4 <<<"$svc_out" | tr '\n' ' ')"
+    fi
+
+    if grep -q "NetworkManager: no unit file" <<<"$svc_out"; then
+        fail "the services stage reported an installed unit as having no unit file"
+    else
+        pass "the services stage does not report an installed unit as missing"
+    fi
+
+    export E2E_UNITS=""
+    HYPRX_SERVICES_ENABLED=()
+    HYPRX_SERVICES_FAILED=()
+    HYPRX_SERVICES_SKIPPED=()
 else
     fail "lib/installer/services.sh missing - nothing enables services.list"
 fi
@@ -2492,7 +3061,8 @@ fi
 # bin/hyprx built a path from $1 and sourced it, so `hyprx ../../evil` ran an
 # arbitrary file. It has no .sh suffix, so no lint or shellcheck job ever saw it
 # either.
-log "Testing entrypoint hardening..."
+fi  # section_runs - guarded: skipped unless it matches --filter
+section_start "entrypoint hardening"
 
 cat >"$TEST_ROOT/evil.sh" <<'EVIL'
 echo "arbitrary file was executed"
@@ -2520,7 +3090,7 @@ assert_exit_in "hyprx config list" "0" "$CLI" config list
 # ============================================
 # clean: measurement and skip accounting
 # ============================================
-log "Testing clean accounting..."
+section_start "clean accounting"
 
 clean_usage="$("$CLI" clean --help 2>&1)"
 if printf '%s' "$clean_usage" | grep -q "HYPRX_LOG_KEEP"; then
@@ -2552,14 +3122,45 @@ else
     fail "only $prune_steps measured steps - the trash/report/log steps assume their size"
 fi
 
+
 # ============================================
 # Summary
 # ============================================
 log ""
 log "========================================="
 
+# When a filter is in play, say so. A run that reports 5 passes and 0 failures
+# is indistinguishable from a healthy full run unless it states that 31
+# sections were not counted - and that is exactly how a filtered run gets
+# mistaken for the whole suite.
+if [[ -n "$FILTER" ]]; then
+    log "Filter: $FILTER"
+    if (( ${#SECTION_SKIPPED[@]} > 0 )); then
+        log "Not counted (${#SECTION_SKIPPED[@]} sections):"
+        for skipped in "${SECTION_SKIPPED[@]}"; do
+            log "  - $skipped"
+        done
+    else
+        log "Every section matched the filter."
+    fi
+    log ""
+fi
+
+# The five slowest sections. The suite's cost is not spread evenly - the
+# end-to-end install block is several seconds on its own - so knowing where the
+# time goes is what makes "make it lighter" answerable instead of a guess.
+if (( ${#SECTION_TIMES[@]} > 0 )); then
+    log "Slowest sections:"
+    while IFS=$'\t' read -r secs name; do
+        log "  ${secs}s  $name"
+    done < <(printf '%s\n' "${SECTION_TIMES[@]}" | sort -rn | head -5)
+    log ""
+fi
+
 # Repeated here on purpose: this is the one part of the output a CI log viewer
 # will not collapse, so a failure cannot hide in the middle of a long run.
+# Each line is prefixed with its section, so when a batch of edits adds several
+# assertions it is immediately clear which of them failed.
 if (( FAILED > 0 )); then
     log "Failed assertions:"
     for failed_assertion in "${FAILED_ASSERTIONS[@]}"; do

@@ -3,10 +3,24 @@
 # Overridable for test isolation - see lib/logger.sh. Otherwise exercising the
 # recovery path rewrites the real install.state, which the next real install
 # would then try to resume from.
-HYPRX_RECOVERY_STATE_DIR="$HYPRX_STATE_RECOVERY_DIR"
-HYPRX_RECOVERY_STATE_FILE="$HYPRX_RECOVERY_STATE_DIR/install.state"
+HYPRX_RECOVERY_STATE_FILE="$HYPRX_STATE_RECOVERY_DIR/install.state"
 
-mkdir -p "$HYPRX_RECOVERY_STATE_DIR"
+mkdir -p "$HYPRX_STATE_RECOVERY_DIR"
+
+# NOTE: HYPRX_RECOVERY_STATE_DIR is deliberately NOT assigned here. It is the
+# back-compat OVERRIDE - lib/state.sh:40 honours it when it is non-empty and
+# otherwise derives the path from HYPRX_STATE_DIR. This file used to write the
+# derived value back into that same name, and the test suite exports it (as ""
+# meaning "derive it"), so the assignment stayed exported: every child process
+# inherited a path computed against whichever state dir happened to be in effect
+# at bootstrap, and it stopped following HYPRX_STATE_DIR.
+#
+# That is not a theoretical leak. The suite switches HYPRX_STATE_DIR to the e2e
+# sandbox for the install tests, but the children kept resolving install.state
+# under the suite-level dir - so an install wrote its pending queue to one path
+# while the assertions checked another, and "install.state cleared on success"
+# and "install.state cleared after a partial install" passed without ever
+# looking at the file the install had actually written.
 
 hyprx_recovery_save_state() {
     # A dry run installs nothing, so it must not leave a pending queue - the

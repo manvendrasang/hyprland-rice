@@ -679,3 +679,197 @@ command only.
 Verified: `run_tests` **460 pass / 0 fail**, `review-checks` 0 findings with no
 grep errors on stderr, `shellcheck --rcfile .shellcheckrc` clean, `bash -n`
 clean, workflow YAML parses.
+
+### Follow-up: the verdict was never reaching the exit code (#24)
+
+A real install was run and asked whether its output was correct. It was not, and
+three separate defects were behind it.
+
+**1. The validator could not fail.** The run reported `Package not found: bad`,
+then deployed every config, installed the fonts, enabled services, wrote a
+report, printed "All packages installed successfully" and
+"Installation completed successfully", and exited 0.
+
+The cause was one line. `lib/installer/engine.sh` had
+
+```bash
+hyprx_validator_validate || return 1
+```
+
+and the validator's last statement was
+
+```bash
+if (( ${#HYPRX_INVALID_PACKAGES[@]} > 0 )); then
+    ...
+fi
+```
+
+`if cond; then ...; fi` exits 0 whether the body ran or not, and a function's
+status is the status of its last command. So the guard could never fire.
+
+That is the shape of the whole family, and checking engine.sh for it found three
+more — every `hyprx_X || return 1` whose callee could not return 1:
+
+| stage | ended on | consequence of the dead guard |
+|---|---|---|
+| `hyprx_validator_validate` | `if …; fi` | unresolvable package reported as a successful install |
+| `hyprx_resolver_resolve` | `mapfile` | missing/empty `packages.list` installed nothing and said so |
+| `hyprx_deploy_all` | `hyprx_snapshot_write_deployed` | a config dir that failed to deploy still ended in success |
+| `hyprx_report_generate` | `echo` | an unwritable report path printed "Report written:" for a file that did not exist |
+
+All four now return an explicit code, and `review-checks.sh` section P asserts
+it: every `|| return 1` stage must be able to return 1, and every captured
+`*_rc` must be tested in the tally. Both halves guard against themselves
+matching nothing, since a check that inspects an empty set reports success.
+
+**2. A guard that looked like a safety net and was not one.** The install did
+not abort on an invalid package, by design — the configs, snapshot and report
+are what someone with a broken package list needs in order to recover. So
+`validate_rc` is recorded and folded into the verdict rather than returned, the
+same as the install, fonts and services stages.
+
+`--dry-run` is the interesting case. The gate downgrades its *thresholds*
+(disk, RAM, network) under `--dry-run`, because probing a machine that cannot
+satisfy them is often the point. A package that does not exist is not a
+threshold: it is wrong on any hardware and the real run would exit 1, so a dry
+run reporting "fine" would be a false prediction. It fails.
+
+**3. The test suite's own isolation was broken, which hid two assertions.**
+`logger.sh` and `recovery.sh` each wrote a derived path back into the name of a
+back-compat override:
+
+```bash
+HYPRX_LOGGER_DIR="$HYPRX_STATE_DIR"            # logger.sh:5
+HYPRX_RECOVERY_STATE_DIR="$HYPRX_STATE_RECOVERY_DIR"   # recovery.sh:6
+```
+
+`lib/state.sh:28-30` honours `HYPRX_LOGGER_DIR` by *overriding* `HYPRX_STATE_DIR`,
+and the suite exports that name as `""` meaning "derive it". The assignment was
+therefore exported too, so every child process inherited a concrete directory
+computed at bootstrap — and `state.sh` used it to override the `HYPRX_STATE_DIR`
+it had been given.
+
+The e2e install therefore wrote its pending queue, logs, snapshots and backups
+into the suite-level state dir while the assertions looked in the e2e one.
+"install.state cleared on success" and "install.state cleared after a partial
+install" were green without either having opened the file the install actually
+wrote. Two checks that could not fail, which is worse than no checks.
+
+`review-checks.sh` section Q now intersects the override names `state.sh` reads
+with the names the suite exports and fails if any of them is assigned outside
+`state.sh`. It uses a shell loop rather than `comm -12`, because an absent
+`comm` produces no output and would read as "nothing is at risk" — this suite's
+own recurring bug, not something to repeat in the check for it.
+
+### Follow-up: the bar was gone, and the log said nothing useful (#25)
+
+After a full shutdown the bar did not come up. `ensure-waybar.sh` had launched
+waybar sixteen times over two minutes, logging "no surface yet" each time, and
+the reason was not a display race at all:
+
+```
+[error] colors.css:34:30'18111F' is not a valid color name
+```
+
+`config/wallust/templates/waybar-colors.css` built its colours with
+`{{color0 | strip}}`. wallust's `strip` filter removes the **leading `#`** — not
+whitespace, as the name suggests — so the template rendered `18111F` where a
+colour is required. Every other template gets this right by using the bare
+`{{color1}}` (which keeps the `#`) or by putting `| strip` *inside* `rgba()`,
+where the `#` is unwanted and `hypr-colors.lua` does exactly that.
+
+Bare hex is not a colour, and GTK does not skip one bad declaration: it refuses
+the stylesheet and waybar exits. The committed default still had valid `#`
+values, which is why a fresh clone looked correct, and why this only appeared
+once wallust regenerated the file at login.
+
+Three things were wrong, not one:
+
+- **The template.** Fixed: 14 placeholders now use `{{colorN}}`.
+- **The check was name-only.** The existing contract compared the *variable
+  names* in the template against the committed default, so it stayed green
+  through all of this. `run_tests.sh` now renders each template with wallust's
+  three relevant filters emulated — `strip` emulated as wallust actually
+  behaves, since believing the name is what let this through — and asserts every
+  `@define-color` value is a parseable GTK colour. It also asserts it read a
+  non-zero number of values, so a glob or `awk` that silently matches nothing
+  cannot report success.
+- **The evidence was discarded.** `ensure-waybar.sh` ran
+  `waybar >/dev/null 2>&1`, so the only thing the log could offer was "run it in
+  a terminal to see the error". It now captures waybar's output, distinguishes
+  "waybar exited" from "surface not registered yet", and reports what waybar
+  said. Both streams are captured because it is not obvious which carries it:
+  waybar writes to **stdout**, and a pipeline (`waybar 1>/dev/null | head`)
+  misleadingly appears to show it on stderr — only writing each stream to its
+  own file settles that.
+
+### Follow-up: the installer never enabled a single service (#26)
+
+The same install reported all seven services as skipped:
+
+```
+! NetworkManager: no unit file in either scope. Its package is probably not installed.
+```
+
+`networkmanager`, `pipewire` and `firewalld` were all installed.
+`systemctl list-unit-files` matches on the **full** unit name, so the bare
+`NetworkManager` in `services.list` matched nothing and exited 1. Every entry in
+the file is bare, so all seven resolved to "no unit file" and the stage enabled
+nothing — `Enabled 0, Skipped 7` on a machine holding four of them.
+
+`doctor.sh` appended `.service` and `services.sh` did not, which is why the two
+disagreed about the same machine. The convention now lives in one function,
+`hyprx_service_unit_name`, used by both.
+
+The suite's scope test was `grep -q hyprx_service_scope` — it asserted the
+function was *mentioned*, never that it resolved anything, which is how a bug
+where all seven entries failed shipped green. It now resolves a concrete bare
+name against a stubbed `systemctl`, checks an absent unit still resolves to
+nothing, and checks the normalisation is idempotent. `systemctl` is stubbed in
+the e2e harness for the same reason `sudo` and `pacman` are: with the fix, a
+host that actually has networkmanager would otherwise have `systemctl enable
+--now` run against it by the test suite.
+
+### Follow-up: making the suite cheaper to run against (#27)
+
+The suite is ~3100 lines and 36 sections, and running all of it after every
+small edit is the wrong default — most edits touch one section, and the
+end-to-end install block alone is 17 seconds of subprocess work that most
+changes cannot affect.
+
+```
+bash tests/run_tests.sh --list                    # section names, read from the file
+bash tests/run_tests.sh -f 'wallust template'     # only that section
+```
+
+`pass`/`fail` are gated on the section name rather than each of ~150 assertion
+sites being wrapped, so the filter needs no edits at the call sites. The eleven
+sections whose *execution* is expensive are additionally wrapped in
+`section_runs`, so `-f` skips the work and not merely its reporting: a targeted
+run went from 94s to 10s.
+
+Three things about this are deliberate:
+
+- **Section names are read out of the file** for `--list`, so a new section
+  cannot be added without appearing there.
+- **A filtered run states what it did not count**, with the list of skipped
+  sections. A run reporting "5 passed, 0 failed" is otherwise indistinguishable
+  from a healthy full run — which is exactly how a filtered run gets mistaken
+  for the whole suite.
+- **Failures are prefixed with their section name.** When a batch of edits adds
+  several assertions, the summary says which of them failed rather than making
+  it a scroll to find out.
+
+The five slowest sections are printed at the end, so "this suite is heavy" is
+answerable from a measurement instead of an impression.
+
+### Still open
+
+- `#13` batch `pacman -S` instead of one transaction per package.
+- `#14` `hyprx rollback --dry-run` plus an explicit confirmation.
+- `#16` sub-second snapshot IDs, so two rollbacks in a minute do not collide.
+- `#20` shared shell helpers: the duplicate `listactive` parsers and three
+  copies of `command -v X || exec X` are still open.
+- `music-daemon.sh` is now pointless: its only consumer (`custom/music`) was
+  removed, but it is still launched from `hyprland.lua` and still audited by
+  `doctor.sh`. Left in place pending a decision — it is harmless, just busy.

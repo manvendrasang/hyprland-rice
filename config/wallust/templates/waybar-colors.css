@@ -31,25 +31,25 @@
 
 /* Darkest surface: module backgrounds, tray fill, and the text colour that
    sits on top of an accent fill. */
-@define-color bg0       {{color0 | strip}};
-@define-color bg-alt    {{color1 | strip}};
+@define-color bg0       {{color0}};
+@define-color bg-alt    {{color1}};
 /* Mid and light surfaces. */
-@define-color bg2       {{color2 | strip}};
-@define-color bg3       {{color3 | strip}};
+@define-color bg2       {{color2}};
+@define-color bg3       {{color3}};
 
 @define-color border    rgba({{color8 | rgb}},0.45);
 
 @define-color fg        {{foreground}};
 /* Muted foreground: inactive workspace numbers, off/unavailable states. */
-@define-color grey1     {{color7 | strip}};
+@define-color grey1     {{color7}};
 
-@define-color blue      {{color13 | strip}};
-@define-color cyan      {{color14 | strip}};
-@define-color green     {{color5 | strip}};
-@define-color yellow    {{color4 | strip}};
-@define-color orange    {{color11 | strip}};
-@define-color red       {{color8 | strip}};
+@define-color blue      {{color13}};
+@define-color cyan      {{color14}};
+@define-color green     {{color5}};
+@define-color yellow    {{color4}};
+@define-color orange    {{color11}};
+@define-color red       {{color8}};
 /* Teal accent, distinct from cyan and blue. */
-@define-color aqua      {{color15 | strip}};
-@define-color pink      {{color6 | strip}};
-@define-color purple    {{color12 | strip}};
+@define-color aqua      {{color15}};
+@define-color pink      {{color6}};
+@define-color purple    {{color12}};

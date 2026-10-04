@@ -857,7 +857,7 @@ section "O. test tool prerequisites"
 suite="$ROOT_DIR/tests/run_tests.sh"
 
 # The suite must check its own tools before using them.
-if grep -q 'Testing suite prerequisites' "$suite"; then
+if grep -qE 'Testing suite prerequisites|section_start "suite prerequisites"' "$suite"; then
     ok "the suite asserts its own tool prerequisites up front"
 else
     finding "the suite does not verify the tools it shells out to" \
@@ -953,6 +953,181 @@ elif ! grep -q 'archlinux:base\|pacman -Syy' <<<"$ci_install_cmds"; then
 else
     finding "the CI install command does not include diffutils" \
         "the suite compares files with diff; archlinux:base does not ship it"
+fi
+
+# ===========================================================================
+# P. the verdict reaches the exit code
+# ===========================================================================
+# engine.sh decides the run's verdict with `hyprx_X || return 1` and with
+# `hyprx_X || rc=$?`. The second form only means anything if X can return
+# non-zero - a function's status is the status of its LAST command, so one that
+# ends on `if`, `mapfile` or `echo` cannot fail no matter what happened.
+#
+# Four stages could not, so four guards read like safety nets and were not:
+#
+#   hyprx_validator_validate  ended on `if cond; then ... fi`
+#   hyprx_resolver_resolve    ended on `mapfile`
+#   hyprx_deploy_all          ended on `hyprx_snapshot_write_deployed`
+#   hyprx_report_generate     ended on `echo`
+#
+# The validator one shipped: an install whose queue named a package that does
+# not exist printed "Package not found", deployed every config, wrote a report,
+# printed "Installation completed successfully" and exited 0. A run that had NOT
+# done the thing reported that it had.
+section "P. the verdict reaches the exit code"
+
+ENGINE="$ROOT_DIR/lib/installer/engine.sh"
+
+dead_guards=()
+while IFS= read -r callee; do
+    [[ -z "$callee" ]] && continue
+    def_file="$(grep -rl "^${callee}()" "$ROOT_DIR/lib" 2>/dev/null | head -1)"
+    if [[ -z "$def_file" ]]; then
+        dead_guards+=("$callee (not defined)")
+        continue
+    fi
+    def_line="$(grep -n "^${callee}()" "$def_file" | head -1 | cut -d: -f1)"
+    if ! awk -v s="$def_line" '
+        NR>s && /^}$/            { exit }
+        NR>s && /return 1/       { found=1 }
+        END { exit found ? 0 : 1 }' "$def_file"; then
+        dead_guards+=("$callee ($def_file)")
+    fi
+done < <(grep -oE '^[[:space:]]*hyprx_[a-z_]+ \|\| return 1' "$ENGINE" 2>/dev/null \
+         | grep -oE 'hyprx_[a-z_]+' | sort -u)
+
+guard_total="$(grep -cE '^[[:space:]]*hyprx_[a-z_]+ \|\| return 1' "$ENGINE" 2>/dev/null || true)"
+
+if (( guard_total == 0 )); then
+    finding "no 'hyprx_X || return 1' stages found in engine.sh" \
+        "this check reads engine.sh; if it cannot find the pattern it is checking nothing"
+elif (( ${#dead_guards[@]} > 0 )); then
+    finding "engine.sh guards a stage that cannot return 1: ${dead_guards[*]}" \
+        "a guard on something that always exits 0 is not a guard - it reads like one"
+else
+    ok "all $guard_total '|| return 1' stages in engine.sh can return 1"
+fi
+
+# A captured rc only counts if it is also tallied. Capturing without counting is
+# the same omission one stage later.
+uncounted=()
+while IFS= read -r rc; do
+    [[ -z "$rc" ]] && continue
+    if ! grep -qE "\(\( ${rc} != 0 \)\)" "$ENGINE"; then
+        uncounted+=("$rc")
+    fi
+done < <(grep -oE '^[[:space:]]*local [a-z_]+_rc=0' "$ENGINE" | grep -oE '[a-z_]+_rc' | sort -u)
+
+rc_total="$(grep -cE '^[[:space:]]*local [a-z_]+_rc=0' "$ENGINE" 2>/dev/null || true)"
+if (( rc_total == 0 )); then
+    finding "no 'local X_rc=0' captures found in engine.sh" \
+        "this check reads engine.sh; if it cannot find the pattern it is checking nothing"
+elif (( ${#uncounted[@]} > 0 )); then
+    finding "engine.sh captures ${uncounted[*]} but never tests it" \
+        "a captured exit code that is not tallied changes nothing about the verdict"
+else
+    ok "all $rc_total captured exit codes are tallied into the verdict"
+fi
+
+# ===========================================================================
+# Q. derived state must not be written back into an exported override
+# ===========================================================================
+# lib/state.sh reads a set of HYPRX_* names as OVERRIDES: non-empty means "use
+# this", empty or unset means derive from HYPRX_STATE_DIR. Writing a derived
+# value back into one of them turns "derive it" into a frozen path - and if that
+# name is exported, every child process inherits the frozen path and stops
+# following HYPRX_STATE_DIR.
+#
+# This shipped twice, both times in the name the test suite exports as "":
+#
+#   logger.sh:5    HYPRX_LOGGER_DIR="$HYPRX_STATE_DIR"
+#   recovery.sh:6  HYPRX_RECOVERY_STATE_DIR="$HYPRX_STATE_RECOVERY_DIR"
+#
+# state.sh:28-30 then used the inherited HYPRX_LOGGER_DIR to OVERRIDE the child's
+# own HYPRX_STATE_DIR. Every log, snapshot, backup and install.state from the
+# end-to-end install went to the suite-level dir while the assertions looked in
+# the e2e one - so "install.state cleared on success" and "install.state cleared
+# after a partial install" passed without having looked at the file the install
+# actually wrote.
+section "Q. derived state must not be written back into an exported override"
+
+overrides="$(grep -oE '\$\{HYPRX_[A-Z0-9_]+:-' "$ROOT_DIR/lib/state.sh" 2>/dev/null \
+            | sed 's/^\${//; s/:-$//' | sort -u || true)"
+exported="$(grep -rhoE 'export[[:space:]]+HYPRX_[A-Z0-9_]+' "$ROOT_DIR/tests" 2>/dev/null \
+            | awk '{print $2}' | sort -u || true)"
+
+# Intersected with a shell loop rather than `comm -12`: an absent comm yields
+# no output, which would read as "no override is at risk" and report a pass for a
+# check that never ran. That is this script's own recurring bug, so it does not
+# get to commit it here.
+at_risk=""
+while IFS= read -r name; do
+    [[ -z "$name" ]] && continue
+    if grep -qx "$name" <<<"$exported"; then
+        at_risk+="$name"$'\n'
+    fi
+done <<<"$overrides"
+
+if [[ -z "$overrides" || -z "$exported" ]]; then
+    finding "could not determine the override/exported sets" \
+        "state.sh's \${HYPRX_...:-} pattern or the suite's exports were not found"
+elif [[ -z "$at_risk" ]]; then
+    ok "no state override is both exported by the suite and derived elsewhere"
+else
+    writebacks=()
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        while IFS= read -r hit; do
+            [[ -z "$hit" ]] && continue
+            writebacks+=("$hit")
+        done < <(grep -rn "^[[:space:]]*${name}=" "$ROOT_DIR/lib" "$ROOT_DIR/commands" 2>/dev/null \
+                 | grep -v 'lib/state.sh' || true)
+    done <<<"$at_risk"
+
+    if (( ${#writebacks[@]} == 0 )); then
+        ok "no exported override ($(tr '\n' ' ' <<<"$at_risk")) is written back to"
+    else
+        finding "a derived value is written back into an exported override:" \
+            "$(printf '%s; ' "${writebacks[@]}")" \
+            "an exported derived path is inherited by every child and stops following HYPRX_STATE_DIR"
+    fi
+fi
+
+# ===========================================================================
+# R. systemd unit naming lives in one place
+# ===========================================================================
+# services.list holds bare names (`bluetooth`, `NetworkManager`) but
+# `systemctl list-unit-files` matches only FULL unit names, so `NetworkManager`
+# matched nothing and exited 1. Every entry answered "no unit file in either
+# scope": networkmanager, pipewire, firewalld and bluez were installed and each
+# was reported as absent, and the stage enabled nothing - Enabled 0, Skipped 7
+# on a machine that had four of them.
+#
+# doctor.sh appended `.service` and services.sh did not, so the two disagreed
+# about the same machine. One shared helper now owns the convention, because a
+# convention enforced in two places is a convention that will drift again.
+section "R. systemd unit naming lives in one place"
+
+if ! grep -q '^hyprx_service_unit_name()' "$ROOT_DIR/lib/installer/services.sh" 2>/dev/null; then
+    finding "services.sh does not define hyprx_service_unit_name" \
+        "the .service suffix is the convention; without one owner it is applied ad hoc"
+else
+    if grep -q 'hyprx_service_unit_name' "$ROOT_DIR/lib/installer/services.sh" \
+       && grep -q 'hyprx_service_unit_name' "$ROOT_DIR/commands/doctor.sh" 2>/dev/null; then
+        ok "services.sh and doctor.sh share hyprx_service_unit_name"
+    else
+        finding "doctor.sh does not use hyprx_service_unit_name" \
+            "doctor appending the suffix itself while services.sh does not is how they came to disagree"
+    fi
+fi
+
+# The suite's own scope test used to be `grep -q hyprx_service_scope`, which
+# asserted the function was MENTIONED and never that it resolved anything.
+if grep -q 'hyprx_service_scope NetworkManager' "$ROOT_DIR/tests/run_tests.sh" 2>/dev/null; then
+    ok "the suite resolves a real unit name, not just the function's presence"
+else
+    finding "the suite does not test scope resolution with a concrete unit name" \
+        "grepping for the function's name passes even when it resolves nothing"
 fi
 
 # ===========================================================================

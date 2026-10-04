@@ -129,9 +129,19 @@ hyprx_report_generate() {
 
         echo "=========================================================="
 
-    } >"$report"
+    } >"$report" || {
+        # engine.sh calls this as `hyprx_report_generate || return 1`, and that
+        # guard was dead: a failed redirection was followed by an unconditional
+        # hyprx_ui_success "Report written:", so an unwritable report path
+        # announced success and the run finished claiming everything was fine -
+        # while the file the user was told to look at did not exist.
+        hyprx_ui_error "Could not write the install report to $report"
+        hyprx_ui_info "Everything else in the run completed; only the report is missing."
+        return 1
+    }
 
     hyprx_ui_success "Report written:"
     echo "  $report"
 
+    return 0
 }
