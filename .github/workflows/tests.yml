@@ -272,10 +272,10 @@ jobs:
             echo "=== $section ==="
             # Sanitize section name for use as a log filename: replace slashes
             # and other path characters so the file lives directly under /tmp/.
-            safe_section=\"${section//[\\/]/ - }\"
-            if ! bash tests/run_tests.sh -f "$section" >\"/tmp/sec-${safe_section}.log\" 2>&1; then
+            safe_section="${section//[\\/]/ - }"
+            if ! bash tests/run_tests.sh -f "$section" >"/tmp/sec-${safe_section}.log" 2>&1; then
               echo "::error::section failed in isolation: $section"
-              tail -20 \"/tmp/sec-${safe_section}.log\"
+              tail -20 "/tmp/sec-${safe_section}.log"
               fail=1
             fi
           done
