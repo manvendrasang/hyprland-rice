@@ -326,8 +326,11 @@ when it set nothing.
 
 ## Still open
 
-- **#20** shared shell helpers: three copies of `command -v X || exec X` remain
-  (the duplicate `listactive` parsers went with #32).
+- **#20** shared shell helpers: done. The three `command -v … || exec …`
+  click-launchers (sound-manager, wifi-manager, system-monitor) now share
+  `config/waybar/scripts/lib-launch.sh`, sourced as a sibling so a broken
+  install still reports itself instead of silently dying. The duplicate
+  `listactive` parsers went earlier with #32.
 - `commands/doctor.sh` is 1169 lines with 86 near-identical note/section calls.
   Table-driving the sections would take it to roughly 750 and make adding a
   section one line instead of a dozen. Not done: it is a large mechanical change

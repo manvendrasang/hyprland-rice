@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 
-# Waybar's exec environment has failed to resolve GUI apps called as a bare
-# command string even when they run fine from a shell, so look them up
-# explicitly and notify rather than silently no-op.
+# Launches pavucontrol from a waybar click. See lib-launch.sh for why the
+# indirection exists: a bare command string can fail to resolve in waybar's
+# exec environment while working fine from a shell.
 
-if command -v pavucontrol >/dev/null 2>&1; then
-    exec pavucontrol
+LIB="$(dirname "$0")/lib-launch.sh"
+if [[ -f "$LIB" ]]; then
+    # shellcheck disable=SC1090
+    source "$LIB"
+    hyprx_launch_or_notify pavucontrol
 else
-    notify-send "HyprX" "pavucontrol not found. Try: pacman -Q pavucontrol"
+    notify-send "HyprX" "launcher helper missing - re-run: hyprx install"
+    exit 1
 fi

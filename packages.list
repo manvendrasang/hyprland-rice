@@ -61,6 +61,7 @@ rofimoji
 waypaper
 wallust
 fastfetch
+mission-center
 nwg-look
 nwg-displays
 brightnessctl
@@ -123,6 +124,7 @@ network-manager-applet
 nm-connection-editor
 bluez
 bluez-utils
+blueman
 firewalld
 firewall-config
 

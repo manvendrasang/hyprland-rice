@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 
-# See sound-manager.sh for why this indirection exists.
+# Launches nm-connection-editor from a waybar click. See lib-launch.sh.
 
-if command -v nm-connection-editor >/dev/null 2>&1; then
-    exec nm-connection-editor
+LIB="$(dirname "$0")/lib-launch.sh"
+if [[ -f "$LIB" ]]; then
+    # shellcheck disable=SC1090
+    source "$LIB"
+    hyprx_launch_or_notify nm-connection-editor
 else
-    notify-send "HyprX" "nm-connection-editor not found. Try: pacman -Q nm-connection-editor"
+    notify-send "HyprX" "launcher helper missing - re-run: hyprx install"
+    exit 1
 fi

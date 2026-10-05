@@ -2737,7 +2737,6 @@ if [[ -f "$MANIFEST" ]]; then
         provider="${provider%"${provider##*[![:space:]]}"}"
 
         [[ -z "$binary" || -z "$provider" ]] && continue
-        [[ "$provider" == "system" ]] && continue
 
         if ! grep -qx "$provider" "$ROOT_DIR/packages.list"; then
             fail "manifest: '$binary' needs '$provider', not in packages.list"
