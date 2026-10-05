@@ -8,13 +8,13 @@ command -v hyprctl >/dev/null 2>&1 || exit 0
 command -v wallust >/dev/null 2>&1 || exit 0
 
 # Let hyprpaper restore its wallpaper before the first poll, so this does not
-# race its startup (same class of guard as the sleeps in hyprland.lua).
+# race its startup (same class of guard as the sleeps in autostart.lua).
 sleep 2
 
 last_state=""
 
 # The active-wallpaper parser lives in lib/wallpaper.sh, but this daemon runs
-# standalone - it is launched from hyprland.lua, not through the hyprx CLI, so
+# standalone - it is launched from autostart.lua, not through the hyprx CLI, so
 # nothing has sourced the library. Source it from the installed location when
 # present; otherwise fall back to the same parsing inline so the daemon keeps
 # working instead of silently resolving every wallpaper to nothing (an unknown

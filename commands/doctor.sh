@@ -524,19 +524,25 @@ run_doctor_checks() {
             break
         fi
     done
-    hyprland_lua="${HYPRX_TARGET_HOME:-$HOME}/.config/hypr/hyprland.lua"
-    if [[ -f "$hyprland_lua" ]]; then
-        if [[ -n "$lua_checker" ]]; then
-            if "$lua_checker" -p "$hyprland_lua" >/dev/null 2>&1; then
-                hyprx_doctor_note_ok "hyprland.lua: valid Lua syntax"
+    hypr_dir="${HYPRX_TARGET_HOME:-$HOME}/.config/hypr"
+    lua_files=()
+    while IFS= read -r -d '' lua_file; do
+        lua_files+=("$lua_file")
+    done < <(find "$hypr_dir" -maxdepth 1 -name '*.lua' -type f -print0 2>/dev/null)
+    if (( ${#lua_files[@]} == 0 )); then
+        hyprx_ui_info "no hypr lua configs found, skipping"
+    elif [[ -n "$lua_checker" ]]; then
+        lua_bad=0
+        for lua_file in "${lua_files[@]}"; do
+            if "$lua_checker" -p "$lua_file" >/dev/null 2>&1; then
+                hyprx_doctor_note_ok "$(basename "$lua_file"): valid Lua syntax"
             else
-                hyprx_doctor_note_err "hyprland.lua: Lua syntax error - a reload or session restart will fail to pick up recent edits. Run: $lua_checker -p ~/.config/hypr/hyprland.lua for details"
+                hyprx_doctor_note_err "$(basename "$lua_file"): Lua syntax error - a reload or session restart will fail to pick up recent edits. Run: $lua_checker -p ~/.config/hypr/$(basename "$lua_file") for details"
+                lua_bad=1
             fi
-        else
-            hyprx_ui_info "No Lua syntax checker (luac) available - skipping hyprland.lua check"
-        fi
+        done
     else
-        hyprx_ui_info "hyprland.lua not found, skipping"
+        hyprx_ui_info "No Lua syntax checker (luac) available - skipping hypr config check"
     fi
     hyprlock_conf="${HYPRX_TARGET_HOME:-$HOME}/.config/hypr/hyprlock.conf"
     if [[ -f "$hyprlock_conf" ]]; then
@@ -703,7 +709,7 @@ run_doctor_checks() {
         hypr_pid=$(pgrep -x Hyprland | head -1)
         gbm_backend=$(tr '\0' '\n' < "/proc/$hypr_pid/environ" 2>/dev/null | grep '^GBM_BACKEND=' | cut -d= -f2 || true)
         if [[ "$gbm_backend" == "nvidia-drm" ]]; then
-            hyprx_doctor_note_warn "GBM_BACKEND=nvidia-drm is active in the live Hyprland process - on a MUX-less hybrid laptop this can leave the panel blank (Hyprland renders correctly, but nothing reaches the screen). See the comment above this setting in config/hypr/hyprland.lua."
+            hyprx_doctor_note_warn "GBM_BACKEND=nvidia-drm is active in the live Hyprland process - on a MUX-less hybrid laptop this can leave the panel blank (Hyprland renders correctly, but nothing reaches the screen). See the comment above this setting in config/hypr/env.lua."
         elif [[ -n "$gbm_backend" ]]; then
             hyprx_ui_info "GBM_BACKEND=$gbm_backend active in the live Hyprland process"
         else
@@ -787,7 +793,7 @@ run_doctor_checks() {
     fi
 
     # Session daemons
-    # Everything hyprland.lua autostarts. Doctor previously verified only
+    # Everything autostart.lua starts. Doctor previously verified only
     # waybar and hyprpaper - the other four failed silently at some point
     # during development, which is the whole class of bug worth catching.
     if doctor_wants daemons; then

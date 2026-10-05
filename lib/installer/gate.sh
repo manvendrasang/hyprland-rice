@@ -431,7 +431,7 @@ hyprx_install_gate() {
     if [[ "$HYPRX_DETECT_GPU_VENDOR" == "nvidia" ]] \
        && [[ ! -f /sys/module/nvidia_drm/parameters/modeset ]]; then
         gate_result warn "nvidia_drm.modeset is not enabled" \
-            "GPU offload setup will warn. See the comment in config/hypr/hyprland.lua."
+            "GPU offload setup will warn. See the comment in config/hypr/env.lua."
     fi
 
     # --- verdict ----------------------------------------------------------

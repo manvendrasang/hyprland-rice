@@ -908,15 +908,16 @@ else
     pass "reload-waybar has a single start path, through ensure-waybar.sh --restart"
 fi
 
-# hyprland.lua autostarts the deployed copy; both must exist and be runnable.
+# autostart.lua (required by hyprland.lua) autostarts the deployed copy; both
+# must exist and be runnable.
 assert_file_exists "$ROOT_DIR/config/waybar/scripts/ensure-waybar.sh"
-if grep -q "ensure-waybar.sh" "$ROOT_DIR/config/hypr/hyprland.lua"; then
-    pass "hyprland.lua autostarts ensure-waybar.sh"
+if grep -q "ensure-waybar.sh" "$ROOT_DIR/config/hypr/autostart.lua"; then
+    pass "autostart.lua autostarts ensure-waybar.sh"
 else
-    fail "hyprland.lua does not autostart ensure-waybar.sh"
+    fail "autostart.lua does not autostart ensure-waybar.sh"
 fi
 
-# Every script hyprland.lua autostarts must actually exist in the repo, or the
+# Every script autostart.lua starts must actually exist in the repo, or the
 # exec_cmd silently does nothing. This is the failure that produced a missing
 # bar with no error at all.
 autostart_ok=0
@@ -938,7 +939,7 @@ while IFS= read -r ref; do
         autostart_missing+="$ref (expected $repo_path) "
     fi
 done < <(grep -oE '(~/\.config/waybar/scripts/|~/\.local/share/hyprx/scripts/)[A-Za-z0-9._-]+\.sh' \
-         "$ROOT_DIR/config/hypr/hyprland.lua" | sort -u)
+         "$ROOT_DIR/config/hypr/autostart.lua" | sort -u)
 
 # Was 7 assertions - one per autostarted script - for a fact that is either true
 # for all of them or false for all of them.
@@ -947,7 +948,7 @@ if (( autostart_ok == 0 )); then
 elif [[ -n "$autostart_missing" ]]; then
     fail "autostart targets missing: ${autostart_missing% }"
 else
-    pass "all $autostart_ok scripts autostarted by hyprland.lua exist and are executable"
+    pass "all $autostart_ok scripts autostarted by autostart.lua exist and are executable"
 fi
 pass "Waybar startup path OK"
 
@@ -1057,6 +1058,66 @@ if [[ -n "$LUA_CHECKER" ]]; then
     done < <(find "$ROOT_DIR/config" -name '*.lua' -type f -print0)
 else
     hyprx_ui_info "no Lua checker available - skipping .lua validation"
+fi
+
+# The hypr config is split across modules that require each other in order,
+# which luac cannot verify: syntax-valid files can still fail at load when a
+# require is misspelled, a module loads out of order, or the shared apps table
+# stops flowing into keybinds. So load the real entry point under a stub `hl`
+# that records every call, and assert the shared state plus call counts.
+if hyprx_util_command_exists lua5.4 || hyprx_util_command_exists lua; then
+    LUA_BIN="lua"
+    hyprx_util_command_exists lua5.4 && LUA_BIN="lua5.4"
+    HL_STUB="$(mktemp)"
+    cat >"$HL_STUB" <<'LUAEOF'
+local calls = {}
+local function leaf(n) return function(...) table.insert(calls, n); return {} end end
+local function grp(n, ms) local t = {} for _, m in ipairs(ms) do t[m] = leaf(n .. "." .. m) end return t end
+hl = {
+    monitor = leaf("monitor"), on = leaf("on"), env = leaf("env"),
+    config = leaf("config"), permission = leaf("permission"),
+    curve = leaf("curve"), animation = leaf("animation"),
+    gesture = leaf("gesture"), device = leaf("device"),
+    workspace_rule = leaf("workspace_rule"),
+    bind = function(...) table.insert(calls, "bind") return { set_enabled = function() end } end,
+    window_rule = function(...) table.insert(calls, "window_rule") return { set_enabled = function() end } end,
+    layer_rule = function(...) table.insert(calls, "layer_rule") return { set_enabled = function() end } end,
+    dsp = {
+        exec_cmd = leaf("dsp.exec_cmd"), exit = leaf("dsp.exit"), layout = leaf("dsp.layout"),
+        window = grp("dsp.window", { "close", "float", "fullscreen", "move", "pseudo", "drag", "resize" }),
+        workspace = grp("dsp.workspace", { "toggle_special" }),
+        focus = leaf("dsp.focus"),
+    },
+}
+package.path = os.getenv("HYPRX_HYPR_DIR") .. "/?.lua;" .. package.path
+require("hyprland")
+local apps = require("apps")
+assert(apps.terminal == "kitty" and apps.fileManager == "thunar"
+    and apps.launcher == "rofi -show drun -show-icons"
+    and apps.browser == "brave" and apps.runner == "rofi -show run",
+    "shared apps table broken")
+local function pos(n) for i, c in ipairs(calls) do if c == n then return i end end return -1 end
+assert(pos("monitor") > 0 and pos("monitor") < pos("bind"), "load order broken")
+assert(pos("on") > 0, "autostart hook missing")
+local nb, nr = 0, 0
+for _, c in ipairs(calls) do
+    if c == "bind" then nb = nb + 1 end
+    if c == "window_rule" then nr = nr + 1 end
+end
+assert(nb > 40, "binds missing: " .. nb)
+assert(nr >= 5, "window rules missing: " .. nr)
+print("LOAD-OK " .. nb .. " binds " .. nr .. " rules")
+LUAEOF
+    if HYPRX_HYPR_DIR="$ROOT_DIR/config/hypr" "$LUA_BIN" "$HL_STUB" >/dev/null 2>&1; then
+        pass "hypr config loads in order with shared apps state intact"
+    else
+        # Re-run without suppression so the failure names itself.
+        HYPRX_HYPR_DIR="$ROOT_DIR/config/hypr" "$LUA_BIN" "$HL_STUB" 2>&1 | head -3 || true
+        fail "hypr config does not load under the stubbed compositor API"
+    fi
+    rm -f "$HL_STUB"
+else
+    hyprx_ui_info "no Lua interpreter available - skipping hypr load test"
 fi
 
 # JSON/JSONC: parse every deployed config file. A broken one crash-loops
@@ -1206,7 +1267,7 @@ log "Checking permissions..."
 # old form printed the [FAIL] lines and still reported FAILED=0.
 #
 # config/waybar/scripts is included because all 18 of those are invoked by bare
-# path from config.jsonc and hyprland.lua, which needs the executable bit.
+# path from config.jsonc and autostart.lua, which needs the executable bit.
 while IFS= read -r file; do
     [[ -x "$file" ]] || fail "$file is not executable"
 done < <(find "$ROOT_DIR/bin" "$ROOT_DIR/scripts" "$ROOT_DIR/config/waybar/scripts" -type f 2>/dev/null)
@@ -2760,7 +2821,9 @@ if [[ -f "$MANIFEST" ]]; then
     done
 
     # The file-manager bind must name something packages.list installs.
-    fm="$(grep -oE 'local fileManager = "[^"]+"' "$ROOT_DIR/config/hypr/hyprland.lua" \
+    # apps.lua holds the shared app table keybinds.lua destructures; the bind
+    # itself lives in keybinds.lua.
+    fm="$(grep -oE 'fileManager = "[^"]+"' "$ROOT_DIR/config/hypr/apps.lua" \
         | head -n1 | sed 's/.*"\(.*\)"/\1/')"
     if [[ -n "$fm" ]] && grep -qx "$fm" "$ROOT_DIR/packages.list"; then
         pass "the file-manager bind ('$fm') is in packages.list"

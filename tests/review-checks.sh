@@ -612,9 +612,9 @@ while IFS= read -r ref; do
         */.local/share/hyprx/scripts/*) p="$ROOT_DIR/scripts/${ref##*/}" ;;
         *) p="$ROOT_DIR/${ref#\~/}" ;;
     esac
-    [[ -e "$p" ]] || { finding "hyprland.lua autostarts a path that does not exist: $ref"; missing_targets=$((missing_targets + 1)); }
+    [[ -e "$p" ]] || { finding "autostart.lua starts a path that does not exist: $ref"; missing_targets=$((missing_targets + 1)); }
 done < <(grep -oE '(~/\.config/waybar/scripts/|~/\.local/share/hyprx/scripts/)[A-Za-z0-9._-]+\.sh' \
-         "$ROOT_DIR/config/hypr/hyprland.lua" 2>/dev/null | sort -u)
+         "$ROOT_DIR/config/hypr/autostart.lua" 2>/dev/null | sort -u)
 (( missing_targets == 0 )) && ok "every autostarted script exists"
 
 # The suite must actually drive `hyprx install` through the CLI, which it never
@@ -637,7 +637,7 @@ for script in battery network player power music; do
     f="$ROOT_DIR/config/waybar/scripts/$script.sh"
     [[ -f "$f" ]] || continue
     refs="$(grep -rl "$script.sh" \
-        "$ROOT_DIR/config/waybar/config.jsonc" "$ROOT_DIR/config/hypr/hyprland.lua" \
+        "$ROOT_DIR/config/waybar/config.jsonc" "$ROOT_DIR/config/hypr/" \
         "$ROOT_DIR/scripts" 2>/dev/null | wc -l | tr -d ' ')"
     if [[ "$refs" == "0" ]]; then
         finding "config/waybar/scripts/$script.sh is referenced by nothing" \

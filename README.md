@@ -20,6 +20,22 @@ does not change when you switch branches in your clone — re-run `./install.sh`
 to resync it. `./uninstall.sh` removes the tool but undoes nothing else; run
 `hyprx rollback` first if you want that.
 
+## Before you install
+
+Arch Linux with `sudo` working, a Wayland/Hyprland session, and an AUR helper
+(`yay` or `paru`) — the gate checks all of this and fails fast if anything is
+missing. About five packages are AUR-only; without a helper they cannot
+install.
+
+Put your own images in `~/Pictures/Wallpapers` first. No wallpapers ship with
+this repo and nothing creates that folder: with no images the restore script
+finds nothing, wallust never runs, and the bar wears its default colours until
+you add some.
+
+After installing, set your preferred apps — terminal, browser, editor, file
+manager and launcher all start as `Unknown` (`hyprx config set ...`). The theme
+starts at `default`; `hyprx config set THEME one-dark` is opt-in.
+
 ## What install does
 
 Eight stages, in order: **gate** (check the machine) → **resolve** the package
@@ -92,7 +108,7 @@ anything not in it is never deployed.
 
 | Directory | Controls |
 |---|---|
-| `hypr` | Hyprland: keybinds, wallpaper, idle, lock |
+| `hypr` | Hyprland: keybinds, wallpaper, idle, lock (split modules, below) |
 | `waybar` | the bar, its styles and helper scripts |
 | `wlogout` | logout/reboot screen |
 | `swaync` | notification popups |
@@ -115,6 +131,24 @@ purpose — a committed machine-specific path meant hyprpaper started with nothi
 `waypaper/config.ini` is overwritten by install with a copy that has no wallpaper
 key, which used to break `waypaper --restore` after every install; deploy now
 preserves the live wallpaper key the same way it preserves `hyprpaper.conf`.
+
+`hypr/hyprland.lua` is an entry point only — it just requires the modules
+below in order, so change the module, not the entry. `apps.lua` returns the
+shared app table (`terminal`, `fileManager`, `launcher`, `browser`, `runner`)
+that `keybinds.lua` reads; everything else only calls the compositor.
+
+| File | Change here to |
+|---|---|
+| `monitors.lua` | monitor layout, scale, position |
+| `apps.lua` | default terminal, file manager, launcher, browser |
+| `autostart.lua` | what launches at login |
+| `env.lua` | environment variables, NVIDIA/MUX options |
+| `general.lua` | cursor behaviour, permission examples |
+| `theme.lua` | gaps, borders, rounding, blur, opacity |
+| `animations.lua` | curves and animation speeds |
+| `layouts.lua` | dwindle/master/scrolling, input, touchpad, gestures |
+| `keybinds.lua` | shortcuts and multimedia keys |
+| `rules.lua` | window rules and float sizes |
 
 ## Files it writes
 
@@ -159,5 +193,5 @@ unconditionally — on other hardware they are inert but present, so drop them f
 `packages.list` and `services.list` if they do not apply. This rice targets an
 ASUS hybrid-GPU laptop; `scripts/fix-sddm-greeter.sh` is SDDM-specific and
 HyprX installs no display manager. One keybind opens a browser that is not
-installed by default — change `browser` in `config/hypr/hyprland.lua` and add the
+installed by default — change `browser` in `config/hypr/apps.lua` and add the
 package. To contribute, read `CONTRIBUTING.md`.
