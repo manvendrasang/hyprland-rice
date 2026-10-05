@@ -101,6 +101,29 @@ is how the test suite exercises real deletions.
 after changing a template or a list — it is the only thing that tells you a
 template stopped covering its consumer.
 
+## GUI
+
+`hyprx-gui` opens a dashboard. **This build is read-only** — it shows state and
+changes nothing; use the CLI to make changes.
+
+| Tab | Shows |
+|---|---|
+| Overview | errors / warnings / checks passed, doctor's suggestions, every finding worst-first |
+| Settings | every config key and value |
+| Snapshots | rollback snapshots with package and config counts |
+| Wallpaper | the live wallpaper, refreshed with the bar's colours |
+
+Requires `pyside6` (already in `packages.list` under OPTIONAL). If PySide6 is
+missing, `hyprx-gui --check` says so and exits 2. It needs the **system**
+Python's PySide6 — the launcher probes interpreters rather than trusting PATH,
+because pyenv shims otherwise shadow it. `hyprx-gui --check` verifies the CLI,
+the toolkit and the doctor endpoint without opening a window. The accent
+colour is read from the live HyprX theme, so the window follows your wallpaper.
+
+Not built yet: install/rollback/clean with live animation, and the failure
+visuals — the event stream that will drive them (`hyprx --events`) already
+exists and is tested.
+
 ## Automation (GUI foundation)
 
 Three mechanisms for scripted and graphical frontends. Human output is

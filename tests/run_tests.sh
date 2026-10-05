@@ -3004,6 +3004,151 @@ assert mine[0]["packages"] == 2 and mine[0]["configs"] == 1, mine
 fi
 
 # ============================================
+# GUI: Phase 1 data layer
+# ============================================
+# gui/backend.py is pure stdlib on purpose: the data layer is testable with no
+# Qt and no display, which is what CI has. The Qt layer is not tested here -
+# it needs a real toolkit, and the contract that matters (JSON shapes, event
+# parsing, failure handling) lives in the backend.
+section_start "gui data layer"
+
+if [[ -z "$PYTHON" ]]; then
+    hyprx_ui_info "no python interpreter found - gui data layer not verified"
+else
+    if "$PYTHON" -c "
+import sys
+sys.path.insert(0, '$ROOT_DIR')
+import gui.backend as b
+" >/dev/null 2>&1; then
+        pass "gui.backend imports"
+    else
+        fail "gui.backend failed to import"
+    fi
+
+    # Qt must not leak into the data layer - that is what keeps it testable
+    # here and in CI.
+    if grep -q "PySide6" "$ROOT_DIR/gui/backend.py"; then
+        fail "gui.backend imports PySide6 - the data layer must stay stdlib-only"
+    else
+        pass "gui.backend is stdlib-only (no Qt import)"
+    fi
+
+    # Pure helpers, no CLI needed.
+    if "$PYTHON" -c "
+import sys
+sys.path.insert(0, '$ROOT_DIR')
+import gui.backend as b
+
+# ANSI must be gone before any string reaches a Qt label.
+assert b.strip_ansi('\033[1;32m✓\033[0m ok') == '✓ ok', b.strip_ansi('\033[1;32m✓\033[0m ok')
+
+# Worst-first grouping, ok recedes but is never dropped.
+g = b.findings_by_status({'findings': [
+    {'status': 'ok', 'detail': 'a'},
+    {'status': 'warn', 'detail': 'b'},
+    {'status': 'error', 'detail': 'c'},
+    {'status': 'bogus', 'detail': 'd'},
+    {'status': 'warn', 'detail': ''},
+    'not a dict',
+]})
+assert g['error'] == ['c'], g
+assert g['warn'] == ['b'], g
+assert g['ok'] == ['a'], g
+assert g['bogus'] == ['d'], g
+assert sum(len(v) for v in g.values()) == 4, g
+
+# Events: prefix only, bad lines skipped, stream survives a bad line.
+stream = '''HYPRX_EVENT {\"v\":1,\"type\":\"run.started\"}
+some human log line
+HYPRX_EVENT {not json}
+HYPRX_EVENT {\"v\":1,\"type\":\"run.completed\",\"rc\":\"1\"}'''
+events = list(b.parse_events(stream))
+assert [e['type'] for e in events] == ['run.started', 'run.completed'], events
+assert events[1]['rc'] == '1', events
+"; then
+        pass "gui.backend helpers: ansi, findings grouping, event parsing"
+    else
+        fail "gui.backend helper behaviour wrong"
+    fi
+
+    # Endpoints through the real CLI, sandboxed. HYPRX_BIN points at the repo
+    # CLI - without it the backend would resolve the installed copy and the
+    # test would pass against something the suite never changed.
+    GUI_SNAP="$HYPRX_STATE_DIR/snapshots/20240101-000000-123456789.snapshot"
+    mkdir -p "$(dirname "$GUI_SNAP")"
+    printf 'DATE=Mon Jan  1 00:00:00 UTC 2024\nPACKAGES=1\nCONFIGS=2\n---PACKAGES---\nwaybar\n---CONFIGS---\nhypr:1\nwaybar:1\n' >"$GUI_SNAP"
+
+    if HYPRX_BIN="$CLI" "$PYTHON" -c "
+import sys
+sys.path.insert(0, '$ROOT_DIR')
+import gui.backend as b
+
+assert b.hyprx_bin() == '$CLI', b.hyprx_bin()
+
+# doctor exits 1 on warnings and still prints a document; the backend must
+# read it rather than raise - otherwise the dashboard is blank on most
+# healthy-ish machines.
+report = b.doctor()
+assert isinstance(report, dict) and 'findings' in report, list(report)[:5]
+assert 'summary' in report, list(report)[:5]
+
+values = b.config()
+assert values.get('THEME') == 'default', values
+
+snaps = b.snapshots()
+mine = [s for s in snaps if s.get('id') == '20240101-000000-123456789']
+assert mine, snaps
+assert mine[0]['packages'] == 1 and mine[0]['configs'] == 2, mine
+
+# Either a path or None - both are valid answers, neither may raise.
+wp = b.wallpaper()
+assert wp is None or isinstance(wp, str), wp
+"; then
+        pass "gui.backend reads every endpoint through the repo CLI"
+    else
+        fail "gui.backend endpoint reads failed"
+    fi
+    rm -f "$GUI_SNAP"
+
+    # A CLI that cannot run must surface as a HyprxError, not a traceback.
+    # HOME and PATH both have to be moved: hyprx_bin() falls back from an
+    # unusable HYPRX_BIN to ~/.local/bin/hyprx and then to PATH, both of which
+    # resolve on this machine and would make the check pass for the wrong
+    # reason. The interpreter is resolved to an absolute path first, because
+    # stripping PATH would otherwise make a bare `python3` unfindable and the
+    # check would fail on the shell, never reaching the code under test.
+    PY_ABS="$("$PYTHON" -c 'import sys; print(sys.executable)')"
+    if HOME=/nonexistent-home PATH=/nonexistent-bin HYPRX_BIN='' "$PY_ABS" -c "
+import sys
+sys.path.insert(0, '$ROOT_DIR')
+import gui.backend as b
+try:
+    b.hyprx_bin()
+except b.HyprxError:
+    sys.exit(0)
+sys.exit(1)
+" 2>/dev/null; then
+        pass "a missing CLI raises HyprxError instead of crashing"
+    else
+        fail "a missing CLI did not raise HyprxError"
+    fi
+
+    # The launcher must exist, be executable, and not be a bare `python3` call:
+    # pyenv shims shadow the system interpreter that has PySide6.
+    GUI_LAUNCHER="$ROOT_DIR/scripts/hyprx-gui"
+    if [[ -x "$GUI_LAUNCHER" ]] && bash -n "$GUI_LAUNCHER"; then
+        pass "scripts/hyprx-gui exists, is executable and parses"
+    else
+        fail "scripts/hyprx-gui missing, not executable, or does not parse"
+    fi
+    if grep -q "import PySide6" "$GUI_LAUNCHER" && grep -qE '/usr/bin/python3' "$GUI_LAUNCHER"; then
+        pass "hyprx-gui probes interpreters for PySide6 instead of trusting PATH"
+    else
+        fail "hyprx-gui does not probe for an interpreter that has PySide6"
+    fi
+fi
+
+# ============================================
 # GUI foundation: single writer
 # ============================================
 # One global mutex across install/rollback/clean. A live holder blocks with
