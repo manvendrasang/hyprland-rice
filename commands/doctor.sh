@@ -275,6 +275,7 @@ manifest_check_declarations() {
 # negative is a silently broken script. So it only reports a binary when the
 # name is a plausible command (lowercase, no dots/slashes) and appears in a
 # position where a command is actually invoked.
+
 manifest_check_references() {
     local -A declared=()
     local binary
@@ -361,6 +362,14 @@ manifest_check_references() {
     for word in "${!firsts[@]}"; do
         [[ -v known["$word"] ]] && continue
         [[ -v declared["$word"] ]] && continue
+
+        # A shell function, not a command. The scanner greps for
+        # `command -v <name>` guards in sourced scripts - which is how a
+        # function like hyprx_wallpaper_active gets into this list at all. Every
+        # lib/ function is defined in this process (bootstrap sourced them), so
+        # `declare -F` answers definitively and needs no allowlist upkeep.
+        declare -F "$word" >/dev/null 2>&1 && continue
+
         # Already installed, so nothing is broken right now.
         command -v "$word" >/dev/null 2>&1 && continue
 
@@ -370,7 +379,9 @@ manifest_check_references() {
 
     if (( undeclared == 0 )); then
         hyprx_doctor_note_ok "Every command referenced by config/ and scripts/ is either declared or installed"
-    else
+    fi
+
+    if (( undeclared > 0 )); then
         hyprx_doctor_suggest "add each to database/binary-providers.conf with its providing package, or stop referencing it"
     fi
 

@@ -322,39 +322,6 @@ hyprpaper wallpaper` fails every time. The command now sets through `waypaper
 --wallpaper` and verifies through `listactive`, since waypaper exits 0 even
 when it set nothing.
 
-**41 — the GUI data layer is stdlib-only on purpose.** `gui/backend.py` holds
-every CLI call and imports nothing from Qt, so the layer that matters (JSON
-shapes, event parsing, stale-on-failure handling, a missing CLI raising
-`HyprxError` rather than tracebacking) is testable in a container with no
-toolkit and no display. The suite asserts that with a grep for `PySide6` in
-the file, so a convenience import cannot quietly end that. Three real bugs
-surfaced while building it, all of the same species — the backend assuming the
-CLI is a well-behaved JSON printer: `doctor` exits 1 when it has warnings, and
-treating that as failure meant the dashboard was blank on most healthy-ish
-machines; the launcher's `ROOT_DIR` was one `dirname` short, so `python -m gui`
-ran from `scripts/` and failed with "No module named gui"; and ANSI colour
-codes reached the error path, where they render as literal garbage in a Qt
-label. Separately, PySide6 is installed for the **system** Python only —
-pyenv shims shadow it, the same trap that made `makepkg` fail for waypaper —
-so `hyprx-gui` probes interpreters for one that can import the toolkit instead
-of trusting PATH order.
-
-**40 — GUI foundation (Phase 0).** Five items, built in dependency order:
-events first (`lib/events.sh`: `HYPRX_EVENT` JSON-lines on stderr, stdout
-contracts untouched, `mode: dry-run` previews through the same schema,
-`run.completed{rc}` plus per-item `*.failed` so a future red visual always
-names names), then read-only `--json` twins (`config list|get`, `rollback
-list`, `wallpaper current`), then one global PID-tracked lock across
-install/rollback/clean (exit 3 when held, stale locks broken), then
-`--password-stdin` elevation (one `sudo -S -v` validation, 45s ticket
-refresher reaped by the EXIT trap, canary-tested to never reach the state
-dir), then the `pyside6` package under OPTIONAL (official `extra`, ~50M plus
-its Qt stack - the price of installing the toolkit before the GUI exists).
-Two traps caught while building it: `run.completed` first shipped on
-straight-line code that `exit` skips (moved to the EXIT trap), and the trap
-itself captured `rc` only after the subshell guard clobbered `$?` (capture
-first). Both are now suite-asserted.
-
 ---
 
 ## Still open
