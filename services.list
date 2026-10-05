@@ -2,7 +2,6 @@
 # One systemd service per line. Comments start with #.
 
 bluetooth
-docker
 firewalld
 NetworkManager
 pipewire

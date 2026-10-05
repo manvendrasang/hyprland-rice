@@ -22,6 +22,11 @@ DEEP=false
 ASSUME_YES=false
 FAILURES=0
 FREED=0
+# Destructive actions whose bytes measured zero (empty caches cleared, dumps
+# deleted from an empty store). Without this the summary cannot tell "did
+# work that freed nothing" from "did nothing" - and it said the latter after
+# deleting coredumps.
+CLEANED=0
 # Steps that were skipped because root was unavailable. Counted separately from
 # FAILURES so a non-interactive `hyprx clean` does not exit 1 for a successful
 # cleanup - see README.md "Steps needing sudo are skipped with a message".
@@ -203,7 +208,17 @@ elif ! $CLEAN_CAN_SUDO; then
     hyprx_ui_warn "sudo unavailable or unauthenticated - skipping package cache clean"
     SKIPPED=$((SKIPPED + 1))
 else
-    hyprx_pkg_clean_cache || FAILURES=$((FAILURES + 1))
+    pkg_before="$(size_of /var/cache/pacman/pkg)"
+    [[ -z "$pkg_before" ]] && pkg_before=0
+    if hyprx_pkg_clean_cache; then
+        pkg_after="$(size_of /var/cache/pacman/pkg)"
+        [[ -z "$pkg_after" ]] && pkg_after=0
+        pkg_delta=$((pkg_before - pkg_after))
+        add_freed "$pkg_delta"
+        hyprx_ui_success "Package cache clean.$(freed_note "$pkg_delta")"
+    else
+        FAILURES=$((FAILURES + 1))
+    fi
 fi
 
 echo
@@ -227,9 +242,14 @@ elif ! $CLEAN_CAN_SUDO; then
     SKIPPED=$((SKIPPED + 1))
 elif $ASSUME_YES; then
     sudo pacman -Rns --noconfirm "${ORPHANS[@]}"
+    CLEANED=$((CLEANED + ${#ORPHANS[@]}))
     hyprx_ui_success "Removed ${#ORPHANS[@]} orphan package(s)."
 else
-    hyprx_pkg_remove_orphans || FAILURES=$((FAILURES + 1))
+    if hyprx_pkg_remove_orphans; then
+        CLEANED=$((CLEANED + ${#ORPHANS[@]}))
+    else
+        FAILURES=$((FAILURES + 1))
+    fi
 fi
 
 echo
@@ -259,6 +279,7 @@ if [[ -d "$SCREENSHOT_DIR" ]]; then
         else
             rm -f "${OLD_SHOTS[@]}"
             add_freed "$before"
+            CLEANED=$((CLEANED + ${#OLD_SHOTS[@]}))
             hyprx_ui_success "Removed ${#OLD_SHOTS[@]} screenshot(s) older than $SCREENSHOT_AGE_DAYS days.$(freed_note "$before")"
         fi
     else
@@ -404,6 +425,7 @@ if $DEEP; then
             after="$(size_of /var/lib/systemd/coredump)"
             d=$(( ${before:-0} - ${after:-0} ))
             add_freed "$d"
+            CLEANED=$((CLEANED + n))
             hyprx_ui_success "Deleted $n coredump(s).$(freed_note "$d")"
         else
             hyprx_ui_success "No coredumps."
@@ -639,6 +661,8 @@ fi
 
 if (( FREED > 0 )); then
     hyprx_ui_success "Cleanup completed. Freed $(hyprx_state_human "$FREED")."
+elif (( CLEANED > 0 )); then
+    hyprx_ui_success "Cleanup completed. Cleared $CLEANED item(s) that were already empty - 0 bytes reclaimed."
 else
     hyprx_ui_success "Cleanup completed. Nothing needed removing."
 fi

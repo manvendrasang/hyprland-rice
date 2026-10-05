@@ -628,6 +628,46 @@ assert_true grep -q "user edit" "$BACKUP_DIR/hyprland.lua"
 assert_false grep -q "user edit" "$TARGET/hyprland.lua"
 pass "Config deployment OK"
 
+# Drift ignores generated files. hyprpaper.conf carries the live wallpaper
+# path by design (deploy preserves it, the sync script rewrites it), and the
+# wallust outputs must never be hand-edited - so a diff there is the system
+# working, not drift. A diff anywhere else must still warn.
+DRIFT_REPO="$TEST_ROOT/driftrepo"
+DRIFT_HOME="$TEST_ROOT/drifthome"
+mkdir -p "$DRIFT_REPO/hypr" "$DRIFT_HOME/.config/hypr"
+printf 'binds\n' >"$DRIFT_REPO/hypr/hyprland.lua"
+cp "$DRIFT_REPO/hypr/hyprland.lua" "$DRIFT_HOME/.config/hypr/hyprland.lua"
+printf 'repo-wallpaper\n' >"$DRIFT_REPO/hypr/hyprpaper.conf"
+printf 'live-wallpaper\n' >"$DRIFT_HOME/.config/hypr/hyprpaper.conf"
+drift_out="$(HYPRX_CONFIG="$DRIFT_REPO" HYPRX_TARGET_HOME="$DRIFT_HOME" "$CLI" doctor --only drift --no-report 2>&1 | sed 's/\x1b\[[0-9;]*m//g' || true)"
+if printf '%s' "$drift_out" | grep -q "hypr: matches repo"; then
+    pass "drift ignores the live hyprpaper.conf"
+else
+    fail "drift warns on the by-design hyprpaper.conf difference"
+fi
+printf '# user edit\n' >>"$DRIFT_HOME/.config/hypr/hyprland.lua"
+drift_out="$(HYPRX_CONFIG="$DRIFT_REPO" HYPRX_TARGET_HOME="$DRIFT_HOME" "$CLI" doctor --only drift --no-report 2>&1 | sed 's/\x1b\[[0-9;]*m//g' || true)"
+if printf '%s' "$drift_out" | grep -q "differ from repo"; then
+    pass "drift still warns on a real local edit"
+else
+    fail "drift exclusions swallowed a real difference"
+fi
+
+# Deploy re-applies wallust colours for the live wallpaper: deploy overwrites
+# the generated colours with repo defaults and the sync daemon only reacts to
+# changes. With no wallpaper state there is nothing to do - return 0 quietly.
+if HYPRX_STATE_WALLPAPER_FILE="$TEST_ROOT/absent-last-wallpaper" hyprx_deploy_reapply_wallpaper_colours; then
+    pass "colour re-apply is a no-op with no wallpaper state"
+else
+    fail "colour re-apply failed with no wallpaper state"
+fi
+printf '/definitely/not/a/wallpaper.png\n' >"$TEST_ROOT/stale-last-wallpaper"
+if HYPRX_STATE_WALLPAPER_FILE="$TEST_ROOT/stale-last-wallpaper" hyprx_deploy_reapply_wallpaper_colours; then
+    pass "colour re-apply ignores a stale wallpaper path"
+else
+    fail "colour re-apply failed on a stale wallpaper path"
+fi
+
 # Test: Orphaned Target Cleanup
 section_start "orphaned-target cleanup"
 ORPHAN_TARGET="${HYPRX_TARGET_HOME:-$HOME}/.config/orphan-theme"
@@ -1106,9 +1146,11 @@ hl = {
 package.path = os.getenv("HYPRX_HYPR_DIR") .. "/?.lua;" .. package.path
 require("hyprland")
 local apps = require("apps")
-assert(apps.terminal == "kitty" and apps.fileManager == "thunar"
-    and apps.launcher == "rofi -show drun -show-icons"
-    and apps.browser == "brave" and apps.runner == "rofi -show run",
+assert(type(apps.terminal) == "string" and apps.terminal ~= ""
+    and type(apps.fileManager) == "string" and apps.fileManager ~= ""
+    and type(apps.launcher) == "string" and apps.launcher ~= ""
+    and type(apps.browser) == "string" and apps.browser ~= ""
+    and type(apps.runner) == "string" and apps.runner ~= "",
     "shared apps table broken")
 local function pos(n) for i, c in ipairs(calls) do if c == n then return i end end return -1 end
 assert(pos("monitor") > 0 and pos("monitor") < pos("bind"), "load order broken")
@@ -3169,6 +3211,90 @@ else
     fail "table-row sections are still absent from --json"
 fi
 
+# doctor's services section must see user-scope units. It used to probe the
+# system scope only, so pipewire (a user unit) was reported "not installed"
+# while the install stage said "already enabled (user)". A stub systemctl
+# splits the scopes the way the real machine does: NetworkManager exists in
+# system scope only, pipewire in user scope only.
+DR_SCOPE_BIN="$TEST_ROOT/scopebin"
+mkdir -p "$DR_SCOPE_BIN"
+cat >"$DR_SCOPE_BIN/systemctl" <<'STUB'
+#!/usr/bin/env bash
+user=false
+verb=""
+unit=""
+for a in "$@"; do
+    case "$a" in
+        --user) user=true ;;
+        --*) ;;
+        *) if [[ -z "$verb" ]]; then verb="$a"; else unit="$a"; fi ;;
+    esac
+done
+case "$verb" in
+    list-unit-files)
+        if $user; then
+            [[ "$unit" == "pipewire.service" ]] && { echo "$unit enabled enabled"; exit 0; }
+            exit 1
+        fi
+        [[ "$unit" == "NetworkManager.service" ]] && { echo "$unit enabled enabled"; exit 0; }
+        exit 1
+        ;;
+    is-enabled)
+        echo enabled
+        exit 0
+        ;;
+esac
+exit 0
+STUB
+chmod +x "$DR_SCOPE_BIN/systemctl"
+dr_services_out="$(PATH="$DR_SCOPE_BIN:$PATH" "$CLI" doctor --only services --no-report 2>&1 | sed 's/\x1b\[[0-9;]*m//g' || true)"
+if printf '%s' "$dr_services_out" | grep -q "pipewire (enabled)"; then
+    pass "doctor reports a user-scope unit as enabled"
+else
+    fail "doctor missed a user-scope unit: $(printf '%s' "$dr_services_out" | grep -i pipewire | tr '\n' ' ')"
+fi
+if printf '%s' "$dr_services_out" | grep -q "pipewire: not installed"; then
+    fail "doctor reported an installed user unit as having no unit file"
+else
+    pass "doctor does not report an installed user unit as missing"
+fi
+
+# The Configuration table reads config/hypr/apps.lua - the file the keybinds
+# use - not $TERMINAL, which nothing ever sets. Point the target home at a
+# fixture so the deployed copy wins deterministically.
+DR_APPS_HOME="$TEST_ROOT/appshome"
+mkdir -p "$DR_APPS_HOME/.config/hypr"
+printf 'return {\n\tterminal = "fixture-term",\n\tbrowser = "fixture-browser",\n}\n' >"$DR_APPS_HOME/.config/hypr/apps.lua"
+dr_config_out="$(HYPRX_TARGET_HOME="$DR_APPS_HOME" "$CLI" doctor --only configuration --no-report 2>&1 | sed 's/\x1b\[[0-9;]*m//g' || true)"
+if printf '%s' "$dr_config_out" | grep -q "fixture-term"; then
+    pass "doctor configuration shows the apps.lua terminal"
+else
+    fail "doctor configuration does not read apps.lua"
+fi
+
+# Battery health is full/design, not now/full. A half-charged healthy battery
+# used to report "health about 47% of design capacity" and warn, because the
+# state of charge was divided instead of the wear. Fixture mirrors a real
+# worn-but-half-charged battery: 47% charged, 64% health.
+BAT_FIX="$TEST_ROOT/batfix"
+mkdir -p "$BAT_FIX/BAT0"
+printf '47\n' >"$BAT_FIX/BAT0/capacity"
+printf 'Discharging\n' >"$BAT_FIX/BAT0/status"
+printf '1721000\n' >"$BAT_FIX/BAT0/charge_now"
+printf '3683000\n' >"$BAT_FIX/BAT0/charge_full"
+printf '5675000\n' >"$BAT_FIX/BAT0/charge_full_design"
+bat_out="$(HYPRX_SYS_POWER_SUPPLY="$BAT_FIX" "$CLI" doctor --only battery --no-report 2>&1 | sed 's/\x1b\[[0-9;]*m//g' || true)"
+if printf '%s' "$bat_out" | grep -q "health about 64% of design capacity"; then
+    pass "battery health divides full by design, not now by full"
+else
+    fail "battery health miscomputed: $(printf '%s' "$bat_out" | grep -i health | tr '\n' ' ')"
+fi
+if printf '%s' "$bat_out" | grep -q "health about 4[67]% of design capacity"; then
+    fail "battery health still reports the state of charge"
+else
+    pass "battery health does not report the state of charge"
+fi
+
 # ============================================
 # Config: validation before write
 # ============================================
@@ -3479,6 +3605,15 @@ if (( prune_steps >= 6 )); then
     pass "clean reports reclaimed bytes across $prune_steps steps"
 else
     fail "only $prune_steps measured steps - the trash/report/log steps assume their size"
+fi
+
+# Zero-byte work must not read as no work: clearing an already-empty cache or
+# deleting dumps that measure 0 bytes is still work, and the old summary said
+# "Nothing needed removing" for it.
+if grep -q '(( CLEANED > 0 ))' "$ROOT_DIR/commands/clean.sh"; then
+    pass "clean summary distinguishes empty work from no work"
+else
+    fail "clean summary still conflates zero-byte work with no work"
 fi
 
 

@@ -159,8 +159,23 @@ hyprx_deploy_remove_orphaned() {
     done
 }
 
-hyprx_deploy_all() {
-    hyprx_ui_section "Deploying configuration"
+# Deploy just overwrote the wallust-generated colours with the repo defaults,
+# and the sync daemon only reacts to wallpaper CHANGES - same wallpaper, no
+# change, no regeneration. Without this the bar wears the defaults until the
+# next manual wallpaper change, and nothing reports it. The per-wallpaper
+# cache makes this a copy on a hit, not a render; a miss here regenerates
+# once, exactly like `hyprx wallpaper set` would.
+hyprx_deploy_reapply_wallpaper_colours() {
+    local current=""
+    [[ -f "$HYPRX_STATE_WALLPAPER_FILE" ]] \
+        && current="$(cat "$HYPRX_STATE_WALLPAPER_FILE" 2>/dev/null || true)"
+    [[ -n "$current" && -f "$current" ]] || return 0
+    hyprx_wallpaper_apply_colours "$current" || \
+        hyprx_ui_warn "Could not re-apply wallust colours for $current - run: hyprx wallpaper set \"$current\""
+    return 0
+}
+
+hyprx_deploy_all() {    hyprx_ui_section "Deploying configuration"
 
     local dir
     local -a failed=()
@@ -200,6 +215,14 @@ hyprx_deploy_all() {
         hyprx_ui_error "Config deploy failed for: ${failed[*]}"
         hyprx_ui_info "Those directories were not written. Fix them, then re-run 'hyprx install'."
         return 1
+    fi
+
+    # Colours are cosmetic: a failure here warns and the deploy still succeeds.
+    # Gating the pipeline on them would be finding 24 in reverse.
+    if hyprx_util_dry_run; then
+        hyprx_util_would "re-apply wallust colours for the live wallpaper"
+    else
+        hyprx_deploy_reapply_wallpaper_colours
     fi
 
     return 0

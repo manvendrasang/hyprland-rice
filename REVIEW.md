@@ -322,7 +322,59 @@ hyprpaper wallpaper` fails every time. The command now sets through `waypaper
 --wallpaper` and verifies through `listactive`, since waypaper exits 0 even
 when it set nothing.
 
----
+Found by running install/doctor/clean on the target laptop, same as 21–39.
+
+**42 — doctor missed user-scope units.** The Managed Services section probed
+the system scope only, so `pipewire` (a user unit, enabled) was reported
+"not installed" while the install stage said "already enabled (user)".
+Finding 26 unified the unit *name* but not the scope *probe*: doctor now
+resolves through `hyprx_service_scope` and scopes the `is-enabled` call the
+same way. Cosmetic only — the line was info, never tallied — but install and
+doctor disagreeing about one machine is what 26 was supposed to make
+unreintroducible. Suite-asserted with a split-scope `systemctl` stub.
+
+**43 — install left wallust colours stale.** Deploy overwrites the generated
+colours with repo defaults, and the sync daemon only reacts to wallpaper
+*changes* — same wallpaper, no change, no regeneration. The bar wore defaults
+with a live wallpaper and a warm cache, and nothing reported it. Deploy now
+re-applies the cached colours for the live wallpaper on success (a copy on a
+cache hit, not a render); a failure warns with the one-command recovery
+instead of gating the pipeline, which would be finding 24 in reverse.
+
+**44 — drift warned on by-design diffs, and the apps table could never leave
+Unknown.** `hyprpaper.conf` carries the live wallpaper path (deploy preserves
+it, the sync script rewrites it), `waypaper/config.ini` keeps the live key,
+and the seven wallust outputs must never be hand-edited — so the drift
+section warned on every healthy machine, training everyone to ignore it.
+Those basenames are now excluded from the drift diff; a real local edit
+still warns, both suite-asserted. Separately, the Configuration table read
+`$TERMINAL` and friends, which nothing HyprX runs ever sets, and README
+pointed at `hyprx config set` for apps — a key that does not exist and is
+rejected by validation. The table now parses `config/hypr/apps.lua`, the file
+the keybinds actually read; README documents the real workflow (edit
+`apps.lua`, add the package, add the provider mapping).
+
+**45 — battery "health" was the state of charge.** The battery section divided
+`charge_now` by `charge_full` and labelled it "health … of design capacity":
+a half-charged healthy battery reported 47% and warned, and the number swung
+with the charge level (97% the day before at near-full charge). Health is
+`charge_full` over `charge_full_design` — 64% on this machine, genuinely worn
+but not what was printed. Suite-asserted with a fixture sysfs tree; the
+section takes `HYPRX_SYS_POWER_SUPPLY` so the test never touches `/sys`.
+
+**46 — the summary lied about zero-byte work.** A `--deep` run that cleared
+caches and deleted 4 coredumps, all measuring 0 bytes, ended with "Cleanup
+completed. Nothing needed removing" - work happened, the message said none
+did. A `CLEANED` counter now tracks destructive actions separately from
+reclaimed bytes, so the three endings are "Freed X", "cleared N items that
+were already empty", and "nothing needed removing". The package-cache step
+also never reached the total (its deletions were invisible to the summary);
+it is measured before/after like every other step. Related myth-busting on
+that same run: the 4.3G pacman cache holds exactly one version per package,
+so `paccache -r` correctly frees ~0 by design; the 1.6G Brave cache is
+deliberately never touched; the remaining bulk is other apps' caches
+(wallust's own 248M, go-build, torbrowser) plus ~207M orphaned by
+uninstalling spotify and firefox.
 
 ## Still open
 

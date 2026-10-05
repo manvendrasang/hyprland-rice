@@ -40,6 +40,22 @@ hyprx_doctor_suggest() {
     DOCTOR_SUGGESTIONS+=("$1")
 }
 
+# One app from config/hypr/apps.lua - the file the keybinds actually read.
+# The Configuration table used to print $TERMINAL and friends, which nothing
+# HyprX runs ever sets, so every machine read "Unknown" no matter what was
+# installed. The deployed copy wins (it is what the binds use); the repo copy
+# is the fallback when nothing is deployed yet.
+hyprx_doctor_app() {
+    local key="$1" file val
+    for file in "${HYPRX_TARGET_HOME:-$HOME}/.config/hypr/apps.lua" \
+                "$HYPRX_ROOT/config/hypr/apps.lua"; do
+        [[ -f "$file" ]] || continue
+        val="$(sed -n "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*\"\([^\"]*\)\".*/\\1/p" "$file" | head -n1)"
+        [[ -n "$val" ]] && { printf '%s' "$val"; return 0; }
+    done
+    printf 'Unknown'
+}
+
 # 0 clean, 1 warnings, 2 errors. Shared by the human report and --json so the
 # two modes always agree on the exit status.
 doctor_exit_code() {
@@ -429,11 +445,11 @@ run_doctor_checks() {
     hyprx_ui_section "Configuration"
     hyprx_table_header
     hyprx_table_row "Theme"          "${HYPRX_CONFIG_THEME:-Default}"
-    hyprx_table_row "Terminal"       "${TERMINAL:-Unknown}"
-    hyprx_table_row "Browser"        "${BROWSER:-Unknown}"
+    hyprx_table_row "Terminal"       "$(hyprx_doctor_app terminal)"
+    hyprx_table_row "Browser"        "$(hyprx_doctor_app browser)"
     hyprx_table_row "Editor"         "${EDITOR:-Unknown}"
-    hyprx_table_row "File Manager"   "${FILE_MANAGER:-Unknown}"
-    hyprx_table_row "Launcher"       "${LAUNCHER:-Unknown}"
+    hyprx_table_row "File Manager"   "$(hyprx_doctor_app fileManager)"
+    hyprx_table_row "Launcher"       "$(hyprx_doctor_app launcher)"
     echo
 
     fi
@@ -585,7 +601,23 @@ run_doctor_checks() {
             hyprx_ui_info "$cfgdir: deployed, but no longer tracked in the repo"
             continue
         fi
-        diff_output=$(diff -rq "$repo_dir" "$target_dir" 2>/dev/null || true)
+        # Generated files are excluded: they differ by design, and a permanent
+        # warning trains everyone to ignore this section. hyprpaper.conf is
+        # rewritten with the live wallpaper path on every wallpaper change (and
+        # deploy preserves that path); waypaper's config.ini keeps the live
+        # wallpaper key for the same reason; the rest are wallust outputs that
+        # must never be hand-edited (see README "Deployed configs"), so any
+        # diff there is wallust doing its job. diff -x matches basenames at
+        # any depth, and these names occur only as generated files.
+        diff_output=$(diff -rq \
+            -x hyprpaper.conf \
+            -x config.ini \
+            -x colors.css \
+            -x colors.rasi \
+            -x colors.lua \
+            -x colors.conf \
+            -x gtk.css \
+            "$repo_dir" "$target_dir" 2>/dev/null || true)
         if [[ -z "$diff_output" ]]; then
             hyprx_doctor_note_ok "$cfgdir: matches repo"
         else
@@ -673,11 +705,22 @@ run_doctor_checks() {
             # unit as absent - one file, two conventions, two different answers
             # about the same machine. The convention now lives in one place.
             svc_unit="$(hyprx_service_unit_name "$svc")"
-            if ! systemctl list-unit-files "$svc_unit" --no-legend 2>/dev/null | grep -q .; then
+            # The SAME scope probe the install stage uses. doctor used to check
+            # the system scope only, so a user unit like pipewire was reported
+            # "not installed" here while install said "already enabled (user)"
+            # - one machine, two answers. hyprx_service_scope checks system
+            # first, then user; the is-enabled call must follow the same
+            # scope or it answers about the wrong manager.
+            svc_scope="$(hyprx_service_scope "$svc")" || svc_scope=""
+            if [[ -z "$svc_scope" ]]; then
                 hyprx_ui_info "$svc: not installed (no unit file found)"
                 continue
             fi
-            state=$(systemctl is-enabled "$svc_unit" 2>/dev/null || true)
+            if [[ "$svc_scope" == "user" ]]; then
+                state=$(systemctl --user is-enabled "$svc_unit" 2>/dev/null || true)
+            else
+                state=$(systemctl is-enabled "$svc_unit" 2>/dev/null || true)
+            fi
             case "$state" in
                 enabled|static|enabled-runtime|alias)
                     hyprx_doctor_note_ok "$svc ($state)"
@@ -866,13 +909,16 @@ EOF
     if doctor_wants battery; then
         hyprx_ui_section "Battery & Thermals"
 
+        # Overridable for the suite: the battery files live under /sys on a
+        # real machine and under a fixture dir in tests.
+        local power_dir="${HYPRX_SYS_POWER_SUPPLY:-/sys/class/power_supply}"
         local bat
-        bat="$(ls /sys/class/power_supply 2>/dev/null | grep '^BAT' | head -n1)"
+        bat="$(ls "$power_dir" 2>/dev/null | grep '^BAT' | head -n1)"
 
         if [[ -n "$bat" ]]; then
-            local cap status health charge_now charge_full
-            cap="$(cat "/sys/class/power_supply/$bat/capacity" 2>/dev/null || echo "?")"
-            status="$(cat "/sys/class/power_supply/$bat/status" 2>/dev/null || echo "?")"
+            local cap status health charge_now charge_full charge_design
+            cap="$(cat "$power_dir/$bat/capacity" 2>/dev/null || echo "?")"
+            status="$(cat "$power_dir/$bat/status" 2>/dev/null || echo "?")"
 
             if [[ "$cap" =~ ^[0-9]+$ ]]; then
                 if (( cap <= 15 )) && [[ "$status" != "Charging" ]]; then
@@ -884,11 +930,16 @@ EOF
                 hyprx_doctor_note_ok "Battery present ($status)"
             fi
 
-            charge_now="$(cat "/sys/class/power_supply/$bat/charge_now" 2>/dev/null || echo 0)"
-            charge_full="$(cat "/sys/class/power_supply/$bat/charge_full" 2>/dev/null || echo 0)"
+            # Health is what the battery holds against what it was built to
+            # hold - full over full-design. This used to divide charge_now by
+            # charge_full, which is the state of charge, not health: a
+            # half-charged healthy battery reported "health 47%" and warned.
+            charge_now="$(cat "$power_dir/$bat/charge_now" 2>/dev/null || echo 0)"
+            charge_full="$(cat "$power_dir/$bat/charge_full" 2>/dev/null || echo 0)"
+            charge_design="$(cat "$power_dir/$bat/charge_full_design" 2>/dev/null || echo 0)"
 
-            if [[ "$charge_now" =~ ^[0-9]+$ ]] && [[ "$charge_full" =~ ^[0-9]+$ ]] && (( charge_full > 0 )); then
-                health=$(( charge_now * 100 / charge_full ))
+            if [[ "$charge_full" =~ ^[0-9]+$ ]] && [[ "$charge_design" =~ ^[0-9]+$ ]] && (( charge_design > 0 )); then
+                health=$(( charge_full * 100 / charge_design ))
                 if (( health < 60 )); then
                     hyprx_doctor_note_warn "Battery health about $health% of design capacity"
                 else

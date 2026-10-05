@@ -306,11 +306,7 @@ while IFS= read -r svc; do
     svc="${svc// /}"
     [[ -z "$svc" ]] && continue
     # Only services whose package this rice is expected to provide.
-    #
-    # docker is in services.list but deliberately NOT in packages.list: it is a
-    # general-purpose daemon nothing here depends on, and services.sh reports it
-    # as "no unit file" rather than failing the install. Anything not in this
-    # table is skipped for the same reason - services.list is a wish list, not a
+    # Anything not in this table is skipped - services.list is not a
     # guarantee that every entry has a package.
     case "$svc" in
         bluetooth) pkg=bluez ;;
@@ -545,6 +541,21 @@ if grep -qE 'find /tmp -mindepth 1 -user' "$ROOT_DIR/commands/clean.sh"; then
         "-mtime on a directory does not describe its contents, so a live socket in an old directory is removed with it"
 else
     ok "/tmp cleanup is scoped to /tmp/\$USER"
+fi
+
+# REVIEW 46: the summary said "Nothing needed removing" after deleting
+# coredumps that measured 0 bytes. Zero-byte work and no work are different
+# claims now; the package cache is measured before/after like every step.
+if grep -q '(( CLEANED > 0 ))' "$ROOT_DIR/commands/clean.sh" 2>/dev/null; then
+    ok "the summary distinguishes empty work from no work"
+else
+    finding "clean still reports zero-byte work as 'Nothing needed removing'"
+fi
+if grep -q 'pkg_delta' "$ROOT_DIR/commands/clean.sh" 2>/dev/null; then
+    ok "the package cache clean is measured before/after"
+else
+    finding "the package cache step reports no bytes" \
+        "its deletions never reach the run total"
 fi
 
 # ===========================================================================
@@ -1154,6 +1165,60 @@ if grep -q 'hyprx_service_scope NetworkManager' "$ROOT_DIR/tests/run_tests.sh" 2
 else
     finding "the suite does not test scope resolution with a concrete unit name" \
         "grepping for the function's name passes even when it resolves nothing"
+fi
+
+# ===========================================================================
+# S. second real-machine run (REVIEW 42-44)
+# ===========================================================================
+# install and doctor disagreed about pipewire (a user unit): the scope probe
+# was unified for the unit NAME but doctor still checked the system scope
+# only. Deploy overwrote wallust colours with defaults while the sync daemon
+# only reacts to changes. Drift warned on by-design diffs, and the apps table
+# read variables nothing ever sets.
+section "S. second real-machine run"
+
+if grep -q 'hyprx_service_scope' "$ROOT_DIR/commands/doctor.sh" 2>/dev/null; then
+    ok "doctor.sh resolves service scope instead of assuming system"
+else
+    finding "doctor.sh does not use hyprx_service_scope" \
+        "a user unit is reported 'not installed' while install says 'already enabled (user)'"
+fi
+
+if grep -q '\-x hyprpaper.conf' "$ROOT_DIR/commands/doctor.sh" 2>/dev/null; then
+    ok "drift excludes files that differ by design"
+else
+    finding "drift diffs generated files too" \
+        "hyprpaper.conf carries the live path, so the section warns on every healthy machine"
+fi
+
+if grep -q 'hyprx_deploy_reapply_wallpaper_colours' "$ROOT_DIR/lib/installer/deploy.sh" 2>/dev/null; then
+    ok "deploy re-applies wallust colours for the live wallpaper"
+else
+    finding "deploy leaves wallust colours stale" \
+        "the sync daemon only reacts to changes, so defaults persist until the next manual set"
+fi
+
+if grep -q 'hyprx_doctor_app' "$ROOT_DIR/commands/doctor.sh" 2>/dev/null; then
+    ok "the doctor apps table reads apps.lua"
+else
+    finding "the doctor apps table reads variables nothing sets" \
+        "every machine reports Unknown no matter what is installed"
+fi
+
+if grep -qx 'docker' "$ROOT_DIR/services.list" 2>/dev/null; then
+    finding "services.list still enables docker with no docker package" \
+        "a service for a package that is not installed cannot start"
+else
+    ok "services.list has no package-less entries"
+fi
+
+# REVIEW 45: health divided charge_now by charge_full, which is the state of
+# charge - a half-charged battery warned about "health 47%".
+if grep -q 'charge_full \* 100 / charge_design' "$ROOT_DIR/commands/doctor.sh" 2>/dev/null; then
+    ok "battery health divides full by design"
+else
+    finding "battery health still divides now by full" \
+        "the number swings with the charge level instead of measuring wear"
 fi
 
 # ===========================================================================

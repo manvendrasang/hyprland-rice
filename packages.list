@@ -43,7 +43,7 @@ waybar
 rofi
 kitty
 swaync
-thunar
+nemo
 wlogout
 hyprlock
 hypridle
@@ -135,4 +135,3 @@ mangohud
 gamemode
 mpv
 vlc
-spotify-launcher

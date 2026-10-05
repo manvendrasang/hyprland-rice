@@ -12,7 +12,7 @@
 -- package to packages.list - otherwise the next install will not provide it.
 return {
 	terminal = "kitty",
-	fileManager = "thunar",      -- was an uninstalled file manager: the bind opened nothing
+	fileManager = "nemo",      -- was an uninstalled file manager: the bind opened nothing
 	launcher = "rofi -show drun -show-icons",
 	browser = "brave",
 	runner = "rofi -show run",

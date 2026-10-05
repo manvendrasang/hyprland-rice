@@ -32,9 +32,14 @@ this repo and nothing creates that folder: with no images the restore script
 finds nothing, wallust never runs, and the bar wears its default colours until
 you add some.
 
-After installing, set your preferred apps — terminal, browser, editor, file
-manager and launcher all start as `Unknown` (`hyprx config set ...`). The theme
-starts at `default`; `hyprx config set THEME one-dark` is opt-in.
+After installing, set your preferred apps in `config/hypr/apps.lua` (terminal,
+browser, file manager, launcher) — that file is what the keybinds read, and
+`hyprx doctor` shows its values in the Configuration table. If you change an
+app, add its package to `packages.list` (and its mapping to
+`database/binary-providers.conf`) or the next install will not provide it and
+the keybind will open nothing. There is no `hyprx config set` key for apps and
+no editor keybind — `EDITOR` in the doctor table is your shell's variable.
+The theme starts at `default`; `hyprx config set THEME one-dark` is opt-in.
 
 ## What install does
 
