@@ -18,6 +18,9 @@ for file in \
     state.sh \
     ui.sh \
     utils.sh \
+    events.sh \
+    lock.sh \
+    elevate.sh \
     logger.sh \
     config.sh \
     detect.sh \

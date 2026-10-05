@@ -11,8 +11,8 @@ shift || true
 usage() {
     cat <<'EOF'
 Usage:
-    hyprx config list                 Show every key and its current value
-    hyprx config get <KEY>            Print one value
+    hyprx config list [--json]        Show every key and its current value
+    hyprx config get <KEY> [--json]   Print one value
     hyprx config set <KEY> <VALUE>    Change a value (validated)
     hyprx config unset <KEY>          Restore a key to its default
     hyprx config path                 Print the config file location
@@ -31,6 +31,10 @@ EOF
 case "$ACTION" in
 
     list)
+        if [[ "${1:-}" == "--json" ]]; then
+            hyprx_config_list_json
+            exit 0
+        fi
         hyprx_ui_section "Configuration"
         hyprx_config_list
         echo
@@ -48,6 +52,11 @@ case "$ACTION" in
             hyprx_ui_error "Unknown key: $KEY"
             hyprx_ui_info "Valid keys: $(printf '%s ' "${!HYPRX_CONFIG_KEYS[@]}" | sed 's/HYPRX_CONFIG_//g')"
             exit 1
+        fi
+        if [[ "${2:-}" == "--json" ]]; then
+            printf '{"key":"%s","value":"%s"}\n' \
+                "$(hyprx_event_escape "$KEY")" "$(hyprx_event_escape "$VALUE")"
+            exit 0
         fi
         printf '%s\n' "$VALUE"
         ;;
@@ -73,6 +82,7 @@ case "$ACTION" in
             0)
                 hyprx_ui_success "$KEY = $VALUE"
                 hyprx_logger_success "config set $KEY=$VALUE"
+                hyprx_event config.changed key="$KEY" value="$VALUE"
                 ;;
             2)
                 hyprx_ui_error "Invalid value for $KEY: '$VALUE'"
@@ -98,6 +108,7 @@ case "$ACTION" in
         fi
         if hyprx_config_unset "$KEY"; then
             hyprx_ui_success "$KEY reset to default ($(hyprx_config_get "$KEY"))"
+            hyprx_event config.changed key="$KEY" value="$(hyprx_config_get "$KEY")"
         else
             hyprx_ui_error "Unknown key: $KEY"
             hyprx_ui_info "Valid keys: $(printf '%s ' "${!HYPRX_CONFIG_KEYS[@]}" | sed 's/HYPRX_CONFIG_//g')"

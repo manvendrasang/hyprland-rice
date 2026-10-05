@@ -52,12 +52,14 @@ case "$ACTION" in
         hyprx_ui_info "Applying $WALLPAPER"
         waypaper --wallpaper "$WALLPAPER" >/dev/null 2>&1 || {
             hyprx_ui_error "waypaper could not set the wallpaper."
+            hyprx_event wallpaper.failed reason="waypaper-rejected"
             exit 1
         }
 
         sleep 1
         if ! hyprx_wallpaper_is_set; then
             hyprx_ui_error "waypaper reported success but hyprpaper has no active wallpaper."
+            hyprx_event wallpaper.failed reason="not-active-after-set"
             exit 1
         fi
 
@@ -67,6 +69,7 @@ case "$ACTION" in
         hyprx_wallpaper_apply_colours "$WALLPAPER"
 
         hyprx_ui_success "Wallpaper set."
+        hyprx_event wallpaper.set path="$WALLPAPER"
         ;;
 
     next|rotate)
@@ -113,8 +116,17 @@ case "$ACTION" in
     current)
 
         if hyprx_wallpaper_active >/dev/null 2>&1; then
+            if [[ "${2:-}" == "--json" ]]; then
+                printf '{"wallpaper":"%s"}\n' \
+                    "$(hyprx_event_escape "$(hyprx_wallpaper_active)")"
+                exit 0
+            fi
             hyprx_wallpaper_active
         else
+            if [[ "${2:-}" == "--json" ]]; then
+                printf '{"wallpaper":null}\n'
+                exit 1
+            fi
             hyprx_ui_info "No wallpaper is set."
             exit 1
         fi

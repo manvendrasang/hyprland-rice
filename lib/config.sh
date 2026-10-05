@@ -328,6 +328,18 @@ hyprx_config_list() {
     done
 }
 
+# Machine-readable twin of `config list` for the GUI settings screen.
+hyprx_config_list_json() {
+    local k first=1
+    printf '{'
+    for k in "${HYPRX_CONFIG_KEYS[@]}"; do
+        (( first == 0 )) && printf ','
+        first=0
+        printf '"%s":"%s"' "${k#HYPRX_CONFIG_}" "$(hyprx_event_escape "${!k}")"
+    done
+    printf '}\n'
+}
+
 # Boolean value of a config key, by variable name.
 hyprx_config_bool() {
     [[ "${!1}" == "true" ]]

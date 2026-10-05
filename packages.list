@@ -129,6 +129,16 @@ firewalld
 firewall-config
 
 # ---------------------------------------------------------------------------
+# OPTIONAL - GUI frontend (Phase 1, not yet consumed)
+# ---------------------------------------------------------------------------
+# The visual GUI is a Python/Qt client of the `hyprx --events` stream and the
+# --json endpoints - nothing in the repo imports this yet. It installs here
+# (not later) so the first GUI run never starts with a dependency fetch.
+# Cost: ~50M plus the Qt stack it pulls in. If that is too much for a machine
+# that will never run the GUI, delete this section - nothing references it.
+pyside6
+
+# ---------------------------------------------------------------------------
 # OPTIONAL - gaming and media
 # ---------------------------------------------------------------------------
 mangohud

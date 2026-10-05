@@ -101,6 +101,27 @@ is how the test suite exercises real deletions.
 after changing a template or a list — it is the only thing that tells you a
 template stopped covering its consumer.
 
+## Automation (GUI foundation)
+
+Three mechanisms for scripted and graphical frontends. Human output is
+untouched by all of them.
+
+- **Events:** `hyprx <cmd> --events` emits `HYPRX_EVENT {...}` JSON lines on
+  stderr (v1 schema: `v`, `ts`, `mode`, `type`). `mode` is `live` or
+  `dry-run`; every run ends with `run.completed{rc}`, and every failed item
+  emits its own `*.failed` first. stdout contracts (`doctor --json`,
+  `wallpaper current`) stay pure.
+- **Read-only JSON:** `config list|get --json`, `rollback list --json`,
+  `wallpaper current --json` (null when unset). `doctor --json` already
+  existed and is the pattern the others copy.
+- **Single writer:** install, rollback and clean share one lock
+  (`$STATE/hyprx.lock`, PID-tracked, stale locks broken). A held lock
+  refuses with exit 3. `--password-stdin` feeds sudo one line on stdin for
+  TTY-less frontends (validated once via `sudo -S -v`, ticket kept warm;
+  the password never touches argv, env, files or logs). Non-interactive
+  callers must pre-confirm: preview with `--dry-run`, confirm in the UI,
+  then run with `AUTO_CONFIRM=true`.
+
 ## Deployed configs
 
 `HYPRX_CONFIG_TARGETS` in `lib/installer/deploy.sh` is the authoritative list;

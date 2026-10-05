@@ -70,6 +70,7 @@ hyprx_snapshot_save() {
     hyprx_ui_info "Snapshot saved: $id"
 
     HYPRX_SNAPSHOT_LAST_ID="$id"
+    hyprx_event snapshot.saved id="$id" packages="${#HYPRX_INSTALL_INSTALLED[@]}" configs="${#HYPRX_SNAPSHOT_CONFIG_BACKUPS[@]}"
 }
 
 hyprx_snapshot_list() {
@@ -92,6 +93,16 @@ hyprx_snapshot_list() {
 
 hyprx_snapshot_exists() {
     [[ -f "$HYPRX_SNAPSHOT_DIR_OVERRIDE/$1.snapshot" ]]
+}
+
+# Sorted snapshot IDs, one per line. The formatted `hyprx_snapshot_list` is
+# for humans; this is the machine-readable twin used by --json endpoints.
+hyprx_snapshot_list_ids() {
+    [[ -d "$HYPRX_SNAPSHOT_DIR_OVERRIDE" ]] || return 0
+
+    find "$HYPRX_SNAPSHOT_DIR_OVERRIDE" -maxdepth 1 -name "*.snapshot" -printf '%f\n' 2>/dev/null \
+        | sed 's/\.snapshot$//' \
+        | sort
 }
 
 hyprx_snapshot_read_deployed() {
@@ -231,8 +242,10 @@ hyprx_snapshot_rollback() {
 
         if hyprx_pkg_remove "$pkg"; then
             hyprx_ui_success "$pkg"
+            hyprx_event package.removed name="$pkg" snapshot="$id"
         else
             hyprx_ui_error "$pkg"
+            hyprx_event package.failed name="$pkg" snapshot="$id" reason="remove-failed"
             failed=1
         fi
     done < <(hyprx_snapshot_packages "$id")
@@ -243,7 +256,12 @@ hyprx_snapshot_rollback() {
         dir="${entry%%:*}"
         existed="${entry##*:}"
 
-        hyprx_snapshot_restore_config "$id" "$dir" "$existed" || failed=1
+        if hyprx_snapshot_restore_config "$id" "$dir" "$existed"; then
+            hyprx_event config.restored dir="$dir" snapshot="$id"
+        else
+            hyprx_event config.failed dir="$dir" snapshot="$id" reason="restore-failed"
+            failed=1
+        fi
     done < <(hyprx_snapshot_configs "$id")
 
     # Only discard the snapshot once everything succeeded - otherwise it is the

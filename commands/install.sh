@@ -36,4 +36,9 @@ if hyprx_util_dry_run; then
     echo
 fi
 
+# Install mutates install.state, snapshots and deployed configs - it must not
+# run alongside another writer (a second terminal, a future GUI, or itself).
+# Released by the process EXIT trap (see lib/elevate.sh).
+hyprx_lock_acquire || exit 3
+
 hyprx_engine_run

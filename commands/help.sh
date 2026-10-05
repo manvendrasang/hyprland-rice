@@ -36,4 +36,12 @@ Detailed usage:
 
     hyprx doctor --help           Diagnose system health
     hyprx config --help           Full list of settings
+
+Global options (accepted before or after the command):
+    --events                  Emit HYPRX_EVENT JSON lines on stderr
+                              alongside the human output, for GUI
+                              frontends. See lib/events.sh.
+    --password-stdin           Read the sudo password from stdin
+                              (GUI use) instead of prompting.
+                              Implies non-interactive operation.
 EOF

@@ -1013,13 +1013,19 @@ while IFS= read -r callee; do
         END { exit found ? 0 : 1 }' "$def_file"; then
         dead_guards+=("$callee ($def_file)")
     fi
-done < <(grep -oE '^[[:space:]]*hyprx_[a-z_]+ \|\| return 1' "$ENGINE" 2>/dev/null \
-         | grep -oE 'hyprx_[a-z_]+' | sort -u)
+done < <({
+    grep -oE '^[[:space:]]*hyprx_[a-z_]+ \|\| return 1' "$ENGINE" 2>/dev/null \
+        | grep -oE 'hyprx_[a-z_]+'
+    # Same guard through the event-bracket wrapper: `hyprx_engine_stage <name>
+    # <callee> || return 1` propagates identically, so the callee is field 3.
+    grep -oE '^[[:space:]]*hyprx_engine_stage [a-z_]+ hyprx_[a-z_]+ \|\| return 1' "$ENGINE" 2>/dev/null \
+        | awk '{print $3}'
+} | sort -u)
 
-guard_total="$(grep -cE '^[[:space:]]*hyprx_[a-z_]+ \|\| return 1' "$ENGINE" 2>/dev/null || true)"
+guard_total="$(grep -cE '^[[:space:]]*(hyprx_engine_stage [a-z_]+ )?hyprx_[a-z_]+ \|\| return 1' "$ENGINE" 2>/dev/null || true)"
 
 if (( guard_total == 0 )); then
-    finding "no 'hyprx_X || return 1' stages found in engine.sh" \
+    finding "no guarded stages found in engine.sh" \
         "this check reads engine.sh; if it cannot find the pattern it is checking nothing"
 elif (( ${#dead_guards[@]} > 0 )); then
     finding "engine.sh guards a stage that cannot return 1: ${dead_guards[*]}" \

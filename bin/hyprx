@@ -14,6 +14,20 @@ export ROOT_DIR
 
 source "$ROOT_DIR/lib/bootstrap.sh"
 
+# Global frontend flags, extracted before dispatch so no per-command parser
+# needs to learn them. Only exact matches are pulled - anything else passes
+# through untouched, so a positional value that happens to start with `--`
+# (a wallpaper path can) is never eaten.
+HYPRX_CLI_ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --events) export HYPRX_EVENTS=1 ;;
+        --password-stdin) export HYPRX_PASSWORD_STDIN=1 ;;
+        *) HYPRX_CLI_ARGS+=("$arg") ;;
+    esac
+done
+set -- "${HYPRX_CLI_ARGS[@]}"
+
 COMMAND="${1:-help}"
 shift || true
 
@@ -46,4 +60,49 @@ if [[ ! -f "$COMMAND_FILE" ]]; then
     exit 1
 fi
 
+# One EXIT trap for the whole process, running registered hooks in order.
+# Commands exit from anywhere (`exit N` inside a sourced command file ends the
+# process on the spot), so completion and cleanup cannot live in straight-line
+# code after `source` - they would never run on an early exit. Every hook
+# guards BASH_SUBSHELL itself (see lib/lock.sh) and must be idempotent.
+HYPRX_EXIT_HOOKS=()
+HYPRX_RUN_STARTED=""
+HYPRX_COMMAND_RC=0
+hyprx_on_exit() { HYPRX_EXIT_HOOKS+=("$1"); }
+hyprx_exit_trap() {
+    # Capture FIRST: even the subshell guard below would clobber $? with its
+    # own status, and then every failure would complete as rc=0 - the exact
+    # lie the Phase-2 red visuals must never be told.
+    local rc=$?
+    (( BASH_SUBSHELL == 0 )) || return 0
+    HYPRX_COMMAND_RC=$rc
+    local hook
+    for hook in ${HYPRX_EXIT_HOOKS[@]+"${HYPRX_EXIT_HOOKS[@]}"}; do
+        "$hook" || true
+    done
+}
+trap hyprx_exit_trap EXIT
+
+# run.completed for the dispatched command. Only fires when run.started did -
+# usage errors before dispatch have no start event to complete.
+hyprx_dispatch_completed() {
+    [[ -n "$HYPRX_RUN_STARTED" ]] || return 0
+    hyprx_event run.completed command="$COMMAND" rc="$HYPRX_COMMAND_RC"
+}
+hyprx_on_exit hyprx_elevate_cleanup
+hyprx_on_exit hyprx_dispatch_completed
+
+# A GUI has no TTY for sudo to prompt on, so it pipes the password instead.
+# Validated (and the refresher started) before dispatch, so the gate's
+# `sudo -n true` probe passes on the cached ticket with no code change there.
+if [[ "${HYPRX_PASSWORD_STDIN:-0}" == "1" ]]; then
+    hyprx_elevate_password_stdin || exit 1
+fi
+
+hyprx_event run.started command="$COMMAND"
+HYPRX_RUN_STARTED=1
+
 source "$COMMAND_FILE"
+# No straight-line code after this point runs on an `exit` inside the command
+# file - completion (run.completed) and cleanup (sudo refresher, lock) are
+# owned by the EXIT trap above. See hyprx_exit_trap.

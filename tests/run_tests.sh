@@ -39,6 +39,15 @@ source "$ROOT_DIR/lib/bootstrap.sh"
 # Defined up front: the clean-sandbox and CLI sections both invoke it.
 CLI="$ROOT_DIR/bin/hyprx"
 
+# Defaulted up front: the doctor-flags section detects the interpreter, but any
+# section may be run alone with -f, and `set -u` turns an unset PYTHON into a
+# suite abort rather than a skipped check. Detect here so every section,
+# filtered or not, sees the same value.
+PYTHON=""
+for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1; then PYTHON="$candidate"; break; fi
+done
+
 # ===========================================================================
 # Flags - so a failure names the section it came from, and so a targeted run
 # does not pay for the whole suite
@@ -575,8 +584,13 @@ while IFS= read -r callee; do
     if ! awk -v s="$def_line" 'NR>s && /^}$/ {exit} NR>s && /(^|[[:space:]])return 1([[:space:]]|$)/ {found=1} END {exit found?0:1}' "$def_file"; then
         guard_dead+=("$callee ($def_file)")
     fi
-done < <(grep -oE '^[[:space:]]*hyprx_[a-z_]+ \|\| return 1' "$ROOT_DIR/lib/installer/engine.sh" \
-         | grep -oE 'hyprx_[a-z_]+' | sort -u)
+done < <({
+    grep -oE '^[[:space:]]*hyprx_[a-z_]+ \|\| return 1' "$ROOT_DIR/lib/installer/engine.sh" \
+        | grep -oE 'hyprx_[a-z_]+'
+    # Same guard through the event-bracket wrapper - the callee is field 3.
+    grep -oE '^[[:space:]]*hyprx_engine_stage [a-z_]+ hyprx_[a-z_]+ \|\| return 1' "$ROOT_DIR/lib/installer/engine.sh" \
+        | awk '{print $3}'
+} | sort -u)
 
 if (( ${#guard_dead[@]} == 0 )); then
     pass "every '|| return 1' stage in engine.sh can actually return 1"
@@ -587,7 +601,7 @@ fi
 
 # Guard against the check itself matching nothing, which is how a check like
 # this silently becomes a permanent pass.
-guard_count="$(grep -cE '^[[:space:]]*hyprx_[a-z_]+ \|\| return 1' "$ROOT_DIR/lib/installer/engine.sh" || true)"
+guard_count="$(grep -cE '^[[:space:]]*(hyprx_engine_stage [a-z_]+ )?hyprx_[a-z_]+ \|\| return 1' "$ROOT_DIR/lib/installer/engine.sh" || true)"
 if (( guard_count >= 3 )); then
     pass "the dead-guard scan inspected $guard_count stages"
 else
@@ -2859,6 +2873,259 @@ if grep -qx "pipewire" "$ROOT_DIR/services.list" && ! grep -qx "pipewire" "$ROOT
     fail "services.list enables pipewire but packages.list does not install it"
 else
     pass "services.list entries have their packages in packages.list"
+fi
+
+# ============================================
+# GUI foundation: event protocol
+# ============================================
+# `hyprx <cmd> --events` emits HYPRX_EVENT JSON lines on stderr alongside the
+# untouched human output. stdout contracts (doctor --json, wallpaper current)
+# must survive the flag - that is asserted here, not just the events.
+section_start "event protocol"
+
+if [[ -z "$PYTHON" ]]; then
+    hyprx_ui_info "no python interpreter found - event protocol shape not verified"
+else
+    ev_out="$("$CLI" config set LOG_LEVEL debug --events 2>&1 >/dev/null || true)"
+    "$CLI" config set LOG_LEVEL info >/dev/null 2>&1 || true
+    if printf '%s' "$ev_out" | grep -q HYPRX_EVENT; then
+        if printf '%s\n' "$ev_out" | grep HYPRX_EVENT | sed 's/^HYPRX_EVENT //' | "$PYTHON" -c '
+import json, sys
+types = set()
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    d = json.loads(line)
+    assert d["v"] == 1, d
+    assert isinstance(d["ts"], int), d
+    assert d["mode"] in ("live", "dry-run"), d
+    assert "type" in d, d
+    types.add(d["type"])
+assert "run.started" in types, types
+assert "config.changed" in types, types
+assert "run.completed" in types, types
+'; then
+            pass "event lines are versioned JSON with run brackets and the change"
+        else
+            fail "event lines do not parse as the v1 schema"
+        fi
+    else
+        fail "--events emitted nothing on the success path"
+    fi
+
+    # Failure path: a rejected set still closes the run, with non-zero rc.
+    ev_bad="$("$CLI" config set NOT_A_KEY x --events 2>&1 >/dev/null || true)"
+    if printf '%s' "$ev_bad" | grep HYPRX_EVENT | sed 's/^HYPRX_EVENT //' | "$PYTHON" -c '
+import json, sys
+done = [json.loads(l) for l in sys.stdin if l.strip()]
+rcs = [d["rc"] for d in done if d["type"] == "run.completed"]
+assert rcs and all(r != "0" for r in rcs), done
+'; then
+        pass "a failed command completes the run with non-zero rc"
+    else
+        fail "failure did not close the run with non-zero rc"
+    fi
+
+    # stdout contracts survive --events: events ride stderr, output stays pure.
+    if [[ "$("$CLI" config get THEME --events 2>/dev/null)" == "default" ]]; then
+        pass "config get stdout stays pure under --events"
+    else
+        fail "config get stdout polluted by --events"
+    fi
+    # doctor exits 1/2 on warnings/errors by design - neutralize that so the
+    # check judges JSON purity, not system health (pipefail is on).
+    json_out="$("$CLI" doctor --json --events --no-report 2>/dev/null || true)"
+    if printf '%s' "$json_out" | "$PYTHON" -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
+        pass "doctor --json stdout stays parseable under --events"
+    else
+        fail "doctor --json stdout polluted by --events"
+    fi
+fi
+
+# ============================================
+# GUI foundation: read-only endpoints
+# ============================================
+# The GUI dashboard reads state through --json twins, never by scraping prose.
+section_start "read-only endpoints"
+
+if [[ -z "$PYTHON" ]]; then
+    hyprx_ui_info "no python interpreter found - endpoint shapes not verified"
+else
+    if "$CLI" config list --json 2>/dev/null | "$PYTHON" -c 'import json,sys; d=json.load(sys.stdin); assert d["THEME"] == "default", d' 2>/dev/null; then
+        pass "config list --json carries every key"
+    else
+        fail "config list --json missing or malformed"
+    fi
+    if "$CLI" config get THEME --json 2>/dev/null | "$PYTHON" -c 'import json,sys; d=json.load(sys.stdin); assert d == {"key":"THEME","value":"default"}, d' 2>/dev/null; then
+        pass "config get --json carries the key and value"
+    else
+        fail "config get --json missing or malformed"
+    fi
+    if "$CLI" config get NOT_A_KEY --json >/dev/null 2>&1; then
+        fail "config get --json accepted an unknown key"
+    else
+        pass "config get --json rejects an unknown key"
+    fi
+
+    # A fabricated snapshot (valid id format, real sections) in the sandbox.
+    SNAPFIX="$HYPRX_STATE_DIR/snapshots/20240101-000000-123456789.snapshot"
+    mkdir -p "$(dirname "$SNAPFIX")"
+    cat >"$SNAPFIX" <<'EOF'
+DATE=Mon Jan  1 00:00:00 UTC 2024
+PACKAGES=2
+CONFIGS=1
+---PACKAGES---
+waybar
+rofi
+---CONFIGS---
+waybar:1
+EOF
+    if "$CLI" rollback list --json 2>/dev/null | "$PYTHON" -c '
+import json, sys
+items = json.load(sys.stdin)
+mine = [i for i in items if i["id"] == "20240101-000000-123456789"]
+assert mine, items
+assert mine[0]["packages"] == 2 and mine[0]["configs"] == 1, mine
+' 2>/dev/null; then
+        pass "rollback list --json carries id, date and counts"
+    else
+        fail "rollback list --json missing or malformed"
+    fi
+    rm -f "$SNAPFIX"
+
+    # hyprctl may or may not exist here - both shapes must still parse.
+    wjson="$("$CLI" wallpaper current --json 2>/dev/null || true)"
+    if printf '%s' "$wjson" | "$PYTHON" -c 'import json,sys; d=json.load(sys.stdin); assert "wallpaper" in d, d' 2>/dev/null; then
+        pass "wallpaper current --json parses with or without a wallpaper"
+    else
+        fail "wallpaper current --json malformed"
+    fi
+fi
+
+# ============================================
+# GUI foundation: single writer
+# ============================================
+# One global mutex across install/rollback/clean. A live holder blocks with
+# exit 3; a dead holder's lock is broken and the run proceeds.
+section_start "single writer"
+
+LOCK_SANDBOX="$TEST_ROOT/lockclean"
+mkdir -p "$LOCK_SANDBOX"
+LOCK_DIR="$HYPRX_STATE_DIR/hyprx.lock"
+
+# A live holder: sleep keeps the PID real for the duration of the test.
+sleep 120 &
+LOCK_HOLDER=$!
+mkdir -p "$LOCK_DIR"
+printf '%s\n' "$LOCK_HOLDER" >"$LOCK_DIR/pid"
+LOCK_RC=0
+HYPRX_CLEAN_ROOT="$LOCK_SANDBOX" "$CLI" clean --dry-run >/dev/null 2>&1 || LOCK_RC=$?
+if (( LOCK_RC == 3 )); then
+    pass "a held lock refuses the second writer with exit 3"
+elif (( LOCK_RC == 0 )); then
+    fail "a second writer ran while the lock was held"
+else
+    fail "a held lock refused with the wrong exit code ($LOCK_RC)"
+fi
+kill "$LOCK_HOLDER" 2>/dev/null || true
+wait "$LOCK_HOLDER" 2>/dev/null || true
+
+# A dead holder: the pid is gone, so the lock is stale and must break.
+sleep 0.1 & STALE_PID=$!
+wait "$STALE_PID" 2>/dev/null || true
+mkdir -p "$LOCK_DIR"
+printf '%s\n' "$STALE_PID" >"$LOCK_DIR/pid"
+if HYPRX_CLEAN_ROOT="$LOCK_SANDBOX" "$CLI" clean --dry-run >/dev/null 2>&1; then
+    pass "a stale lock is broken and the run proceeds"
+else
+    fail "a stale lock blocked the run (rc=$?)"
+fi
+if [[ -d "$LOCK_DIR" ]]; then
+    fail "the lock was not released after the run"
+else
+    pass "the lock is released when the run ends"
+fi
+rm -rf "$LOCK_DIR"
+
+# ============================================
+# GUI foundation: elevation
+# ============================================
+# --password-stdin lets a GUI feed sudo without a TTY. Real sudo is never
+# touched here: a fixture sudo records its args and stdin, and exits on
+# demand. What is asserted is OUR plumbing - one -S -v validation, refresher
+# lifecycle, and that the password never reaches the state dir.
+section_start "elevation"
+
+ELEV_BIN="$TEST_ROOT/fakebin"
+mkdir -p "$ELEV_BIN"
+cat >"$ELEV_BIN/sudo" <<'EOF'
+#!/usr/bin/env bash
+echo "SUDO ARGS: $*" >>"${FAKE_SUDO_LOG:?}"
+cat >>"${FAKE_SUDO_LOG:?}"
+exit "${FAKE_SUDO_RC:-0}"
+EOF
+chmod +x "$ELEV_BIN/sudo"
+export FAKE_SUDO_LOG="$TEST_ROOT/fake-sudo.log"
+: >"$FAKE_SUDO_LOG"
+
+CANARY="hyprx-canary-$(date +%s)-pw"
+ELEV_SANDBOX="$TEST_ROOT/elevclean"
+mkdir -p "$ELEV_SANDBOX"
+# clean --dry-run in a sandbox lasts a couple of seconds - long enough for the
+# 1s test-interval refresher to fire at least once while the command runs.
+if PATH="$ELEV_BIN:$PATH" FAKE_SUDO_RC=0 HYPRX_ELEVATE_REFRESH_EVERY=1 \
+    HYPRX_CLEAN_ROOT="$ELEV_SANDBOX" \
+    "$CLI" clean --dry-run --password-stdin <<<"$CANARY" >/dev/null 2>&1; then
+    pass "a correct piped password elevates and the command runs"
+else
+    fail "a correct piped password did not elevate (rc=$?)"
+fi
+if grep -q "\-S -v" "$FAKE_SUDO_LOG"; then
+    pass "elevation validates with a single sudo -S -v"
+else
+    fail "elevation did not validate through sudo -S -v"
+fi
+if grep -q "\-n -v" "$FAKE_SUDO_LOG"; then
+    pass "the refresher keeps the ticket warm during the run"
+else
+    fail "the refresher never fired during the run"
+fi
+if grep -rq "$CANARY" "$HYPRX_STATE_DIR" 2>/dev/null; then
+    fail "the password leaked into the state dir"
+else
+    pass "the password never reaches the state dir"
+fi
+# Reaping is asserted on settled counts: the first wait absorbs an in-flight
+# sudo write racing the EXIT-trap kill, then silence must hold.
+CALLS_C1="$(grep -c "SUDO ARGS" "$FAKE_SUDO_LOG")"
+sleep 3
+CALLS_C2="$(grep -c "SUDO ARGS" "$FAKE_SUDO_LOG")"
+sleep 2
+CALLS_C3="$(grep -c "SUDO ARGS" "$FAKE_SUDO_LOG")"
+if [[ "$CALLS_C3" == "$CALLS_C2" ]]; then
+    pass "the credential refresher is reaped when the command ends"
+else
+    fail "sudo calls kept arriving after exit ($CALLS_C2 -> $CALLS_C3)"
+fi
+
+: >"$FAKE_SUDO_LOG"
+if PATH="$ELEV_BIN:$PATH" FAKE_SUDO_RC=1 \
+    "$CLI" config list --password-stdin <<<"$CANARY" >/dev/null 2>&1; then
+    fail "a rejected password still ran the command"
+else
+    pass "a rejected password fails the command fast"
+fi
+if [[ "$(grep -c "SUDO ARGS" "$FAKE_SUDO_LOG")" == "1" ]]; then
+    pass "a rejected password starts no refresher"
+else
+    fail "unexpected sudo traffic on a rejected password"
+fi
+
+if "$CLI" config list --password-stdin </dev/null >/dev/null 2>&1; then
+    fail "empty stdin was accepted as a password"
+else
+    pass "empty stdin is refused as a password"
 fi
 
 # ============================================

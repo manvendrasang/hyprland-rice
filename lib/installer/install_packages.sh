@@ -75,15 +75,18 @@ hyprx_install_packages_run() {
                 hyprx_ui_success "$pkg"
                 HYPRX_INSTALL_INSTALLED+=("$pkg")
                 hyprx_recovery_mark_complete "$pkg"
+                hyprx_event package.installed name="$pkg"
                 ;;
             # Installed by the batch above, so it answers "already present" here.
             10)
                 if [[ -n "${batch_installed[$pkg]:-}" ]]; then
                     hyprx_ui_success "$pkg"
                     HYPRX_INSTALL_INSTALLED+=("$pkg")
+                    hyprx_event package.installed name="$pkg"
                 else
                     hyprx_ui_info "$pkg already installed."
                     HYPRX_INSTALL_SKIPPED+=("$pkg")
+                    hyprx_event package.skipped name="$pkg"
                 fi
                 hyprx_recovery_mark_complete "$pkg"
                 ;;
@@ -91,6 +94,7 @@ hyprx_install_packages_run() {
                 hyprx_ui_error "$pkg"
                 HYPRX_INSTALL_FAILED+=("$pkg")
                 hyprx_failure_logger_log "$pkg" "Installation failed"
+                hyprx_event package.failed name="$pkg" rc="$status"
                 ;;
         esac
     done

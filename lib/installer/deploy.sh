@@ -178,6 +178,9 @@ hyprx_deploy_all() {
         # successfully" at the end of the run.
         if ! hyprx_deploy_config_dir "$dir"; then
             failed+=("$dir")
+            hyprx_event config.failed target="$dir"
+        else
+            hyprx_event config.deployed target="$dir"
         fi
     done
 

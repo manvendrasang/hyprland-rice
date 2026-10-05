@@ -183,6 +183,7 @@ hyprx_services_enable() {
         if [[ " $HYPRX_SERVICE_NO_ENABLE " == *" $unit "* ]]; then
             HYPRX_SERVICES_SKIPPED+=("$svc")
             hyprx_ui_info "$svc: left disabled (HyprX launches it from the compositor)"
+            hyprx_event service.skipped name="$svc" reason="compositor-launched"
             continue
         fi
 
@@ -192,6 +193,7 @@ hyprx_services_enable() {
         if [[ -z "$scope" ]]; then
             HYPRX_SERVICES_SKIPPED+=("$svc")
             hyprx_ui_warn "$svc: no unit file in either scope. Its package is probably not installed."
+            hyprx_event service.skipped name="$svc" reason="no-unit-file"
             continue
         fi
 
@@ -199,12 +201,14 @@ hyprx_services_enable() {
         if hyprx_service_is_enabled "$scope" "$unit"; then
             HYPRX_SERVICES_ENABLED+=("$svc")
             hyprx_ui_info "$svc: already enabled ($scope)"
+            hyprx_event service.skipped name="$svc" reason="already-enabled"
             continue
         fi
 
         if $dry; then
             hyprx_util_would "systemctl $scope enable --now $unit"
             HYPRX_SERVICES_ENABLED+=("$svc")
+            hyprx_event service.enabled name="$svc" scope="$scope"
             continue
         fi
 
@@ -212,15 +216,18 @@ hyprx_services_enable() {
         if [[ "$scope" == "system" ]] && ! $can_sudo; then
             HYPRX_SERVICES_FAILED+=("$svc")
             hyprx_ui_warn "$svc: needs sudo and no cached ticket is available - skipped"
+            hyprx_event service.failed name="$svc" reason="no-sudo-ticket"
             continue
         fi
 
         if hyprx_service_enable "$scope" "$unit"; then
             HYPRX_SERVICES_ENABLED+=("$svc")
             hyprx_ui_success "$svc: enabled ($scope)"
+            hyprx_event service.enabled name="$svc" scope="$scope"
         else
             HYPRX_SERVICES_FAILED+=("$svc")
             hyprx_ui_error "$svc: systemctl enable --now failed ($scope)"
+            hyprx_event service.failed name="$svc" reason="systemctl-failed"
         fi
     done
 

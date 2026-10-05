@@ -1,5 +1,20 @@
 #!/usr/bin/env bash
 
+# Run one pipeline stage with event brackets. The rc rides on
+# stage.completed so a GUI progress rail can go red per stage without parsing
+# prose - and because install/fonts/services failures are recorded-not-fatal,
+# their non-zero rcs would otherwise be invisible to anything but a human
+# reading the summary.
+hyprx_engine_stage() {
+    local name="$1"
+    shift
+    hyprx_event stage.started name="$name"
+    "$@"
+    local rc=$?
+    hyprx_event stage.completed name="$name" rc="$rc"
+    return "$rc"
+}
+
 hyprx_engine_run() {
     # One gate, not two.
     #
@@ -18,13 +33,13 @@ hyprx_engine_run() {
 
     hyprx_snapshot_init_id
 
-    hyprx_install_gate || return 1
+    hyprx_engine_stage gate hyprx_install_gate || return 1
 
     if hyprx_recovery_has_state; then
         hyprx_ui_info "Previous installation detected."
-        hyprx_recovery_resume || return 1
+        hyprx_engine_stage resume hyprx_recovery_resume || return 1
     else
-        hyprx_resolver_resolve || return 1
+        hyprx_engine_stage resolve hyprx_resolver_resolve || return 1
     fi
 
     # Recorded, not fatal - for the same reason the install stage below is. A
@@ -36,28 +51,28 @@ hyprx_engine_run() {
     # statement was an `if` that resolves to 0 either way, so an install
     # naming a nonexistent package sailed through to "completed successfully".
     local validate_rc=0
-    hyprx_validator_validate || validate_rc=$?
+    hyprx_engine_stage validate hyprx_validator_validate || validate_rc=$?
 
     # A partial install must not abort here. Configs, the snapshot and the
     # report are exactly what the user needs in order to recover from a package
     # failure, so a non-zero return from the install stage is recorded and the
     # pipeline continues. It still changes the final exit code.
     local install_rc=0
-    hyprx_install_packages_run || install_rc=$?
+    hyprx_engine_stage install hyprx_install_packages_run || install_rc=$?
 
-    hyprx_deploy_all || return 1
+    hyprx_engine_stage deploy hyprx_deploy_all || return 1
 
     # Fonts before services, because most of what the services manage is a GUI
     # that needs them to render. A failure here is recorded, not fatal.
     local fonts_rc=0
-    hyprx_fonts_install || fonts_rc=$?
+    hyprx_engine_stage fonts hyprx_fonts_install || fonts_rc=$?
 
     # Services next to the package install, because a service whose package was
     # just installed is exactly what this stage enables. A failure here is
     # recorded rather than fatal: the configs are still worth deploying and the
     # user can enable the unit by hand.
     local services_rc=0
-    hyprx_services_enable || services_rc=$?
+    hyprx_engine_stage services hyprx_services_enable || services_rc=$?
 
     hyprx_ui_section "GPU offload"
 
@@ -73,10 +88,10 @@ hyprx_engine_run() {
     if hyprx_util_dry_run; then
         hyprx_util_would "write a rollback snapshot (nothing to roll back to, since nothing changed)"
     else
-        hyprx_snapshot_save
+        hyprx_engine_stage snapshot hyprx_snapshot_save
     fi
 
-    hyprx_report_generate || return 1
+    hyprx_engine_stage report hyprx_report_generate || return 1
 
     hyprx_ui_divider
 

@@ -104,16 +104,38 @@ if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
     CLEAN_CAN_SUDO=true
 fi
 
+# Clean prunes snapshots and state alongside caches, so it is a writer like
+# install and rollback - same global lock, released by the EXIT trap.
+hyprx_lock_acquire || exit 3
+
+# The step add_freed reports under. Set before each section so the event
+# stream carries per-step bytes for the Phase-2 reclaimed-bytes visual.
+HYPRX_CLEAN_STEP=""
+
+# Terminal event for the run. clean.sh exits from several places (sandbox
+# short-circuit, failure tally, success), so one EXIT-scoped emit covers
+# them all instead of one call per exit. Registered on the dispatcher's hook
+# chain rather than a trap of its own, which would replace the dispatcher's
+# trap and strand the sudo refresher and lock.
+# shellcheck disable=SC2329  # invoked via the EXIT hook chain, not by name
+hyprx_clean_finish() {
+    (( BASH_SUBSHELL == 0 )) || return 0
+    hyprx_event clean.completed bytes="$FREED" skipped="$SKIPPED" failures="$FAILURES"
+}
+hyprx_on_exit hyprx_clean_finish
+
 # Bytes a path occupies right now, empty if absent.
 size_of() {
     hyprx_state_size "$1"
 }
 
 # Accumulate into the run total. Deliberately prints nothing: the caller
-# formats its own line, so this must not emit a second size token.
+# formats its own line, so this must not emit a second size token. The event
+# carries the per-step bytes HYPRX_CLEAN_STEP names (see above).
 add_freed() {
     local bytes="${1:-0}"
     (( bytes > 0 )) && FREED=$((FREED + bytes))
+    hyprx_event clean.step step="$HYPRX_CLEAN_STEP" bytes="$bytes"
     return 0
 }
 
@@ -163,6 +185,7 @@ echo
 # Package manager cache
 ########################################
 
+HYPRX_CLEAN_STEP="Package cache"
 hyprx_ui_section "Package cache"
 
 if $SKIP_SYSTEM; then
@@ -189,6 +212,7 @@ echo
 # Orphaned packages
 ########################################
 
+HYPRX_CLEAN_STEP="Orphaned packages"
 hyprx_ui_section "Orphaned packages"
 
 mapfile -t ORPHANS < <(hyprx_pkg_list_orphans)
@@ -214,6 +238,7 @@ echo
 # Screenshots older than N days
 ########################################
 
+HYPRX_CLEAN_STEP="Old screenshots"
 hyprx_ui_section "Old screenshots"
 
 SCREENSHOT_DIR="$CLEAN_ROOT/Pictures/Screenshots"
@@ -249,6 +274,7 @@ echo
 # Regenerable caches
 ########################################
 
+HYPRX_CLEAN_STEP="Regenerable caches"
 hyprx_ui_section "Regenerable caches"
 
 CACHES_CLEARED=0
@@ -271,6 +297,7 @@ echo
 
 if $DEEP; then
 
+    HYPRX_CLEAN_STEP="Large caches (--deep)"
     hyprx_ui_section "Large caches (--deep)"
 
     # All fully regenerable. The browser profile is deliberately excluded: it is
@@ -292,6 +319,7 @@ if $DEEP; then
     # Trash
     ########################################
 
+    HYPRX_CLEAN_STEP="Trash"
     hyprx_ui_section "Trash"
 
     TRASH_DIR="$CLEAN_ROOT/.local/share/Trash"
@@ -334,6 +362,7 @@ if $DEEP; then
     # Coredumps
     ########################################
 
+    HYPRX_CLEAN_STEP="Coredumps"
     hyprx_ui_section "Coredumps"
 
     # Grouped by program, because "5x hyprpaper" tells you something a list of
@@ -389,6 +418,7 @@ fi
 # System journal
 ########################################
 
+HYPRX_CLEAN_STEP="System Logs"
 hyprx_ui_section "System Logs"
 
 if $SKIP_SYSTEM; then
@@ -409,6 +439,7 @@ echo
 # Temporary files
 ########################################
 
+HYPRX_CLEAN_STEP="Temporary Files"
 hyprx_ui_section "Temporary Files"
 
 CURRENT_USER="$(id -un)"
@@ -462,6 +493,7 @@ echo
 # HyprX's own state
 ########################################
 
+HYPRX_CLEAN_STEP="HyprX state"
 hyprx_ui_section "HyprX state"
 
 STATE_DIR="${HYPRX_STATE_DIR:-$HOME/.local/state/hyprx}"
