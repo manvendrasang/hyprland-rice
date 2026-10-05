@@ -292,6 +292,36 @@ immediately, reusing the colour cache.
 never work after an install. Deploy now preserves the live key the same way it
 already preserves `hyprpaper.conf`.
 
+**36 — the #32 dedup broke the standalone daemons.** Moving the `listactive`
+parser into `lib/wallpaper.sh` left `wallust-hyprpaper-sync.sh` and
+`wallpaper-restore.sh` calling a function nothing had sourced — both run
+outside the CLI, so bootstrap never loads the library. The `|| true` swallowed
+the "command not found" and every wallpaper resolved to nothing, which looks
+exactly like "no wallpaper is set": wallust never re-registered. Both scripts
+now source the installed library and carry the same parsing as an inline
+fallback, so a missing library still cannot silently disable them.
+
+**37 — the theme `@import` pointed at a path deploy wipes.** The template
+imported `themes/active.css`, which resolves under `styles/` — a directory
+deploy replaces wholesale, so every `hyprx install` deleted the target and
+waybar exited on the missing import. The import is now `../themes/active.css`,
+which resolves to the deployed `waybar/themes/` directory that survives
+installs.
+
+**38 — the volume icons were never the bug.** `pulseaudio` used Font Awesome
+U+F026–F028, which the Nerd Font on this system contains — the "full stop" was
+Caudex having no such glyph and no fallback configured. Swapping in U+E040–E042
+made it worse: nothing installed covers those, so they fell back to B612 Mono.
+Reverted to the original icons; the real fix was the `"JetBrainsMono Nerd
+Font"` fallback already added to `styles/base.css`, verified by `fc-match`
+charset queries against the installed fonts.
+
+**39 — `hyprx wallpaper set` asked hyprctl to do something hyprpaper rejects.**
+Current hyprpaper builds expose only `listactive` over IPC, so `hyprctl
+hyprpaper wallpaper` fails every time. The command now sets through `waypaper
+--wallpaper` and verifies through `listactive`, since waypaper exits 0 even
+when it set nothing.
+
 ---
 
 ## Still open

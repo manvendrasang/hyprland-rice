@@ -133,17 +133,20 @@ else
 fi
 
 # Waybar only reads colors.css at (re)start.
-~/.local/share/hyprx/scripts/reload-waybar.sh >/dev/null 2>&1 &
+# The output is intentionally not redirected to /dev/null so that waybar's
+# own error messages (e.g. CSS parse errors) are visible instead of silently
+# leaving the bar invisible.
+~/.local/share/hyprx/scripts/reload-waybar.sh &
 
 # swaync supports a live CSS reload without losing notification history.
 if command -v swaync-client >/dev/null 2>&1; then
-    swaync-client --reload-css >/dev/null 2>&1 &
+    swaync-client --reload-css &
 fi
 
 # Hyprland's border colors are read via require("colors") at config
 # parse time, so they need a full reload to pick up the new file.
 if command -v hyprctl >/dev/null 2>&1; then
-    ~/.local/share/hyprx/scripts/reload-hypr.sh >/dev/null 2>&1 &
+    ~/.local/share/hyprx/scripts/reload-hypr.sh &
 fi
 
 wait

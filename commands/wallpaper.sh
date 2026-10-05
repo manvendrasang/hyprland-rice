@@ -39,16 +39,27 @@ case "$ACTION" in
 
         hyprx_ui_section "Setting wallpaper"
 
-        if ! hyprx_util_command_exists hyprpaper; then
-            hyprx_ui_error "hyprpaper is not installed - nothing to set a wallpaper with."
+        # waypaper is the setter on this system: `hyprctl hyprpaper wallpaper`
+        # is rejected by current hyprpaper builds (only listactive is exposed
+        # over IPC), so asking hyprctl to set anything fails every time. The
+        # change is verified through listactive afterwards because waypaper
+        # exits 0 even when it set nothing.
+        if ! hyprx_util_command_exists waypaper; then
+            hyprx_ui_error "waypaper is not installed - nothing to set a wallpaper with."
             exit 1
         fi
 
         hyprx_ui_info "Applying $WALLPAPER"
-        hyprctl hyprpaper wallpaper "$WALLPAPER" >/dev/null 2>&1 || {
-            hyprx_ui_error "hyprctl could not set the wallpaper."
+        waypaper --wallpaper "$WALLPAPER" >/dev/null 2>&1 || {
+            hyprx_ui_error "waypaper could not set the wallpaper."
             exit 1
         }
+
+        sleep 1
+        if ! hyprx_wallpaper_is_set; then
+            hyprx_ui_error "waypaper reported success but hyprpaper has no active wallpaper."
+            exit 1
+        fi
 
         # Regenerate now rather than waiting for the sync daemon to notice. The
         # daemon polls every 2s, which is fine for a change you did not make

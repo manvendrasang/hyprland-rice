@@ -30,6 +30,33 @@ active_path() {
     hyprx_wallpaper_active
 }
 
+# hyprx_wallpaper_active lives in lib/wallpaper.sh, but this script runs
+# standalone at login - not through the hyprx CLI - so nothing has sourced the
+# library. Same treatment as wallust-hyprpaper-sync.sh: source it from the
+# installed location when present, otherwise define the same parsing inline so
+# a missing library cannot silently resolve every wallpaper to nothing.
+for _wallpaper_lib in \
+    "${HYPRX_TARGET_HOME:-$HOME}/.local/share/hyprx/lib/wallpaper.sh" \
+    "$(dirname "$(dirname "$0")")/lib/wallpaper.sh"; do
+    # shellcheck disable=SC1090
+    [[ -f "$_wallpaper_lib" ]] && source "$_wallpaper_lib" && break
+done
+unset _wallpaper_lib
+
+if ! command -v hyprx_wallpaper_active >/dev/null 2>&1; then
+    hyprx_wallpaper_active() {
+        local line candidate
+        while IFS= read -r line; do
+            candidate="$(printf '%s' "$line" | sed -E 's/^[^=:]*(=|:) *//')"
+            if [[ -n "$candidate" && -f "$candidate" ]]; then
+                printf '%s\n' "$candidate"
+                return 0
+            fi
+        done < <(hyprctl hyprpaper listactive 2>/dev/null)
+        return 1
+    }
+fi
+
 # Block until hyprpaper's IPC answers, or give up after ~10s.
 wait_for_hyprpaper() {
     local i

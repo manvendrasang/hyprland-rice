@@ -33,7 +33,7 @@
  * than an alpha.
  */
 
-@import "themes/active.css";
+@import "../themes/active.css";
 
 @define-color bg        rgba({{background | rgb}},0.97);
 

@@ -13,6 +13,35 @@ sleep 2
 
 last_state=""
 
+# The active-wallpaper parser lives in lib/wallpaper.sh, but this daemon runs
+# standalone - it is launched from hyprland.lua, not through the hyprx CLI, so
+# nothing has sourced the library. Source it from the installed location when
+# present; otherwise fall back to the same parsing inline so the daemon keeps
+# working instead of silently resolving every wallpaper to nothing (an unknown
+# command inside $(...) with `|| true` yields an empty path, and an empty path
+# looks exactly like "no wallpaper is set").
+for _wallpaper_lib in \
+    "${HYPRX_TARGET_HOME:-$HOME}/.local/share/hyprx/lib/wallpaper.sh" \
+    "$(dirname "$(dirname "$(dirname "$0")")")/lib/wallpaper.sh"; do
+    # shellcheck disable=SC1090
+    [[ -f "$_wallpaper_lib" ]] && source "$_wallpaper_lib" && break
+done
+unset _wallpaper_lib
+
+if ! command -v hyprx_wallpaper_active >/dev/null 2>&1; then
+    hyprx_wallpaper_active() {
+        local line candidate
+        while IFS= read -r line; do
+            candidate="$(printf '%s' "$line" | sed -E 's/^[^=:]*(=|:) *//')"
+            if [[ -n "$candidate" && -f "$candidate" ]]; then
+                printf '%s\n' "$candidate"
+                return 0
+            fi
+        done < <(hyprctl hyprpaper listactive 2>/dev/null)
+        return 1
+    }
+fi
+
 while true; do
     current_state=$(hyprctl hyprpaper listactive 2>/dev/null || true)
 
