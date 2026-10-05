@@ -815,7 +815,6 @@ run_doctor_checks() {
 waybar|waybar|hyprctl hypr exec '~/.config/waybar/scripts/ensure-waybar.sh --restart'
 swaync|swaync|
 hypridle|hypridle|
-nm-aplet|nm-aplet --indicator|
 wallust theming|wallust-hyprpaper-sync|
 bluetooth daemon|bluetooth-daemon.sh|
 EOF
