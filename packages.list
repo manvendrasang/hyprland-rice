@@ -42,6 +42,10 @@ playerctl
 waybar
 rofi
 kitty
+# The default browser bound in config/hypr/apps.lua. AUR-only (see
+# database/aur-packages.list) - without it SUPER+B opens nothing on a fresh
+# install, the same silent failure apps.lua warns about.
+brave-bin
 swaync
 nemo
 wlogout

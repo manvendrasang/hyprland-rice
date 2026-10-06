@@ -17,7 +17,6 @@
 #pulseaudio,
 #battery,
 #custom-clipboard,
-#custom-music,
 #custom-notifications {
     background: alpha(@bg0, 0.97);
     border: 1px solid rgba(255,255,255,0.08);
@@ -35,7 +34,6 @@
 #custom-logo:hover,
 #clock:hover,
 #custom-gpu:hover,
-#custom-music:hover,
 #cpu:hover,
 #memory:hover,
 #temperature:hover,
@@ -262,30 +260,6 @@ tooltip label {
 }
 
 #custom-bluetooth.off {
-    color: @grey1;
-}
-
-/*
- * MUSIC
- *
- * music-daemon.sh picks the player to follow (priority list, then the most
- * recently seen active one) and writes a "class" alongside the text, so the
- * state is styled here rather than being re-derived by the module.
- */
-
-#custom-music {
-    color: @aqua;
-}
-
-#custom-music.playing {
-    color: @aqua;
-}
-
-#custom-music.paused {
-    color: @yellow;
-}
-
-#custom-music.stopped {
     color: @grey1;
 }
 

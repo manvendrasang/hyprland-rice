@@ -114,7 +114,7 @@ It was 330 green and weak where it mattered. Three examples, all since fixed:
   function was *mentioned*, never that it resolved anything, which is how
   finding 2's successor shipped green.
 
-The suite is now 484 assertions and takes `-f <regex>` to run one section.
+The suite is 435 passing and takes `-f <regex>` to run one section.
 
 ---
 
@@ -383,7 +383,7 @@ uninstalling spotify and firefox.
   `config/waybar/scripts/lib-launch.sh`, sourced as a sibling so a broken
   install still reports itself instead of silently dying. The duplicate
   `listactive` parsers went earlier with #32.
-- `commands/doctor.sh` is 1169 lines with 86 near-identical note/section calls.
+- `commands/doctor.sh` is ~1240 lines with ~70 near-identical note/section calls.
   Table-driving the sections would take it to roughly 750 and make adding a
   section one line instead of a dozen. Not done: it is a large mechanical change
   to the file that most needs to stay readable, and it wants its own review.
