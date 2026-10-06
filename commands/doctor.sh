@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# shellcheck disable=SC2329  # every section below is dispatched by name through
+# HYPRX_DOCTOR_SECTION_TABLE, never by a direct call - static analysis cannot
+# see the invocations. A runtime guard in run_doctor_checks fails loud if the
+# table ever names a function that does not exist.
+
 # Tallies feed the summary and the exit code. Only real health signals are
 # tallied; the Applications section is a presence report and uses plain printers.
 #
@@ -435,676 +440,63 @@ gpu_checks() {
     fi
 }
 
+# Presence check for the Applications rows. Top level rather than nested in
+# the section, so it cannot depend on section run order.
+check_app() {
+    local name="$1" status="$2" hint="${3:-}"
+    if [[ "$status" == true ]]; then
+        hyprx_doctor_note_ok "$name"
+    else
+        hyprx_doctor_note_err "$name: not installed"
+        [[ -n "$hint" ]] && hyprx_doctor_suggest "$hint"
+    fi
+}
+
+# Section registry: name -> function. Adding a section means writing
+# hyprx_doctor_section_<name> and adding one line here. Run order,
+# `doctor_usage`, validation and --only/--skip all derive from this
+# table, so they cannot drift apart.
+HYPRX_DOCTOR_SECTION_TABLE=(
+    "configuration:hyprx_doctor_section_configuration"
+    "applications:hyprx_doctor_section_applications"
+    "system:hyprx_doctor_section_system"
+    "validation:hyprx_doctor_section_validation"
+    "drift:hyprx_doctor_section_drift"
+    "storage:hyprx_doctor_section_storage"
+    "memory:hyprx_doctor_section_memory"
+    "swap:hyprx_doctor_section_swap"
+    "systemd:hyprx_doctor_section_systemd"
+    "services:hyprx_doctor_section_services"
+    "session:hyprx_doctor_section_session"
+    "gpu:hyprx_doctor_section_gpu"
+    "network:hyprx_doctor_section_network"
+    "pacman:hyprx_doctor_section_pacman"
+    "daemons:hyprx_doctor_section_daemons"
+    "battery:hyprx_doctor_section_battery"
+    "diskusage:hyprx_doctor_section_diskusage"
+    "fonts:hyprx_doctor_section_fonts"
+    "manifest:hyprx_doctor_section_manifest"
+)
+
 run_doctor_checks() {
     hyprx_ui_header
     hyprx_logger_info "Running doctor"
     echo
 
-    if doctor_wants configuration; then
-    # Configuration
-    hyprx_ui_section "Configuration"
-    hyprx_table_header
-    hyprx_table_row "Theme"          "${HYPRX_CONFIG_THEME:-Default}"
-    hyprx_table_row "Terminal"       "$(hyprx_doctor_app terminal)"
-    hyprx_table_row "Browser"        "$(hyprx_doctor_app browser)"
-    hyprx_table_row "Editor"         "${EDITOR:-Unknown}"
-    hyprx_table_row "File Manager"   "$(hyprx_doctor_app fileManager)"
-    hyprx_table_row "Launcher"       "$(hyprx_doctor_app launcher)"
-    echo
-
-    fi
-
-    if doctor_wants applications; then
-    # Applications
-    hyprx_ui_section "Applications"
-
-    # These were plain hyprx_ui_error/hyprx_ui_success printers, so a missing
-    # application printed a red X and was never tallied. `hyprx doctor
-    # --only applications` on a box with nothing installed printed nine red X
-    # and then "All checks passed", exiting 0.
-    #
-    # doctor_note_err is what feeds both the exit code and --json, so using it
-    # here makes the section honest in all three output modes.
-    #
-    # A missing app is an ERROR, not a warning: packages.list is a closed set,
-    # so its absence means the install is incomplete.
-    check_app() {
-        local name="$1" status="$2" hint="${3:-}"
-        if [[ "$status" == true ]]; then
-            hyprx_doctor_note_ok "$name"
-        else
-            hyprx_doctor_note_err "$name: not installed"
-            [[ -n "$hint" ]] && hyprx_doctor_suggest "$hint"
-        fi
-    }
-
-    check_app "Hyprland" "$HYPRX_DETECT_HAS_HYPRLAND" "pacman -S hyprland"
-    check_app "Waybar" "$HYPRX_DETECT_HAS_WAYBAR" "pacman -S waybar"
-    check_app "Rofi" "$HYPRX_DETECT_HAS_ROFI" "pacman -S rofi"
-    check_app "Kitty" "$HYPRX_DETECT_HAS_KITTY" "pacman -S kitty"
-    check_app "VS Code" "$HYPRX_DETECT_HAS_CODE" "pacman -S visual-studio-code-bin"
-    check_app "Neovim" "$HYPRX_DETECT_HAS_NVIM" "pacman -S neovim"
-    check_app "Git" "$HYPRX_DETECT_HAS_GIT" "pacman -S git"
-    check_app "SwayNC" "$HYPRX_DETECT_HAS_SWAYNC" "pacman -S swaync"
-    # PipeWire and Bluetooth were the two that actually bite: pipewire because
-    # no audio without it, bluetooth because bluez being installed does not
-    # mean the daemon is reachable.
-    check_app "PipeWire" "$HYPRX_DETECT_HAS_PIPEWIRE" "pacman -S pipewire wireplumber"
-    check_app "Bluetooth" "$HYPRX_DETECT_HAS_BLUETOOTH" "pacman -S bluez bluez-utils"
-
-    echo
-
-    fi
-
-    if doctor_wants system; then
-    # System Information
-    hyprx_ui_section "System Information"
-    hyprx_table_header
-    hyprx_table_row "Distribution"       "$HYPRX_DETECT_DISTRO_NAME"
-    hyprx_table_row "Package Manager"    "$HYPRX_DETECT_PACKAGE_MANAGER"
-    hyprx_table_row "CPU Vendor"         "$HYPRX_DETECT_CPU_VENDOR"
-    hyprx_table_row "GPU Vendor"         "$HYPRX_DETECT_GPU_VENDOR"
-    hyprx_table_row "Battery"            "${HYPRX_DETECT_BATTERY_NAME:-None}"
-    hyprx_table_row "Network Interface"  "${HYPRX_DETECT_NETWORK_INTERFACE:-Unknown}"
-    hyprx_table_row "ZRAM"               "$HYPRX_DETECT_HAS_ZRAM"
-    hyprx_table_row "Power Profiles"     "$HYPRX_DETECT_HAS_POWER_PROFILE"
-    echo
-
-    fi
-
-    if doctor_wants validation; then
-    # Config Validation
-    hyprx_ui_section "Config Validation"
-    json_validator=""
-    if hyprx_util_command_exists jq; then
-        json_validator="jq"
-    elif hyprx_util_command_exists python3; then
-        json_validator="python3"
-    fi
-    if [[ -z "$json_validator" ]]; then
-        hyprx_ui_info "No JSON validator available (jq or python3) - skipping"
-    else
-        found_json=false
-        for cfgdir in $HYPRX_CONFIG_TARGETS; do
-            target_dir="${HYPRX_TARGET_HOME:-$HOME}/.config/$cfgdir"
-            [[ -d "$target_dir" ]] || continue
-            while IFS= read -r -d '' f; do
-                found_json=true
-                display="${f/#$HOME/~}"
-                if [[ ! -s "$f" ]]; then
-                    hyprx_ui_info "Empty (unused stub, not referenced by config.jsonc): $display"
-                    continue
-                fi
-                if validate_json_file "$f" "$json_validator"; then
-                    hyprx_doctor_note_ok "Valid JSON: $display"
-                else
-                    hyprx_doctor_note_err "Invalid JSON: $display (this will crash-loop whatever reads it)"
-                fi
-            done < <(find "$target_dir" -type f \( -name "*.json" -o -name "*.jsonc" \) -print0 2>/dev/null)
-        done
-        [[ "$found_json" == false ]] && hyprx_ui_info "No deployed JSON/JSONC config files found"
-    fi
-    lua_checker=""
-    for candidate in luac luac5.4 luac5.3 luac5.1; do
-        if hyprx_util_command_exists "$candidate"; then
-            lua_checker="$candidate"
-            break
-        fi
+    local sec_entry sec_name sec_fn
+    for sec_entry in "${HYPRX_DOCTOR_SECTION_TABLE[@]}"; do
+        sec_name="${sec_entry%%:*}"
+        sec_fn="${sec_entry#*:}"
+        doctor_wants "$sec_name" || continue
+        # The table is the only reference to these functions, so a typo here
+        # would silently run nothing and look like a clean bill of health -
+        # the exact failure validation exists to prevent.
+        declare -F "$sec_fn" >/dev/null || {
+            hyprx_ui_error "Doctor section '$sec_name' has no function '$sec_fn'"
+            exit 1
+        }
+        "$sec_fn"
     done
-    hypr_dir="${HYPRX_TARGET_HOME:-$HOME}/.config/hypr"
-    lua_files=()
-    while IFS= read -r -d '' lua_file; do
-        lua_files+=("$lua_file")
-    done < <(find "$hypr_dir" -maxdepth 1 -name '*.lua' -type f -print0 2>/dev/null)
-    if (( ${#lua_files[@]} == 0 )); then
-        hyprx_ui_info "no hypr lua configs found, skipping"
-    elif [[ -n "$lua_checker" ]]; then
-        lua_bad=0
-        for lua_file in "${lua_files[@]}"; do
-            if "$lua_checker" -p "$lua_file" >/dev/null 2>&1; then
-                hyprx_doctor_note_ok "$(basename "$lua_file"): valid Lua syntax"
-            else
-                hyprx_doctor_note_err "$(basename "$lua_file"): Lua syntax error - a reload or session restart will fail to pick up recent edits. Run: $lua_checker -p ~/.config/hypr/$(basename "$lua_file") for details"
-                lua_bad=1
-            fi
-        done
-    else
-        hyprx_ui_info "No Lua syntax checker (luac) available - skipping hypr config check"
-    fi
-    hyprlock_conf="${HYPRX_TARGET_HOME:-$HOME}/.config/hypr/hyprlock.conf"
-    if [[ -f "$hyprlock_conf" ]]; then
-        open_braces=$(grep -o '{' "$hyprlock_conf" 2>/dev/null | wc -l || true)
-        close_braces=$(grep -o '}' "$hyprlock_conf" 2>/dev/null | wc -l || true)
-        if [[ "$open_braces" == "$close_braces" ]]; then
-            hyprx_doctor_note_ok "hyprlock.conf: braces balanced ($open_braces pairs)"
-        else
-            hyprx_doctor_note_err "hyprlock.conf: unbalanced braces ($open_braces open, $close_braces close) - hyprlock will fail to start or misparse a block"
-        fi
-    else
-        hyprx_ui_info "hyprlock.conf not found, skipping"
-    fi
-    echo
-
-    fi
-
-    if doctor_wants drift; then
-    # Config Deployment Drift
-    hyprx_ui_section "Config Deployment Drift"
-    for cfgdir in $HYPRX_CONFIG_TARGETS; do
-        repo_dir="$HYPRX_CONFIG/$cfgdir"
-        target_dir="${HYPRX_TARGET_HOME:-$HOME}/.config/$cfgdir"
-        if [[ ! -d "$target_dir" ]]; then
-            hyprx_doctor_note_warn "$cfgdir: not deployed (missing from ~/.config)"
-            continue
-        fi
-        if [[ ! -d "$repo_dir" ]]; then
-            hyprx_ui_info "$cfgdir: deployed, but no longer tracked in the repo"
-            continue
-        fi
-        # Generated files are excluded: they differ by design, and a permanent
-        # warning trains everyone to ignore this section. hyprpaper.conf is
-        # rewritten with the live wallpaper path on every wallpaper change (and
-        # deploy preserves that path); waypaper's config.ini keeps the live
-        # wallpaper key for the same reason; the rest are wallust outputs that
-        # must never be hand-edited (see README "Deployed configs"), so any
-        # diff there is wallust doing its job. diff -x matches basenames at
-        # any depth, and these names occur only as generated files.
-        diff_output=$(diff -rq \
-            -x hyprpaper.conf \
-            -x config.ini \
-            -x colors.css \
-            -x colors.rasi \
-            -x colors.lua \
-            -x colors.conf \
-            -x gtk.css \
-            "$repo_dir" "$target_dir" 2>/dev/null || true)
-        if [[ -z "$diff_output" ]]; then
-            hyprx_doctor_note_ok "$cfgdir: matches repo"
-        else
-            diff_count=$(printf '%s\n' "$diff_output" | grep -c .)
-            hyprx_doctor_note_warn "$cfgdir: $diff_count file(s) differ from repo (locally edited, or repo updated since last deploy)"
-        fi
-    done
-    echo
-
-    fi
-
-    if doctor_wants storage; then
-    # Storage
-    hyprx_ui_section "Storage"
-    root_usage="$(df -h / | awk 'NR==2 {print $5}')"
-    hyprx_table_header
-    hyprx_table_row "Root Usage" "$root_usage"
-    echo
-
-    fi
-
-    if doctor_wants memory; then
-    # Memory
-    hyprx_ui_section "Memory"
-    free -h
-    mem_total=$(free -b | awk '/^Mem:/ {print $2}')
-    mem_avail=$(free -b | awk '/^Mem:/ {print $7}')
-    if [[ -n "$mem_avail" ]]; then
-        if (( mem_avail < 536870912 )); then
-            hyprx_doctor_note_err "Critically low available memory: $(hyprx_util_bytes_to_human "$mem_avail") of $(hyprx_util_bytes_to_human "$mem_total") total"
-        elif (( mem_avail < 1073741824 )); then
-            hyprx_doctor_note_warn "Low available memory: $(hyprx_util_bytes_to_human "$mem_avail") of $(hyprx_util_bytes_to_human "$mem_total") total"
-        else
-            hyprx_doctor_note_ok "Available memory: $(hyprx_util_bytes_to_human "$mem_avail") of $(hyprx_util_bytes_to_human "$mem_total") total"
-        fi
-    fi
-    echo
-
-    fi
-
-    if doctor_wants swap; then
-    # Swap
-    hyprx_ui_section "Swap"
-    swapon --show || true
-    swap_total=$(free -b | awk '/^Swap:/ {print $2}')
-    swap_used=$(free -b | awk '/^Swap:/ {print $3}')
-    if [[ -n "$swap_total" && "$swap_total" -gt 0 ]]; then
-        swap_pct=$(( swap_used * 100 / swap_total ))
-        if (( swap_pct >= 80 )); then
-            hyprx_doctor_note_warn "Swap heavily utilized: ${swap_pct}% used - may indicate memory pressure"
-        elif (( swap_pct >= 50 )); then
-            hyprx_ui_info "Swap moderately used: ${swap_pct}%"
-        else
-            hyprx_doctor_note_ok "Swap usage normal: ${swap_pct}%"
-        fi
-    else
-        hyprx_ui_info "No swap configured"
-    fi
-    echo
-
-    fi
-
-    if doctor_wants systemd; then
-    # Systemd - System & User Services
-    hyprx_ui_section "Systemd"
-    check_failed_units "" "System services"
-    check_failed_units "--user" "User services"
-    echo
-
-    fi
-
-    if doctor_wants services; then
-    # HyprX Managed Services
-    hyprx_ui_section "HyprX Managed Services"
-    services_file="$HYPRX_ROOT/services.list"
-    if [[ -f "$services_file" ]]; then
-        while IFS= read -r line; do
-            svc="${line%%#*}"
-            svc="$(echo "$svc" | xargs)"
-            [[ -z "$svc" ]] && continue
-            # The SAME helper lib/installer/services.sh uses. doctor used to
-            # append `.service` inline while services.sh passed the bare name
-            # from services.list, so `systemctl list-unit-files NetworkManager`
-            # matched nothing and the install stage reported every installed
-            # unit as absent - one file, two conventions, two different answers
-            # about the same machine. The convention now lives in one place.
-            svc_unit="$(hyprx_service_unit_name "$svc")"
-            # The SAME scope probe the install stage uses. doctor used to check
-            # the system scope only, so a user unit like pipewire was reported
-            # "not installed" here while install said "already enabled (user)"
-            # - one machine, two answers. hyprx_service_scope checks system
-            # first, then user; the is-enabled call must follow the same
-            # scope or it answers about the wrong manager.
-            svc_scope="$(hyprx_service_scope "$svc")" || svc_scope=""
-            if [[ -z "$svc_scope" ]]; then
-                hyprx_ui_info "$svc: not installed (no unit file found)"
-                continue
-            fi
-            if [[ "$svc_scope" == "user" ]]; then
-                state=$(systemctl --user is-enabled "$svc_unit" 2>/dev/null || true)
-            else
-                state=$(systemctl is-enabled "$svc_unit" 2>/dev/null || true)
-            fi
-            case "$state" in
-                enabled|static|enabled-runtime|alias)
-                    hyprx_doctor_note_ok "$svc ($state)"
-                    ;;
-                *)
-                    hyprx_doctor_note_warn "$svc installed but not enabled (state: ${state:-unknown})"
-                    ;;
-            esac
-        done < "$services_file"
-    else
-        hyprx_ui_info "services.list not found, skipping"
-    fi
-    echo
-
-    fi
-
-    if doctor_wants session; then
-    # Session Health
-    hyprx_ui_section "Session Health"
-    if hyprx_util_command_exists hyprctl && pgrep -x Hyprland >/dev/null 2>&1; then
-        layers_out=$(hyprctl layers 2>/dev/null || true)
-        if pgrep -x hyprpaper >/dev/null 2>&1; then
-            if echo "$layers_out" | grep -q "namespace: hyprpaper"; then
-                hyprx_doctor_note_ok "hyprpaper running with an active background layer"
-            else
-                hyprx_doctor_note_warn "hyprpaper is running but has no active background layer (no wallpaper set) - try: ~/.local/share/hyprx/scripts/wallpaper-restore.sh"
-            fi
-        else
-            hyprx_doctor_note_warn "hyprpaper is not running"
-        fi
-        if pgrep -x waybar >/dev/null 2>&1; then
-            if echo "$layers_out" | grep -q "namespace: waybar"; then
-                hyprx_doctor_note_ok "waybar running with an active layer"
-            else
-                hyprx_doctor_note_warn "waybar process is running but has no registered layer - may still be starting, or crashed after initial launch"
-            fi
-        else
-            hyprx_doctor_note_warn "waybar is not running"
-        fi
-        hypr_pid=$(pgrep -x Hyprland | head -1)
-        gbm_backend=$(tr '\0' '\n' < "/proc/$hypr_pid/environ" 2>/dev/null | grep '^GBM_BACKEND=' | cut -d= -f2 || true)
-        if [[ "$gbm_backend" == "nvidia-drm" ]]; then
-            hyprx_doctor_note_warn "GBM_BACKEND=nvidia-drm is active in the live Hyprland process - on a MUX-less hybrid laptop this can leave the panel blank (Hyprland renders correctly, but nothing reaches the screen). See the comment above this setting in config/hypr/env.lua."
-        elif [[ -n "$gbm_backend" ]]; then
-            hyprx_ui_info "GBM_BACKEND=$gbm_backend active in the live Hyprland process"
-        else
-            hyprx_doctor_note_ok "No GBM_BACKEND override active (auto-detect)"
-        fi
-    else
-        hyprx_ui_info "Hyprland/hyprctl not available, skipping session health checks"
-    fi
-    echo
-
-    fi
-
-    if doctor_wants gpu; then
-        hyprx_ui_section "Hybrid GPU"
-        if hyprx_util_command_exists supergfxctl; then
-            gpu_checks
-        else
-            # Always say why there is nothing to report. A selectable section
-            # that silently vanishes reads as a passing check.
-            hyprx_ui_info "supergfxctl not installed - no hybrid GPU to inspect"
-        fi
-        echo
-    fi
-
-    if doctor_wants network; then
-    # Network & Radios
-    hyprx_ui_section "Network & Radios"
-    if hyprx_util_command_exists rfkill; then
-        rfkill_out=$(rfkill list 2>/dev/null)
-        if echo "$rfkill_out" | grep -qi "blocked: yes"; then
-            hyprx_doctor_note_warn "One or more radios are soft/hard blocked:"
-            echo "$rfkill_out" | grep -B2 -i "blocked: yes"
-        else
-            hyprx_doctor_note_ok "No radios blocked (bluetooth/wifi/etc all unblocked)"
-        fi
-    else
-        hyprx_ui_info "rfkill not available, skipping radio block check"
-    fi
-    if hyprx_util_command_exists nmcli; then
-        conn_state=$(nmcli -t -f STATE general status 2>/dev/null)
-        if [[ "$conn_state" == "connected" ]]; then
-            hyprx_doctor_note_ok "NetworkManager: connected"
-        elif [[ -n "$conn_state" ]]; then
-            hyprx_doctor_note_warn "NetworkManager state: $conn_state (not fully connected)"
-        else
-            hyprx_ui_info "Could not query NetworkManager state"
-        fi
-    else
-        hyprx_ui_info "nmcli not available, skipping network state check"
-    fi
-    echo
-
-    fi
-
-    if doctor_wants pacman; then
-    # Pacman
-    hyprx_ui_section "Pacman"
-    if hyprx_util_command_exists pacman; then
-        if [[ -f /var/lib/pacman/db.lck ]]; then
-            hyprx_doctor_note_warn "Pacman database is locked"
-        else
-            hyprx_doctor_note_ok "Pacman database unlocked"
-        fi
-        pacnew_count=$(find /etc -xdev -name "*.pacnew" 2>/dev/null | wc -l | tr -d ' ')
-        if (( pacnew_count > 0 )); then
-            hyprx_doctor_note_warn "$pacnew_count .pacnew file(s) found under /etc - review with pacdiff"
-        else
-            hyprx_doctor_note_ok "No .pacnew files found"
-        fi
-        orphan_count=$(pacman -Qdtq 2>/dev/null | grep -c . || true)
-        if (( orphan_count > 0 )); then
-            hyprx_doctor_note_warn "$orphan_count orphaned package(s) - remove with: pacman -Rns \$(pacman -Qdtq)"
-        else
-            hyprx_doctor_note_ok "No orphaned packages"
-        fi
-    else
-        hyprx_ui_info "pacman not available, skipping Pacman checks"
-    fi
-    echo
-
-    fi
-
-    # Session daemons
-    # Everything autostart.lua starts. Doctor previously verified only
-    # waybar and hyprpaper - the other four failed silently at some point
-    # during development, which is the whole class of bug worth catching.
-    if doctor_wants daemons; then
-        hyprx_ui_section "Session Daemons"
-
-        if ! command -v pgrep >/dev/null 2>&1; then
-            # procps is not installed everywhere. Reporting every daemon as down
-            # would be a lie, so say the probe could not run instead.
-            hyprx_ui_info "pgrep not available - cannot inspect running processes (install procps)"
-            hyprx_doctor_suggest "pacman -S procps"
-        else
-
-        # label | process pattern | fix hint
-        # Only waybar is a layer-shell surface, so only waybar gets a surface
-        # check - the others are ordinary processes with no surface to verify.
-        while IFS='|' read -r label pattern hint; do
-            [[ -z "$label" ]] && continue
-            if pgrep -f "$pattern" >/dev/null 2>&1; then
-                hyprx_doctor_note_ok "$label: running"
-            else
-                hyprx_doctor_note_warn "$label: not running"
-                [[ -n "$hint" ]] && hyprx_doctor_suggest "$hint"
-            fi
-        done <<'EOF'
-waybar|waybar|hyprctl hypr exec '~/.config/waybar/scripts/ensure-waybar.sh --restart'
-swaync|swaync|
-hypridle|hypridle|
-wallust theming|wallust-hyprpaper-sync|
-bluetooth daemon|bluetooth-daemon.sh|
-EOF
-
-        # A waybar that is running as a process but has no registered layer is
-        # the exact failure that cost a session earlier, so check it directly.
-        if pgrep -x waybar >/dev/null 2>&1; then
-            if hyprctl layers 2>/dev/null | grep -q "namespace: waybar"; then
-                hyprx_doctor_note_ok "waybar: registered layer present"
-            else
-                hyprx_doctor_note_err "waybar is running but has no registered layer"
-                hyprx_doctor_suggest "hyprctl hypr exec '~/.config/waybar/scripts/ensure-waybar.sh --restart'"
-            fi
-        fi
-
-        # hyprpaper is checked in Session Health (it also verifies the surface).
-        if pgrep -x hyprpaper >/dev/null 2>&1; then
-            hyprx_doctor_note_ok "hyprpaper: running"
-        else
-            hyprx_doctor_note_warn "hyprpaper: not running"
-            hyprx_doctor_suggest "${HOME}/.local/share/hyprx/scripts/wallpaper-restore.sh"
-        fi
-
-        fi
-
-        echo
-    fi
-
-    # Battery and thermals
-    # Nothing here existed before. This is a hybrid-GPU laptop where battery
-    # health and thermals are the numbers that actually matter.
-    if doctor_wants battery; then
-        hyprx_ui_section "Battery & Thermals"
-
-        # Overridable for the suite: the battery files live under /sys on a
-        # real machine and under a fixture dir in tests.
-        local power_dir="${HYPRX_SYS_POWER_SUPPLY:-/sys/class/power_supply}"
-        local bat
-        bat="$(ls "$power_dir" 2>/dev/null | grep '^BAT' | head -n1)"
-
-        if [[ -n "$bat" ]]; then
-            local cap status health charge_now charge_full charge_design
-            cap="$(cat "$power_dir/$bat/capacity" 2>/dev/null || echo "?")"
-            status="$(cat "$power_dir/$bat/status" 2>/dev/null || echo "?")"
-
-            if [[ "$cap" =~ ^[0-9]+$ ]]; then
-                if (( cap <= 15 )) && [[ "$status" != "Charging" ]]; then
-                    hyprx_doctor_note_warn "Battery at $cap% and not charging"
-                else
-                    hyprx_doctor_note_ok "Battery $cap% ($status)"
-                fi
-            else
-                hyprx_doctor_note_ok "Battery present ($status)"
-            fi
-
-            # Health is what the battery holds against what it was built to
-            # hold - full over full-design. This used to divide charge_now by
-            # charge_full, which is the state of charge, not health: a
-            # half-charged healthy battery reported "health 47%" and warned.
-            charge_now="$(cat "$power_dir/$bat/charge_now" 2>/dev/null || echo 0)"
-            charge_full="$(cat "$power_dir/$bat/charge_full" 2>/dev/null || echo 0)"
-            charge_design="$(cat "$power_dir/$bat/charge_full_design" 2>/dev/null || echo 0)"
-
-            if [[ "$charge_full" =~ ^[0-9]+$ ]] && [[ "$charge_design" =~ ^[0-9]+$ ]] && (( charge_design > 0 )); then
-                health=$(( charge_full * 100 / charge_design ))
-                if (( health < 60 )); then
-                    hyprx_doctor_note_warn "Battery health about $health% of design capacity"
-                else
-                    hyprx_doctor_note_ok "Battery health about $health% of design capacity"
-                fi
-            fi
-        else
-            hyprx_ui_info "No battery detected"
-        fi
-
-        # Thermals. sensors -u prints the chip name at column 0, an optional
-        # sub-heading ("Package id 0:") indented under it, then the readings.
-        # Reporting bare temp1_input/temp2_input values is unreadable when a
-        # machine has three chips, so each reading is labelled with the chip and
-        # sub-heading it came from and the hottest ones are surfaced first.
-        if command -v sensors >/dev/null 2>&1; then
-            local temps
-            temps="$(sensors -u 2>/dev/null | awk '
-                # A chip header is a bare token at column 0: coretemp-isa-0000,
-                # mt7921_phy0-pci-2d00. Nothing else looks like this.
-                /^[A-Za-z0-9][A-Za-z0-9_.-]*$/  { chip = $0; label = ""; next }
-                # A feature heading also sits at column 0 and ends in a colon:
-                # "Package id 0:", "Core 0:", "temp1:". "Adapter: PCI adapter"
-                # does not qualify because it has content after the colon.
-                /^[^[:space:]].*:$/            { t = $0
-                                                sub(/:$/, "", t)
-                                                label = t; next }
-                # Readings are the only indented lines that carry a value.
-                /^[[:space:]]+temp[0-9]+_input:/ {
-                                                v = $2
-                                                if (v ~ /^[0-9.]+$/) {
-                                                    t = $1; sub(/:$/, "", t)
-                                                    # A label already identifies the
-                                                    # reading, so the tempN_input
-                                                    # suffix would just be noise.
-                                                    printf "%s %s|%.1f\n", \
-                                                        chip, (label ? label : t), v
-                                                } }')"
-
-            if [[ -n "$temps" ]]; then
-                printf '%s\n' "$temps" | sort -t'|' -k2 -gr | head -6 | while IFS='|' read -r where v; do
-                    printf "  %-38s %5.1f C\n" "$where" "$v"
-                done
-
-                local n hottest
-                n="$(printf '%s\n' "$temps" | grep -c . || true)"
-                hottest="$(printf '%s\n' "$temps" | sort -t'|' -k2 -gr | head -1 | cut -d'|' -f2)"
-
-                if (( n > 6 )); then
-                    echo "  (the 6 hottest of $n sensors)"
-                fi
-                if awk -v h="${hottest:-0}" 'BEGIN { exit !(h >= 85) }'; then
-                    hyprx_doctor_note_warn "Hottest sensor is ${hottest} C - thermal throttling likely"
-                fi
-            else
-                hyprx_ui_info "lm-sensors returned no temperatures"
-            fi
-        else
-            hyprx_ui_info "lm-sensors not installed - skipping temperatures (pacman -S lm_sensors)"
-        fi
-
-        echo
-    fi
-
-    # Disk usage where it actually accumulates
-    # Root usage alone hid 7G in ~/.cache and 4G in the pacman cache.
-    if doctor_wants diskusage; then
-        hyprx_ui_section "Disk Usage"
-
-        hyprx_table_header
-        hyprx_table_row "Root" "$(df -h / | awk 'NR==2 {print $5 " used of " $2}')"
-        hyprx_table_row "Home" "$(df -h "$HOME" | awk 'NR==2 {print $5 " used of " $2}')"
-
-        echo
-
-        local d sz
-        for d in "$HOME/.cache" "$HOME/.local/share" "$HOME/.local/state" /var/cache/pacman/pkg; do
-            [[ -d "$d" ]] || continue
-            sz="$(hyprx_state_size "$d")"
-            hyprx_table_row "${d/#$HOME/\~}" "$(hyprx_state_human "${sz:-0}")"
-        done
-
-        # Only nag when it is actually worth acting on.
-        local cache_sz
-        cache_sz="$(hyprx_state_size "$HOME/.cache")"
-        if [[ -n "$cache_sz" ]] && (( cache_sz > 1073741824 )); then
-            hyprx_doctor_note_warn "${HOME}/.cache is $(hyprx_state_human "$cache_sz")"
-            hyprx_doctor_suggest "hyprx clean --deep --dry-run    # then without --dry-run to reclaim it"
-        fi
-
-        echo
-    fi
-
-    if doctor_wants fonts; then
-    # Fonts
-    #
-    # Caudex is installed to ~/.local/share/fonts/hyprx/ by
-    # lib/installer/fonts.sh rather than by a package, because the only Arch
-    # option (ttf-google-fonts-git) installs the entire Google catalogue plus 22
-    # font packages. So the presence and integrity of those files is a real
-    # thing to check - nothing else in the tool would notice their absence.
-    hyprx_ui_section "Fonts"
-
-    hyprx_fonts_status
-
-    if (( ${#HYPRX_FONT_BAD[@]} > 0 )); then
-        for bad in "${HYPRX_FONT_BAD[@]}"; do
-            hyprx_doctor_note_err "Font checksum mismatch: $bad in $HYPRX_FONT_DIR"
-        done
-        hyprx_doctor_suggest "hyprx install   # re-fetches and re-verifies the pinned files"
-    fi
-
-    if (( ${#HYPRX_FONT_MISSING[@]} > 0 )); then
-        hyprx_doctor_note_err "Caudex is not installed (${#HYPRX_FONT_MISSING[@]} of 4 files missing in $HYPRX_FONT_DIR)"
-        printf '%s\n' "${HYPRX_FONT_MISSING[@]}" | while IFS= read -r missing; do
-            printf '      missing: %s\n' "$missing"
-        done
-        hyprx_doctor_suggest "hyprx install   # fetches Caudex (4 files, ~2MB, SHA256-pinned)"
-    elif (( ${#HYPRX_FONT_BAD[@]} == 0 )); then
-        hyprx_doctor_note_ok "Caudex installed and checksum-verified ($HYPRX_FONT_DIR)"
-    fi
-
-    # Proof that fontconfig actually resolves it. Without this the bar renders
-    # in a fallback and nothing reports why.
-    if command -v fc-match >/dev/null 2>&1; then
-        match="$(fc-match -f '%{family}' Caudex 2>/dev/null)"
-        case "$match" in
-            Caudex*) hyprx_ui_info "fontconfig resolves Caudex" ;;
-            *)
-                hyprx_doctor_note_warn "fontconfig resolves '$match' for Caudex - it is installed but not yet usable"
-                hyprx_doctor_suggest "fc-cache -f $HYPRX_FONT_DIR   # then log out and back in"
-                ;;
-        esac
-    else
-        hyprx_ui_info "fc-match not available - skipping resolution check"
-    fi
-    echo
-
-    fi
-
-    if doctor_wants manifest; then
-    # Dependency manifest
-    #
-    # The bug class this exists to catch: HyprX calls a binary that nothing
-    # installs. Seven instances shipped at once - hyprpaper (the whole
-    # wallpaper/theming chain), notify-send (the error handler for six scripts),
-    # nemo, blueman-manager, rsync, inetutils' hostname, and JetBrainsMono Nerd
-    # Font in every font-family.
-    #
-    # Each is invisible from inside the tool: the script `exec`s a name that
-    # resolves to nothing and exits quietly, or fontconfig falls back. Nothing
-    # errors, so nothing was ever reported.
-    #
-    # database/binary-providers.conf maps each such binary to its providing
-    # package. This section checks both directions: every declared provider is
-    # actually in packages.list, and every binary the config layer references is
-    # declared at all.
-    hyprx_ui_section "Dependency Manifest"
-
-    manifest_check_declarations
-    manifest_check_references
-
-    echo
-
-    fi
 
     # --json emits from the collected findings, so the human summary and its
     # exit are skipped; the caller turns the tallies into the exit code.
@@ -1122,6 +514,654 @@ EOF
     fi
     doctor_exit_code
 }
+
+hyprx_doctor_section_configuration() {
+# Configuration
+hyprx_ui_section "Configuration"
+hyprx_table_header
+hyprx_table_row "Theme"          "${HYPRX_CONFIG_THEME:-Default}"
+hyprx_table_row "Terminal"       "$(hyprx_doctor_app terminal)"
+hyprx_table_row "Browser"        "$(hyprx_doctor_app browser)"
+hyprx_table_row "Editor"         "${EDITOR:-Unknown}"
+hyprx_table_row "File Manager"   "$(hyprx_doctor_app fileManager)"
+hyprx_table_row "Launcher"       "$(hyprx_doctor_app launcher)"
+echo
+
+}
+
+hyprx_doctor_section_applications() {
+# Applications
+hyprx_ui_section "Applications"
+
+# These were plain hyprx_ui_error/hyprx_ui_success printers, so a missing
+# application printed a red X and was never tallied. `hyprx doctor
+# --only applications` on a box with nothing installed printed nine red X
+# and then "All checks passed", exiting 0.
+#
+# doctor_note_err is what feeds both the exit code and --json, so using it
+# here makes the section honest in all three output modes.
+#
+# A missing app is an ERROR, not a warning: packages.list is a closed set,
+# so its absence means the install is incomplete.
+check_app "Hyprland" "$HYPRX_DETECT_HAS_HYPRLAND" "pacman -S hyprland"
+check_app "Waybar" "$HYPRX_DETECT_HAS_WAYBAR" "pacman -S waybar"
+check_app "Rofi" "$HYPRX_DETECT_HAS_ROFI" "pacman -S rofi"
+check_app "Kitty" "$HYPRX_DETECT_HAS_KITTY" "pacman -S kitty"
+check_app "VS Code" "$HYPRX_DETECT_HAS_CODE" "pacman -S visual-studio-code-bin"
+check_app "Neovim" "$HYPRX_DETECT_HAS_NVIM" "pacman -S neovim"
+check_app "Git" "$HYPRX_DETECT_HAS_GIT" "pacman -S git"
+check_app "SwayNC" "$HYPRX_DETECT_HAS_SWAYNC" "pacman -S swaync"
+# PipeWire and Bluetooth were the two that actually bite: pipewire because
+# no audio without it, bluetooth because bluez being installed does not
+# mean the daemon is reachable.
+check_app "PipeWire" "$HYPRX_DETECT_HAS_PIPEWIRE" "pacman -S pipewire wireplumber"
+check_app "Bluetooth" "$HYPRX_DETECT_HAS_BLUETOOTH" "pacman -S bluez bluez-utils"
+
+echo
+
+}
+
+hyprx_doctor_section_system() {
+# System Information
+hyprx_ui_section "System Information"
+hyprx_table_header
+hyprx_table_row "Distribution"       "$HYPRX_DETECT_DISTRO_NAME"
+hyprx_table_row "Package Manager"    "$HYPRX_DETECT_PACKAGE_MANAGER"
+hyprx_table_row "CPU Vendor"         "$HYPRX_DETECT_CPU_VENDOR"
+hyprx_table_row "GPU Vendor"         "$HYPRX_DETECT_GPU_VENDOR"
+hyprx_table_row "Battery"            "${HYPRX_DETECT_BATTERY_NAME:-None}"
+hyprx_table_row "Network Interface"  "${HYPRX_DETECT_NETWORK_INTERFACE:-Unknown}"
+hyprx_table_row "ZRAM"               "$HYPRX_DETECT_HAS_ZRAM"
+hyprx_table_row "Power Profiles"     "$HYPRX_DETECT_HAS_POWER_PROFILE"
+echo
+
+}
+
+hyprx_doctor_section_validation() {
+# Config Validation
+hyprx_ui_section "Config Validation"
+json_validator=""
+if hyprx_util_command_exists jq; then
+    json_validator="jq"
+elif hyprx_util_command_exists python3; then
+    json_validator="python3"
+fi
+if [[ -z "$json_validator" ]]; then
+    hyprx_ui_info "No JSON validator available (jq or python3) - skipping"
+else
+    found_json=false
+    for cfgdir in $HYPRX_CONFIG_TARGETS; do
+        target_dir="${HYPRX_TARGET_HOME:-$HOME}/.config/$cfgdir"
+        [[ -d "$target_dir" ]] || continue
+        while IFS= read -r -d '' f; do
+            found_json=true
+            display="${f/#$HOME/~}"
+            if [[ ! -s "$f" ]]; then
+                hyprx_ui_info "Empty (unused stub, not referenced by config.jsonc): $display"
+                continue
+            fi
+            if validate_json_file "$f" "$json_validator"; then
+                hyprx_doctor_note_ok "Valid JSON: $display"
+            else
+                hyprx_doctor_note_err "Invalid JSON: $display (this will crash-loop whatever reads it)"
+            fi
+        done < <(find "$target_dir" -type f \( -name "*.json" -o -name "*.jsonc" \) -print0 2>/dev/null)
+    done
+    [[ "$found_json" == false ]] && hyprx_ui_info "No deployed JSON/JSONC config files found"
+fi
+lua_checker=""
+for candidate in luac luac5.4 luac5.3 luac5.1; do
+    if hyprx_util_command_exists "$candidate"; then
+        lua_checker="$candidate"
+        break
+    fi
+done
+hypr_dir="${HYPRX_TARGET_HOME:-$HOME}/.config/hypr"
+lua_files=()
+while IFS= read -r -d '' lua_file; do
+    lua_files+=("$lua_file")
+done < <(find "$hypr_dir" -maxdepth 1 -name '*.lua' -type f -print0 2>/dev/null)
+if (( ${#lua_files[@]} == 0 )); then
+    hyprx_ui_info "no hypr lua configs found, skipping"
+elif [[ -n "$lua_checker" ]]; then
+    lua_bad=0
+    for lua_file in "${lua_files[@]}"; do
+        if "$lua_checker" -p "$lua_file" >/dev/null 2>&1; then
+            hyprx_doctor_note_ok "$(basename "$lua_file"): valid Lua syntax"
+        else
+            hyprx_doctor_note_err "$(basename "$lua_file"): Lua syntax error - a reload or session restart will fail to pick up recent edits. Run: $lua_checker -p ~/.config/hypr/$(basename "$lua_file") for details"
+            lua_bad=1
+        fi
+    done
+else
+    hyprx_ui_info "No Lua syntax checker (luac) available - skipping hypr config check"
+fi
+hyprlock_conf="${HYPRX_TARGET_HOME:-$HOME}/.config/hypr/hyprlock.conf"
+if [[ -f "$hyprlock_conf" ]]; then
+    open_braces=$(grep -o '{' "$hyprlock_conf" 2>/dev/null | wc -l || true)
+    close_braces=$(grep -o '}' "$hyprlock_conf" 2>/dev/null | wc -l || true)
+    if [[ "$open_braces" == "$close_braces" ]]; then
+        hyprx_doctor_note_ok "hyprlock.conf: braces balanced ($open_braces pairs)"
+    else
+        hyprx_doctor_note_err "hyprlock.conf: unbalanced braces ($open_braces open, $close_braces close) - hyprlock will fail to start or misparse a block"
+    fi
+else
+    hyprx_ui_info "hyprlock.conf not found, skipping"
+fi
+echo
+
+}
+
+hyprx_doctor_section_drift() {
+# Config Deployment Drift
+hyprx_ui_section "Config Deployment Drift"
+for cfgdir in $HYPRX_CONFIG_TARGETS; do
+    repo_dir="$HYPRX_CONFIG/$cfgdir"
+    target_dir="${HYPRX_TARGET_HOME:-$HOME}/.config/$cfgdir"
+    if [[ ! -d "$target_dir" ]]; then
+        hyprx_doctor_note_warn "$cfgdir: not deployed (missing from ~/.config)"
+        continue
+    fi
+    if [[ ! -d "$repo_dir" ]]; then
+        hyprx_ui_info "$cfgdir: deployed, but no longer tracked in the repo"
+        continue
+    fi
+    # Generated files are excluded: they differ by design, and a permanent
+    # warning trains everyone to ignore this section. hyprpaper.conf is
+    # rewritten with the live wallpaper path on every wallpaper change (and
+    # deploy preserves that path); waypaper's config.ini keeps the live
+    # wallpaper key for the same reason; the rest are wallust outputs that
+    # must never be hand-edited (see README "Deployed configs"), so any
+    # diff there is wallust doing its job. diff -x matches basenames at
+    # any depth, and these names occur only as generated files.
+    diff_output=$(diff -rq \
+        -x hyprpaper.conf \
+        -x config.ini \
+        -x colors.css \
+        -x colors.rasi \
+        -x colors.lua \
+        -x colors.conf \
+        -x gtk.css \
+        "$repo_dir" "$target_dir" 2>/dev/null || true)
+    if [[ -z "$diff_output" ]]; then
+        hyprx_doctor_note_ok "$cfgdir: matches repo"
+    else
+        diff_count=$(printf '%s\n' "$diff_output" | grep -c .)
+        hyprx_doctor_note_warn "$cfgdir: $diff_count file(s) differ from repo (locally edited, or repo updated since last deploy)"
+    fi
+done
+echo
+
+}
+
+hyprx_doctor_section_storage() {
+# Storage
+hyprx_ui_section "Storage"
+root_usage="$(df -h / | awk 'NR==2 {print $5}')"
+hyprx_table_header
+hyprx_table_row "Root Usage" "$root_usage"
+echo
+
+}
+
+hyprx_doctor_section_memory() {
+# Memory
+hyprx_ui_section "Memory"
+free -h
+mem_total=$(free -b | awk '/^Mem:/ {print $2}')
+mem_avail=$(free -b | awk '/^Mem:/ {print $7}')
+if [[ -n "$mem_avail" ]]; then
+    if (( mem_avail < 536870912 )); then
+        hyprx_doctor_note_err "Critically low available memory: $(hyprx_util_bytes_to_human "$mem_avail") of $(hyprx_util_bytes_to_human "$mem_total") total"
+    elif (( mem_avail < 1073741824 )); then
+        hyprx_doctor_note_warn "Low available memory: $(hyprx_util_bytes_to_human "$mem_avail") of $(hyprx_util_bytes_to_human "$mem_total") total"
+    else
+        hyprx_doctor_note_ok "Available memory: $(hyprx_util_bytes_to_human "$mem_avail") of $(hyprx_util_bytes_to_human "$mem_total") total"
+    fi
+fi
+echo
+
+}
+
+hyprx_doctor_section_swap() {
+# Swap
+hyprx_ui_section "Swap"
+swapon --show || true
+swap_total=$(free -b | awk '/^Swap:/ {print $2}')
+swap_used=$(free -b | awk '/^Swap:/ {print $3}')
+if [[ -n "$swap_total" && "$swap_total" -gt 0 ]]; then
+    swap_pct=$(( swap_used * 100 / swap_total ))
+    if (( swap_pct >= 80 )); then
+        hyprx_doctor_note_warn "Swap heavily utilized: ${swap_pct}% used - may indicate memory pressure"
+    elif (( swap_pct >= 50 )); then
+        hyprx_ui_info "Swap moderately used: ${swap_pct}%"
+    else
+        hyprx_doctor_note_ok "Swap usage normal: ${swap_pct}%"
+    fi
+else
+    hyprx_ui_info "No swap configured"
+fi
+echo
+
+}
+
+hyprx_doctor_section_systemd() {
+# Systemd - System & User Services
+hyprx_ui_section "Systemd"
+check_failed_units "" "System services"
+check_failed_units "--user" "User services"
+echo
+
+}
+
+hyprx_doctor_section_services() {
+# HyprX Managed Services
+hyprx_ui_section "HyprX Managed Services"
+services_file="$HYPRX_ROOT/services.list"
+if [[ -f "$services_file" ]]; then
+    while IFS= read -r line; do
+        svc="${line%%#*}"
+        svc="$(echo "$svc" | xargs)"
+        [[ -z "$svc" ]] && continue
+        # The SAME helper lib/installer/services.sh uses. doctor used to
+        # append `.service` inline while services.sh passed the bare name
+        # from services.list, so `systemctl list-unit-files NetworkManager`
+        # matched nothing and the install stage reported every installed
+        # unit as absent - one file, two conventions, two different answers
+        # about the same machine. The convention now lives in one place.
+        svc_unit="$(hyprx_service_unit_name "$svc")"
+        # The SAME scope probe the install stage uses. doctor used to check
+        # the system scope only, so a user unit like pipewire was reported
+        # "not installed" here while install said "already enabled (user)"
+        # - one machine, two answers. hyprx_service_scope checks system
+        # first, then user; the is-enabled call must follow the same
+        # scope or it answers about the wrong manager.
+        svc_scope="$(hyprx_service_scope "$svc")" || svc_scope=""
+        if [[ -z "$svc_scope" ]]; then
+            hyprx_ui_info "$svc: not installed (no unit file found)"
+            continue
+        fi
+        if [[ "$svc_scope" == "user" ]]; then
+            state=$(systemctl --user is-enabled "$svc_unit" 2>/dev/null || true)
+        else
+            state=$(systemctl is-enabled "$svc_unit" 2>/dev/null || true)
+        fi
+        case "$state" in
+            enabled|static|enabled-runtime|alias)
+                hyprx_doctor_note_ok "$svc ($state)"
+                ;;
+            *)
+                hyprx_doctor_note_warn "$svc installed but not enabled (state: ${state:-unknown})"
+                ;;
+        esac
+    done < "$services_file"
+else
+    hyprx_ui_info "services.list not found, skipping"
+fi
+echo
+
+}
+
+hyprx_doctor_section_session() {
+# Session Health
+hyprx_ui_section "Session Health"
+if hyprx_util_command_exists hyprctl && pgrep -x Hyprland >/dev/null 2>&1; then
+    layers_out=$(hyprctl layers 2>/dev/null || true)
+    if pgrep -x hyprpaper >/dev/null 2>&1; then
+        if echo "$layers_out" | grep -q "namespace: hyprpaper"; then
+            hyprx_doctor_note_ok "hyprpaper running with an active background layer"
+        else
+            hyprx_doctor_note_warn "hyprpaper is running but has no active background layer (no wallpaper set) - try: ~/.local/share/hyprx/scripts/wallpaper-restore.sh"
+        fi
+    else
+        hyprx_doctor_note_warn "hyprpaper is not running"
+    fi
+    if pgrep -x waybar >/dev/null 2>&1; then
+        if echo "$layers_out" | grep -q "namespace: waybar"; then
+            hyprx_doctor_note_ok "waybar running with an active layer"
+        else
+            hyprx_doctor_note_warn "waybar process is running but has no registered layer - may still be starting, or crashed after initial launch"
+        fi
+    else
+        hyprx_doctor_note_warn "waybar is not running"
+    fi
+    hypr_pid=$(pgrep -x Hyprland | head -1)
+    gbm_backend=$(tr '\0' '\n' < "/proc/$hypr_pid/environ" 2>/dev/null | grep '^GBM_BACKEND=' | cut -d= -f2 || true)
+    if [[ "$gbm_backend" == "nvidia-drm" ]]; then
+        hyprx_doctor_note_warn "GBM_BACKEND=nvidia-drm is active in the live Hyprland process - on a MUX-less hybrid laptop this can leave the panel blank (Hyprland renders correctly, but nothing reaches the screen). See the comment above this setting in config/hypr/env.lua."
+    elif [[ -n "$gbm_backend" ]]; then
+        hyprx_ui_info "GBM_BACKEND=$gbm_backend active in the live Hyprland process"
+    else
+        hyprx_doctor_note_ok "No GBM_BACKEND override active (auto-detect)"
+    fi
+else
+    hyprx_ui_info "Hyprland/hyprctl not available, skipping session health checks"
+fi
+echo
+
+}
+
+hyprx_doctor_section_gpu() {
+    hyprx_ui_section "Hybrid GPU"
+    if hyprx_util_command_exists supergfxctl; then
+        gpu_checks
+    else
+        # Always say why there is nothing to report. A selectable section
+        # that silently vanishes reads as a passing check.
+        hyprx_ui_info "supergfxctl not installed - no hybrid GPU to inspect"
+    fi
+    echo
+}
+
+hyprx_doctor_section_network() {
+# Network & Radios
+hyprx_ui_section "Network & Radios"
+if hyprx_util_command_exists rfkill; then
+    rfkill_out=$(rfkill list 2>/dev/null)
+    if echo "$rfkill_out" | grep -qi "blocked: yes"; then
+        hyprx_doctor_note_warn "One or more radios are soft/hard blocked:"
+        echo "$rfkill_out" | grep -B2 -i "blocked: yes"
+    else
+        hyprx_doctor_note_ok "No radios blocked (bluetooth/wifi/etc all unblocked)"
+    fi
+else
+    hyprx_ui_info "rfkill not available, skipping radio block check"
+fi
+if hyprx_util_command_exists nmcli; then
+    conn_state=$(nmcli -t -f STATE general status 2>/dev/null)
+    if [[ "$conn_state" == "connected" ]]; then
+        hyprx_doctor_note_ok "NetworkManager: connected"
+    elif [[ -n "$conn_state" ]]; then
+        hyprx_doctor_note_warn "NetworkManager state: $conn_state (not fully connected)"
+    else
+        hyprx_ui_info "Could not query NetworkManager state"
+    fi
+else
+    hyprx_ui_info "nmcli not available, skipping network state check"
+fi
+echo
+
+}
+
+hyprx_doctor_section_pacman() {
+# Pacman
+hyprx_ui_section "Pacman"
+if hyprx_util_command_exists pacman; then
+    if [[ -f /var/lib/pacman/db.lck ]]; then
+        hyprx_doctor_note_warn "Pacman database is locked"
+    else
+        hyprx_doctor_note_ok "Pacman database unlocked"
+    fi
+    pacnew_count=$(find /etc -xdev -name "*.pacnew" 2>/dev/null | wc -l | tr -d ' ')
+    if (( pacnew_count > 0 )); then
+        hyprx_doctor_note_warn "$pacnew_count .pacnew file(s) found under /etc - review with pacdiff"
+    else
+        hyprx_doctor_note_ok "No .pacnew files found"
+    fi
+    orphan_count=$(pacman -Qdtq 2>/dev/null | grep -c . || true)
+    if (( orphan_count > 0 )); then
+        hyprx_doctor_note_warn "$orphan_count orphaned package(s) - remove with: pacman -Rns \$(pacman -Qdtq)"
+    else
+        hyprx_doctor_note_ok "No orphaned packages"
+    fi
+else
+    hyprx_ui_info "pacman not available, skipping Pacman checks"
+fi
+echo
+
+}
+
+hyprx_doctor_section_daemons() {
+    hyprx_ui_section "Session Daemons"
+
+    if ! command -v pgrep >/dev/null 2>&1; then
+        # procps is not installed everywhere. Reporting every daemon as down
+        # would be a lie, so say the probe could not run instead.
+        hyprx_ui_info "pgrep not available - cannot inspect running processes (install procps)"
+        hyprx_doctor_suggest "pacman -S procps"
+    else
+
+    # label | process pattern | fix hint
+    # Only waybar is a layer-shell surface, so only waybar gets a surface
+    # check - the others are ordinary processes with no surface to verify.
+    while IFS='|' read -r label pattern hint; do
+        [[ -z "$label" ]] && continue
+        if pgrep -f "$pattern" >/dev/null 2>&1; then
+            hyprx_doctor_note_ok "$label: running"
+        else
+            hyprx_doctor_note_warn "$label: not running"
+            [[ -n "$hint" ]] && hyprx_doctor_suggest "$hint"
+        fi
+    done <<'EOF'
+waybar|waybar|hyprctl hypr exec '~/.config/waybar/scripts/ensure-waybar.sh --restart'
+swaync|swaync|
+hypridle|hypridle|
+wallust theming|wallust-hyprpaper-sync|
+bluetooth daemon|bluetooth-daemon.sh|
+EOF
+
+    # A waybar that is running as a process but has no registered layer is
+    # the exact failure that cost a session earlier, so check it directly.
+    if pgrep -x waybar >/dev/null 2>&1; then
+        if hyprctl layers 2>/dev/null | grep -q "namespace: waybar"; then
+            hyprx_doctor_note_ok "waybar: registered layer present"
+        else
+            hyprx_doctor_note_err "waybar is running but has no registered layer"
+            hyprx_doctor_suggest "hyprctl hypr exec '~/.config/waybar/scripts/ensure-waybar.sh --restart'"
+        fi
+    fi
+
+    # hyprpaper is checked in Session Health (it also verifies the surface).
+    if pgrep -x hyprpaper >/dev/null 2>&1; then
+        hyprx_doctor_note_ok "hyprpaper: running"
+    else
+        hyprx_doctor_note_warn "hyprpaper: not running"
+        hyprx_doctor_suggest "${HOME}/.local/share/hyprx/scripts/wallpaper-restore.sh"
+    fi
+
+    fi
+
+    echo
+}
+
+hyprx_doctor_section_battery() {
+    hyprx_ui_section "Battery & Thermals"
+
+    # Overridable for the suite: the battery files live under /sys on a
+    # real machine and under a fixture dir in tests.
+    local power_dir="${HYPRX_SYS_POWER_SUPPLY:-/sys/class/power_supply}"
+    local bat
+    bat="$(ls "$power_dir" 2>/dev/null | grep '^BAT' | head -n1)"
+
+    if [[ -n "$bat" ]]; then
+        local cap status health charge_now charge_full charge_design
+        cap="$(cat "$power_dir/$bat/capacity" 2>/dev/null || echo "?")"
+        status="$(cat "$power_dir/$bat/status" 2>/dev/null || echo "?")"
+
+        if [[ "$cap" =~ ^[0-9]+$ ]]; then
+            if (( cap <= 15 )) && [[ "$status" != "Charging" ]]; then
+                hyprx_doctor_note_warn "Battery at $cap% and not charging"
+            else
+                hyprx_doctor_note_ok "Battery $cap% ($status)"
+            fi
+        else
+            hyprx_doctor_note_ok "Battery present ($status)"
+        fi
+
+        # Health is what the battery holds against what it was built to
+        # hold - full over full-design. This used to divide charge_now by
+        # charge_full, which is the state of charge, not health: a
+        # half-charged healthy battery reported "health 47%" and warned.
+        charge_now="$(cat "$power_dir/$bat/charge_now" 2>/dev/null || echo 0)"
+        charge_full="$(cat "$power_dir/$bat/charge_full" 2>/dev/null || echo 0)"
+        charge_design="$(cat "$power_dir/$bat/charge_full_design" 2>/dev/null || echo 0)"
+
+        if [[ "$charge_full" =~ ^[0-9]+$ ]] && [[ "$charge_design" =~ ^[0-9]+$ ]] && (( charge_design > 0 )); then
+            health=$(( charge_full * 100 / charge_design ))
+            if (( health < 60 )); then
+                hyprx_doctor_note_warn "Battery health about $health% of design capacity"
+            else
+                hyprx_doctor_note_ok "Battery health about $health% of design capacity"
+            fi
+        fi
+    else
+        hyprx_ui_info "No battery detected"
+    fi
+
+    # Thermals. sensors -u prints the chip name at column 0, an optional
+    # sub-heading ("Package id 0:") indented under it, then the readings.
+    # Reporting bare temp1_input/temp2_input values is unreadable when a
+    # machine has three chips, so each reading is labelled with the chip and
+    # sub-heading it came from and the hottest ones are surfaced first.
+    if command -v sensors >/dev/null 2>&1; then
+        local temps
+        temps="$(sensors -u 2>/dev/null | awk '
+            # A chip header is a bare token at column 0: coretemp-isa-0000,
+            # mt7921_phy0-pci-2d00. Nothing else looks like this.
+            /^[A-Za-z0-9][A-Za-z0-9_.-]*$/  { chip = $0; label = ""; next }
+            # A feature heading also sits at column 0 and ends in a colon:
+            # "Package id 0:", "Core 0:", "temp1:". "Adapter: PCI adapter"
+            # does not qualify because it has content after the colon.
+            /^[^[:space:]].*:$/            { t = $0
+                                            sub(/:$/, "", t)
+                                            label = t; next }
+            # Readings are the only indented lines that carry a value.
+            /^[[:space:]]+temp[0-9]+_input:/ {
+                                            v = $2
+                                            if (v ~ /^[0-9.]+$/) {
+                                                t = $1; sub(/:$/, "", t)
+                                                # A label already identifies the
+                                                # reading, so the tempN_input
+                                                # suffix would just be noise.
+                                                printf "%s %s|%.1f\n", \
+                                                    chip, (label ? label : t), v
+                                            } }')"
+
+        if [[ -n "$temps" ]]; then
+            printf '%s\n' "$temps" | sort -t'|' -k2 -gr | head -6 | while IFS='|' read -r where v; do
+                printf "  %-38s %5.1f C\n" "$where" "$v"
+            done
+
+            local n hottest
+            n="$(printf '%s\n' "$temps" | grep -c . || true)"
+            hottest="$(printf '%s\n' "$temps" | sort -t'|' -k2 -gr | head -1 | cut -d'|' -f2)"
+
+            if (( n > 6 )); then
+                echo "  (the 6 hottest of $n sensors)"
+            fi
+            if awk -v h="${hottest:-0}" 'BEGIN { exit !(h >= 85) }'; then
+                hyprx_doctor_note_warn "Hottest sensor is ${hottest} C - thermal throttling likely"
+            fi
+        else
+            hyprx_ui_info "lm-sensors returned no temperatures"
+        fi
+    else
+        hyprx_ui_info "lm-sensors not installed - skipping temperatures (pacman -S lm_sensors)"
+    fi
+
+    echo
+}
+
+hyprx_doctor_section_diskusage() {
+    hyprx_ui_section "Disk Usage"
+
+    hyprx_table_header
+    hyprx_table_row "Root" "$(df -h / | awk 'NR==2 {print $5 " used of " $2}')"
+    hyprx_table_row "Home" "$(df -h "$HOME" | awk 'NR==2 {print $5 " used of " $2}')"
+
+    echo
+
+    local d sz
+    for d in "$HOME/.cache" "$HOME/.local/share" "$HOME/.local/state" /var/cache/pacman/pkg; do
+        [[ -d "$d" ]] || continue
+        sz="$(hyprx_state_size "$d")"
+        hyprx_table_row "${d/#$HOME/\~}" "$(hyprx_state_human "${sz:-0}")"
+    done
+
+    # Only nag when it is actually worth acting on.
+    local cache_sz
+    cache_sz="$(hyprx_state_size "$HOME/.cache")"
+    if [[ -n "$cache_sz" ]] && (( cache_sz > 1073741824 )); then
+        hyprx_doctor_note_warn "${HOME}/.cache is $(hyprx_state_human "$cache_sz")"
+        hyprx_doctor_suggest "hyprx clean --deep --dry-run    # then without --dry-run to reclaim it"
+    fi
+
+    echo
+}
+
+hyprx_doctor_section_fonts() {
+# Fonts
+#
+# Caudex is installed to ~/.local/share/fonts/hyprx/ by
+# lib/installer/fonts.sh rather than by a package, because the only Arch
+# option (ttf-google-fonts-git) installs the entire Google catalogue plus 22
+# font packages. So the presence and integrity of those files is a real
+# thing to check - nothing else in the tool would notice their absence.
+hyprx_ui_section "Fonts"
+
+hyprx_fonts_status
+
+if (( ${#HYPRX_FONT_BAD[@]} > 0 )); then
+    for bad in "${HYPRX_FONT_BAD[@]}"; do
+        hyprx_doctor_note_err "Font checksum mismatch: $bad in $HYPRX_FONT_DIR"
+    done
+    hyprx_doctor_suggest "hyprx install   # re-fetches and re-verifies the pinned files"
+fi
+
+if (( ${#HYPRX_FONT_MISSING[@]} > 0 )); then
+    hyprx_doctor_note_err "Caudex is not installed (${#HYPRX_FONT_MISSING[@]} of 4 files missing in $HYPRX_FONT_DIR)"
+    printf '%s\n' "${HYPRX_FONT_MISSING[@]}" | while IFS= read -r missing; do
+        printf '      missing: %s\n' "$missing"
+    done
+    hyprx_doctor_suggest "hyprx install   # fetches Caudex (4 files, ~2MB, SHA256-pinned)"
+elif (( ${#HYPRX_FONT_BAD[@]} == 0 )); then
+    hyprx_doctor_note_ok "Caudex installed and checksum-verified ($HYPRX_FONT_DIR)"
+fi
+
+# Proof that fontconfig actually resolves it. Without this the bar renders
+# in a fallback and nothing reports why.
+if command -v fc-match >/dev/null 2>&1; then
+    match="$(fc-match -f '%{family}' Caudex 2>/dev/null)"
+    case "$match" in
+        Caudex*) hyprx_ui_info "fontconfig resolves Caudex" ;;
+        *)
+            hyprx_doctor_note_warn "fontconfig resolves '$match' for Caudex - it is installed but not yet usable"
+            hyprx_doctor_suggest "fc-cache -f $HYPRX_FONT_DIR   # then log out and back in"
+            ;;
+    esac
+else
+    hyprx_ui_info "fc-match not available - skipping resolution check"
+fi
+echo
+
+}
+
+hyprx_doctor_section_manifest() {
+# Dependency manifest
+#
+# The bug class this exists to catch: HyprX calls a binary that nothing
+# installs. Seven instances shipped at once - hyprpaper (the whole
+# wallpaper/theming chain), notify-send (the error handler for six scripts),
+# nemo, blueman-manager, rsync, inetutils' hostname, and JetBrainsMono Nerd
+# Font in every font-family.
+#
+# Each is invisible from inside the tool: the script `exec`s a name that
+# resolves to nothing and exits quietly, or fontconfig falls back. Nothing
+# errors, so nothing was ever reported.
+#
+# database/binary-providers.conf maps each such binary to its providing
+# package. This section checks both directions: every declared provider is
+# actually in packages.list, and every binary the config layer references is
+# declared at all.
+hyprx_ui_section "Dependency Manifest"
+
+manifest_check_declarations
+manifest_check_references
+
+echo
+
+}
+
 
 
 ########################################
@@ -1144,16 +1184,18 @@ Options:
     --no-report      Do not write a timestamped report file.
     -h, --help       Show this help.
 
-Sections:
-    configuration  applications  system  validation  drift  storage
-    memory  swap  systemd  services  session  gpu  network  pacman
-    daemons  battery  diskusage  fonts  manifest
+Sections (run order):
+EOF
+    printf '%s\n' "$DOCTOR_SECTIONS" | fold -s -w 62 | sed 's/^/    /'
+    cat <<'EOF'
 
 An unknown section name is rejected rather than silently running nothing.
 EOF
 }
 
-DOCTOR_SECTIONS="configuration applications system validation drift storage memory swap systemd services session gpu network pacman daemons battery diskusage fonts manifest"
+# Derived from the registry above: the valid names can never drift from
+# what the dispatcher actually runs.
+DOCTOR_SECTIONS="$(printf '%s\n' "${HYPRX_DOCTOR_SECTION_TABLE[@]}" | cut -d: -f1 | tr '\n' ' ' | sed 's/ *$//')"
 
 # A section runs when it is neither excluded by --skip nor absent from --only.
 doctor_wants() {

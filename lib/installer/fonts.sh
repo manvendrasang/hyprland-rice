@@ -26,10 +26,8 @@ HYPRX_FONT_SOURCE="${HYPRX_FONT_SOURCE:-https://raw.githubusercontent.com/google
 # slanted, wrong-weight fallback.
 #
 # The list can be overridden through HYPRX_FONT_SPEC (space-separated
-# "file|sha256" pairs) purely so tests can exercise the fetch-and-verify path
-# against a local file:// URL instead of the network. Production never sets it;
-# `tests/run_tests.sh` asserts the override is what it expects and that the
-# shipped default is the four real pins.
+# "file|sha256" pairs) purely so the fetch-and-verify path is exercisable
+# against a local file:// URL instead of the network. Production never sets it.
 HYPRX_FONT_SPEC="${HYPRX_FONT_SPEC:-Caudex-Regular.ttf|dbb493e1adc50aaec52071535e6fccf4176793c79545f54d95a812cbfb85169b Caudex-Bold.ttf|880fb67901ce94573ed0262d152b87115a08f928c72fc6c1101375a1223d390a Caudex-Italic.ttf|ffa47f625d746e7b75c2306b7572f22561e1d73312a375772325c98213e0a4f9 Caudex-BoldItalic.ttf|78440e8ab6730581ac71fe780ad2fa15ba15d240313028678e404ace4e70eb20}"
 
 HYPRX_FONT_FILES=()

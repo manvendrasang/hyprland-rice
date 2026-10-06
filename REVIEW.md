@@ -1,5 +1,11 @@
 # HyprX — Repo Assessment
 
+> Note (2026-10-06): the suite (`tests/run_tests.sh`, 435 passing) and
+> `tests/review-checks.sh` were removed — CI cost outweighed their value at
+> this stage. Both survive in git history. Claims below that say "asserted" or
+> "suite-asserted" describe the state while the suite existed; new features
+> ship with focused tests per `tests/README.md` instead.
+
 Every finding below was reproduced, then fixed. `bash tests/review-checks.sh`
 re-derives the checkable claims and reports no findings;
 `bash tests/run_tests.sh` is the gate. Findings **1–7** were severe enough to
@@ -383,7 +389,17 @@ uninstalling spotify and firefox.
   `config/waybar/scripts/lib-launch.sh`, sourced as a sibling so a broken
   install still reports itself instead of silently dying. The duplicate
   `listactive` parsers went earlier with #32.
-- `commands/doctor.sh` is ~1240 lines with ~70 near-identical note/section calls.
-  Table-driving the sections would take it to roughly 750 and make adding a
-  section one line instead of a dozen. Not done: it is a large mechanical change
-  to the file that most needs to stay readable, and it wants its own review.
+- `commands/doctor.sh` table-driving: done. The 19 `if doctor_wants`
+  blocks are now 19 `hyprx_doctor_section_*` functions behind one
+  `HYPRX_DOCTOR_SECTION_TABLE` registry that also derives run order,
+  `doctor_usage`, `DOCTOR_SECTIONS` validation and --only/--skip routing, so
+  adding a section is one function plus one table line and the lists cannot
+  drift. The file went 1235 → ~1280 lines, not ~750: the deeper dedup behind
+  that estimate would have merged section bodies and risked behaviour, so it
+  was deliberately not done. Verified without the suite by golden-output diff
+  (9 scenarios incl. --json/--only/--skip/help/rejections: identical exit
+  codes and bytes), ShellCheck clean under the pinned config, and a runtime
+  guard that exits 1 naming the section if the table ever points at a missing
+  function. The one compromise the table forces: sections dispatch by name,
+  which ShellCheck cannot see, so the file carries a scoped SC2329 disable
+  (same pattern as clean.sh's EXIT-hook disable).

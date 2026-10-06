@@ -7,13 +7,14 @@ one.
 ## Before you start
 
 ```
-bash tests/run_tests.sh        # the gate. 426 assertions.
-bash tests/review-checks.sh    # self-explanatory invariant checks
 shellcheck -x $(find . -path ./.git -prune -o -name '*.sh' -print) bin/hyprx
+hyprx doctor
 ```
 
-All three must be clean. CI runs the first and third; `review-checks.sh` is for
-you.
+ShellCheck must be clean and doctor must agree with your change. CI runs
+ShellCheck, config validation (Lua/JSON/wallust contract), and the dependency
+manifest. The full test suite was removed in October 2026 (see
+`tests/README.md`): new features ship with their own focused tests instead.
 
 ## The rule that matters most
 
@@ -81,7 +82,7 @@ defined by the template. GTK drops a declaration whose custom property is
 undefined — along with the whole rule using it — and does so *after* the first
 wallpaper change, which is why this bug shipped: a fresh clone looked perfect.
 
-CI asserts both directions. If you add a variable, add it in both places or the
+CI asserts both directions in the config-validation job. If you add a variable, add it in both places or the
 build fails.
 
 ## Changing packages.list
@@ -98,12 +99,15 @@ a service, add its package.
 
 ## Tests
 
-`tests/run_tests.sh` is the gate and must stay green.
+There is no suite. A new feature ships with its own focused test under
+`tests/<feature>.sh` (see `tests/README.md` for the rules) instead.
 
-Write behavioural assertions, not textual ones. The suite used to contain many
-checks of the form "does this file contain the string `ensure-waybar.sh`". Those
-guard against deleting a fix; they do not guard against breaking behaviour, and
-a fatal install-loop bug shipped with 330 of them green.
+The habits below come from the removed suite, which caught real bugs with
+them. Keep them:
+
+- Drive the real CLI. The old suite ran `hyprx install` end to end with a stubbed
+  `pacman` and `sudo` on `PATH`, which is what lets a test observe the install
+  stage's exit code.
 
 If you fix a bug, add a test that fails without the fix. The ones that matter:
 
@@ -133,15 +137,14 @@ failure. If ShellCheck complains about a deliberate word-split over
 `HYPRX_CONFIG_TARGETS`, annotate it with a reason; do not add the code to the
 global disable list.
 
-`bin/hyprx` has no `.sh` suffix, so `find -name '*.sh'` skips it. Both CI jobs
-name it explicitly. Do not let that lapse.
+`bin/hyprx` has no `.sh` suffix, so `find -name '*.sh'` skips it. The lint job
+names it explicitly. Do not let that lapse.
 
 **ShellCheck must be the same version everywhere.** CI downloads a pinned
 ShellCheck from upstream rather than using `apt`, because the rule set moves
 between releases: 0.11 is lenient about `A && B || C` where `B` is an
-assignment, an older release is not. That gap is how twelve real findings passed
-the suite and failed CI. Both jobs use the same `SHELLCHECK_VERSION`; bump it
-deliberately and read the resulting diff.
+assignment, an older release is not. Keep the pinned version in the lint job
+deliberate: bump it and read the resulting diff.
 
 **Never gate on a tool you have not declared.** `hyprx install` once aborted on
 any minimal system — including the CI container — because the preflight gate
